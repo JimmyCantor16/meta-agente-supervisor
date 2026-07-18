@@ -1,0 +1,15 @@
+# --- Framework web ---
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+
+# --- Cliente LLM (DeepSeek vía SDK de OpenAI, por compatibilidad) ---
+openai>=1.30.0
+
+# --- Validación y configuración ---
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+python-dotenv>=1.0.0
+
+# --- Login con Google (verificación del ID token) ---
+google-auth>=2.30.0
+requests>=2.31.0

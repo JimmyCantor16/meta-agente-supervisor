@@ -1,0 +1,568 @@
+"""Entrypoint HTTP (FastAPI): expone los casos de uso como una API REST.
+
+Es un adaptador de ENTRADA: traduce peticiones HTTP en llamadas a los casos de
+uso y el resultado del dominio en respuestas HTTP. La inyección de los
+adaptadores concretos (DeepSeek o mock, y el repositorio SQLite) se resuelve
+aquí mediante el sistema de dependencias de FastAPI.
+"""
+
+from __future__ import annotations
+
+import logging
+from functools import lru_cache
+from typing import Literal
+
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+from pathlib import Path
+
+from src.application.audit_project import AuditProjectUseCase
+from src.application.evaluate_prompt import EvaluatePromptUseCase, RegisterFeedbackUseCase
+from src.application.explain_project import ExplainProjectUseCase
+from src.application.generate_project import GenerateProjectUseCase
+from src.application.usage_service import UsageService
+from src.config import Settings, get_settings
+from src.domain.entities import EvaluationStatus
+from src.domain.ports import (
+    AuditError,
+    CodeAuditorPort,
+    CodeTeacherPort,
+    EvaluationRepositoryPort,
+    LicenseRequiredError,
+    ProjectGenerationError,
+    ProjectGeneratorPort,
+    ProjectReaderPort,
+    ProjectWriterPort,
+    PromptEvaluationError,
+    PromptEvaluatorPort,
+    UsageRepositoryPort,
+)
+from src.infrastructure.adapters.deepseek_adapter import DeepSeekPromptEvaluator
+from src.infrastructure.adapters.iterative_project_generator import IterativeProjectGenerator
+from src.infrastructure.adapters.llm_code_auditor import LLMCodeAuditor
+from src.infrastructure.adapters.llm_code_teacher import LLMCodeTeacher
+from src.infrastructure.adapters.mock_adapter import MockPromptEvaluator
+from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
+from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
+from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
+from src.infrastructure.adapters.project_reader import FileSystemProjectReader
+from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
+from src.infrastructure.adapters.sqlite_repository import SqliteEvaluationRepository
+from src.infrastructure.adapters.sqlite_usage_repository import SqliteUsageRepository
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# DTOs de la capa HTTP.
+# ---------------------------------------------------------------------------
+class EvaluateRequest(BaseModel):
+    """Cuerpo de la petición de evaluación."""
+
+    prompt: str = Field(
+        ...,
+        min_length=10,
+        max_length=8000,
+        description="Idea o prompt de desarrollo del usuario.",
+        examples=["Crear una web de e-commerce con carrito y pasarela de pago Stripe."],
+    )
+    # El idioma queda restringido por `Literal`: FastAPI rechaza cualquier otro
+    # valor con un 422 antes de llegar al caso de uso.
+    language: Literal["es", "en"] = Field(
+        default="es",
+        description="Idioma deseado para la respuesta del agente.",
+    )
+
+
+class EvaluationResponse(BaseModel):
+    """Respuesta de la evaluación. Incluye `id` para poder enviar feedback luego."""
+
+    id: str
+    status: EvaluationStatus
+    analisis_critico: str
+    sugerencias_mejora: list[str]
+    prompt_final_optimizado: str
+
+
+class FeedbackRequest(BaseModel):
+    """Cuerpo de la petición de feedback sobre una evaluación."""
+
+    evaluation_id: str = Field(..., description="Id de la evaluación votada.")
+    helpful: bool = Field(..., description="True si fue útil (👍), False si no (👎).")
+
+
+class GenerateRequest(BaseModel):
+    """Cuerpo de la petición para generar un proyecto."""
+
+    prompt: str = Field(
+        ...,
+        min_length=10,
+        max_length=12000,
+        description="Prompt de ingeniería (idealmente el prompt_final_optimizado).",
+    )
+    language: Literal["es", "en"] = Field(default="es")
+
+
+class GenerateResponse(BaseModel):
+    """Respuesta de la generación: metadatos + dónde quedó escrito."""
+
+    name: str
+    summary: str
+    output_path: str = Field(..., description="Ruta absoluta donde se escribió el proyecto.")
+    files: list[str] = Field(..., description="Rutas relativas de los archivos generados.")
+    run_instructions: str
+
+
+class AuditRequest(BaseModel):
+    """Cuerpo de la petición para auditar un proyecto ya generado."""
+
+    project_name: str = Field(..., min_length=1, description="Nombre del proyecto a auditar.")
+    language: Literal["es", "en"] = Field(default="es")
+
+
+class SuggestionDTO(BaseModel):
+    """Una sugerencia de mejora en la respuesta HTTP."""
+
+    title: str
+    category: str
+    priority: str
+    file: str
+    rationale: str
+    suggestion: str
+
+
+class AuditResponse(BaseModel):
+    """Respuesta de la auditoría: diagnóstico + sugerencias priorizadas."""
+
+    target: str
+    summary: str
+    suggestions: list[SuggestionDTO]
+
+
+class ExplainRequest(BaseModel):
+    """Cuerpo de la petición para explicar (Modo Profesor) un proyecto."""
+
+    project_name: str = Field(..., min_length=1)
+    language: Literal["es", "en"] = Field(default="es")
+
+
+class TeachingResponse(BaseModel):
+    """Respuesta del Modo Profesor: guía didáctica del proyecto."""
+
+    target: str
+    summary: str
+    steps: list[str]
+    concepts: list[str]
+    next_steps: list[str]
+
+
+class ProjectSummary(BaseModel):
+    """Resumen de un proyecto generado (para la galería)."""
+
+    name: str
+    files: int
+
+
+class UsageResponse(BaseModel):
+    """Estado de uso y licencia."""
+
+    used: int
+    limit: int
+    remaining: int  # -1 = ilimitado (licenciado)
+    licensed: bool
+
+
+class LicenseRequest(BaseModel):
+    """Petición para activar una licencia."""
+
+    key: str = Field(..., min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# Inyección de dependencias (composición de la arquitectura hexagonal).
+# ---------------------------------------------------------------------------
+@lru_cache
+def get_repository() -> EvaluationRepositoryPort:
+    """Provee el repositorio de evaluaciones (memoria del agente)."""
+    return SqliteEvaluationRepository(get_settings().db_path)
+
+
+@lru_cache
+def get_evaluator() -> PromptEvaluatorPort:
+    """Provee el evaluador: DeepSeek real o el mock, según configuración.
+
+    Cambiar entre uno y otro es tan simple como la variable `USE_MOCK_LLM`,
+    gracias a que ambos cumplen el mismo puerto.
+    """
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> usando evaluador SIMULADO (sin DeepSeek).")
+        return MockPromptEvaluator()
+    return DeepSeekPromptEvaluator()
+
+
+def get_evaluate_use_case(
+    evaluator: PromptEvaluatorPort = Depends(get_evaluator),
+    repository: EvaluationRepositoryPort = Depends(get_repository),
+) -> EvaluatePromptUseCase:
+    """Construye el caso de uso de evaluación con sus puertos resueltos."""
+    return EvaluatePromptUseCase(evaluator, repository)
+
+
+def get_feedback_use_case(
+    repository: EvaluationRepositoryPort = Depends(get_repository),
+) -> RegisterFeedbackUseCase:
+    """Construye el caso de uso de feedback."""
+    return RegisterFeedbackUseCase(repository)
+
+
+@lru_cache
+def get_project_generator() -> ProjectGeneratorPort:
+    """Provee el generador de proyectos: DeepSeek real o mock, según configuración."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> generador de proyectos SIMULADO.")
+        return MockProjectGenerator()
+    # Generador iterativo (planificar -> escribir por archivo -> auto-reparar).
+    return IterativeProjectGenerator()
+
+
+@lru_cache
+def get_project_writer() -> ProjectWriterPort:
+    """Provee el escritor de proyectos (filesystem seguro)."""
+    return FileSystemProjectWriter(get_settings().generated_dir)
+
+
+def get_generate_use_case(
+    generator: ProjectGeneratorPort = Depends(get_project_generator),
+    writer: ProjectWriterPort = Depends(get_project_writer),
+) -> GenerateProjectUseCase:
+    """Construye el caso de uso de generación con sus puertos resueltos."""
+    return GenerateProjectUseCase(generator, writer)
+
+
+@lru_cache
+def get_project_reader() -> ProjectReaderPort:
+    """Provee el lector de proyectos (filesystem)."""
+    return FileSystemProjectReader(get_settings().generated_dir)
+
+
+@lru_cache
+def get_code_auditor() -> CodeAuditorPort:
+    """Provee el auditor: IA real o mock, según configuración."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> auditor SIMULADO.")
+        return MockCodeAuditor()
+    return LLMCodeAuditor()
+
+
+def get_audit_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    auditor: CodeAuditorPort = Depends(get_code_auditor),
+) -> AuditProjectUseCase:
+    """Construye el caso de uso de auditoría con sus puertos resueltos."""
+    return AuditProjectUseCase(reader, auditor)
+
+
+@lru_cache
+def get_code_teacher() -> CodeTeacherPort:
+    """Provee el agente profesor: IA real o mock, según configuración."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> profesor SIMULADO.")
+        return MockCodeTeacher()
+    return LLMCodeTeacher()
+
+
+def get_explain_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    teacher: CodeTeacherPort = Depends(get_code_teacher),
+) -> ExplainProjectUseCase:
+    """Construye el caso de uso del Modo Profesor."""
+    return ExplainProjectUseCase(reader, teacher)
+
+
+@lru_cache
+def get_usage_repository() -> UsageRepositoryPort:
+    """Provee el repositorio de uso/licencia (SQLite)."""
+    return SqliteUsageRepository(get_settings().db_path)
+
+
+def get_usage_service(
+    repository: UsageRepositoryPort = Depends(get_usage_repository),
+) -> UsageService:
+    """Construye el servicio de uso/licencia."""
+    settings = get_settings()
+    return UsageService(repository, settings.free_generation_limit, settings.license_keys_list)
+
+
+# ---------------------------------------------------------------------------
+# Router
+# ---------------------------------------------------------------------------
+router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
+
+
+@router.post(
+    "/evaluate",
+    response_model=EvaluationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Evalúa y optimiza un prompt de desarrollo.",
+)
+def evaluate_prompt(
+    request: EvaluateRequest,
+    use_case: EvaluatePromptUseCase = Depends(get_evaluate_use_case),
+) -> EvaluationResponse:
+    """Recibe el prompt del usuario y devuelve la evaluación estructurada.
+
+    Traduce los errores del dominio a códigos HTTP apropiados:
+    - 422: prompt inválido (validación del dominio).
+    - 502: fallo del proveedor LLM (DeepSeek).
+    """
+    try:
+        record = use_case.execute(request.prompt, request.language)
+    except ValueError as exc:
+        logger.warning("Prompt inválido: %s", exc)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except PromptEvaluationError as exc:
+        logger.error("Fallo evaluando el prompt: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    # Aplanamos el registro (id + evaluación) en la respuesta HTTP.
+    ev = record.evaluation
+    return EvaluationResponse(
+        id=record.id,
+        status=ev.status,
+        analisis_critico=ev.analisis_critico,
+        sugerencias_mejora=ev.sugerencias_mejora,
+        prompt_final_optimizado=ev.prompt_final_optimizado,
+    )
+
+
+@router.post(
+    "/feedback",
+    status_code=status.HTTP_200_OK,
+    summary="Registra si una evaluación fue útil (alimenta el aprendizaje).",
+)
+def register_feedback(
+    request: FeedbackRequest,
+    use_case: RegisterFeedbackUseCase = Depends(get_feedback_use_case),
+) -> dict[str, str]:
+    """Guarda el voto de utilidad; 404 si la evaluación no existe."""
+    updated = use_case.execute(request.evaluation_id, request.helpful)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluación no encontrada.",
+        )
+    return {"status": "ok"}
+
+
+@router.post(
+    "/generate",
+    response_model=GenerateResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Genera un proyecto de software a partir de un prompt (agente que construye).",
+)
+def generate_project(
+    request: GenerateRequest,
+    use_case: GenerateProjectUseCase = Depends(get_generate_use_case),
+    usage: UsageService = Depends(get_usage_service),
+) -> GenerateResponse:
+    """Toma el prompt, genera el proyecto y lo escribe en disco.
+
+    - 402: se agotó el cupo gratis y se requiere licencia.
+    - 422: prompt inválido.
+    - 502: fallo del generador o de escritura.
+    """
+    # Gate de licencia: bloquea si se agotaron las generaciones gratuitas.
+    try:
+        usage.ensure_can_generate()
+    except LicenseRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+
+    try:
+        project, output_path = use_case.execute(request.prompt, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except ProjectGenerationError as exc:
+        logger.error("Fallo generando el proyecto: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    # Cuenta la generación exitosa (para el límite gratuito).
+    usage.record_generation()
+
+    return GenerateResponse(
+        name=project.name,
+        summary=project.summary,
+        output_path=output_path,
+        files=[f.path for f in project.files],
+        run_instructions=project.run_instructions,
+    )
+
+
+@router.post(
+    "/audit",
+    response_model=AuditResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Audita un proyecto generado y sugiere mejoras (agente proactivo).",
+)
+def audit_project(
+    request: AuditRequest,
+    use_case: AuditProjectUseCase = Depends(get_audit_use_case),
+) -> AuditResponse:
+    """Lee un proyecto del disco, lo analiza con la IA y devuelve mejoras.
+
+    - 404: el proyecto no existe.
+    - 502: fallo del auditor (IA).
+    """
+    try:
+        report = use_case.execute(request.project_name, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except AuditError as exc:
+        # "no existe" -> 404; el resto -> 502.
+        message = str(exc)
+        if "no existe" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
+        logger.error("Fallo auditando el proyecto: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message) from exc
+
+    return AuditResponse(
+        target=report.target,
+        summary=report.summary,
+        suggestions=[
+            SuggestionDTO(
+                title=s.title,
+                category=s.category,
+                priority=s.priority,
+                file=s.file,
+                rationale=s.rationale,
+                suggestion=s.suggestion,
+            )
+            for s in report.suggestions
+        ],
+    )
+
+
+@router.post(
+    "/explain",
+    response_model=TeachingResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Explica un proyecto y enseña a completarlo (Modo Profesor).",
+)
+def explain_project(
+    request: ExplainRequest,
+    use_case: ExplainProjectUseCase = Depends(get_explain_use_case),
+) -> TeachingResponse:
+    """Genera una guía didáctica del proyecto para un aprendiz."""
+    try:
+        guide = use_case.execute(request.project_name, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except AuditError as exc:
+        message = str(exc)
+        if "no existe" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message) from exc
+
+    return TeachingResponse(
+        target=guide.target,
+        summary=guide.summary,
+        steps=guide.steps,
+        concepts=guide.concepts,
+        next_steps=guide.next_steps,
+    )
+
+
+@router.get(
+    "/projects",
+    response_model=list[ProjectSummary],
+    summary="Lista los proyectos generados (para la galería).",
+)
+def list_projects() -> list[ProjectSummary]:
+    """Enumera las carpetas de proyectos generados y su número de archivos."""
+    base = Path(get_settings().generated_dir)
+    if not base.is_dir():
+        return []
+
+    projects: list[ProjectSummary] = []
+    for entry in sorted(base.iterdir()):
+        if entry.is_dir():
+            file_count = sum(1 for p in entry.rglob("*") if p.is_file())
+            projects.append(ProjectSummary(name=entry.name, files=file_count))
+    return projects
+
+
+@router.get(
+    "/usage",
+    response_model=UsageResponse,
+    summary="Estado de uso y licencia (generaciones gratis restantes).",
+)
+def get_usage(usage: UsageService = Depends(get_usage_service)) -> UsageResponse:
+    """Devuelve cuántas generaciones se han usado y si hay licencia."""
+    return UsageResponse(**usage.status())
+
+
+@router.post(
+    "/license",
+    response_model=UsageResponse,
+    summary="Activa una licencia para generar sin límite.",
+)
+def activate_license(
+    request: LicenseRequest,
+    usage: UsageService = Depends(get_usage_service),
+) -> UsageResponse:
+    """Activa la licencia si la clave es válida; si no, devuelve 400."""
+    if not usage.activate(request.key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Clave de licencia inválida.",
+        )
+    return UsageResponse(**usage.status())
+
+
+# ---------------------------------------------------------------------------
+# Factory de la aplicación
+# ---------------------------------------------------------------------------
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Construye y configura la instancia de FastAPI.
+
+    Args:
+        settings: Configuración a usar. Si es `None`, se toma la global.
+
+    Returns:
+        Aplicación FastAPI lista para servir.
+    """
+    settings = settings or get_settings()
+
+    app = FastAPI(
+        title="Meta-Agente Supervisor de Desarrollo Autónomo",
+        description="Evalúa, critica y optimiza prompts de desarrollo con DeepSeek.",
+        version="1.1.0",
+    )
+
+    # CORS: imprescindible para que el frontend (Vite) consuma la API.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(router)
+
+    # Router de autenticación con Google.
+    from src.infrastructure.entrypoints.auth import router as auth_router
+
+    app.include_router(auth_router)
+
+    @app.get("/health", tags=["health"])
+    def health() -> dict[str, str]:
+        """Endpoint de salud para readiness/liveness checks."""
+        return {"status": "ok"}
+
+    return app

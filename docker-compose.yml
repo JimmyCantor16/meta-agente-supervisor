@@ -1,0 +1,30 @@
+# Orquesta el Meta-Agente completo: backend (FastAPI) + frontend (Nginx).
+# Levantar todo:  docker compose up --build
+#   Frontend -> http://localhost:8080
+#   API/docs -> http://localhost:8000/docs
+
+services:
+  backend:
+    build: ./backend
+    # Carga las variables del .env (incluye DEEPSEEK_API_KEY y USE_MOCK_LLM).
+    env_file:
+      - ./backend/.env
+    # `environment` tiene prioridad: reubicamos la BD y los proyectos generados
+    # en carpetas montadas para que persistan y sean accesibles desde el host.
+    environment:
+      DB_PATH: /app/data/evaluations.db
+      GENERATED_DIR: /app/generated
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/generated:/app/generated
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped

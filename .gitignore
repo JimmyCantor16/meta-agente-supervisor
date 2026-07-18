@@ -1,0 +1,28 @@
+# --- Python / Backend ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.db
+
+# Datos generados en runtime (no versionar)
+backend/generated/
+backend/data/
+generated/
+data/
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+# Artefactos de tsc sobre vite.config.ts (no versionar; vite-env.d.ts SÍ es fuente)
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# --- Editores / SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
