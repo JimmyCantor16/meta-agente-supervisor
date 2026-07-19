@@ -2,7 +2,7 @@
 // En desarrollo, las peticiones a `/api` se redirigen al backend FastAPI
 // mediante el proxy de Vite (ver vite.config.ts).
 
-import type { AuthConfig, AuthUser } from "../features/auth/types";
+import type { AccountStatus, AuthConfig, AuthUser } from "../features/auth/types";
 import type {
   AuditResult,
   EvaluationResult,
@@ -35,6 +35,33 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+/** Cabecera de autenticación con el token de Google guardado (si hay sesión). */
+function authHeaders(): Record<string, string> {
+  const credential = window.localStorage.getItem("auth.credential");
+  return credential ? { Authorization: `Bearer ${credential}` } : {};
+}
+
+/**
+ * Si una respuesta autenticada devuelve 401, la sesión expiró: avisamos a la app
+ * (AuthProvider) para cerrar sesión y pedir re-login sin romper la experiencia.
+ */
+function handleAuthExpiry(status: number): void {
+  if (status === 401) {
+    window.dispatchEvent(new Event("auth-expired"));
+  }
+}
+
+/** Extrae el `detail` de una respuesta de error de FastAPI. */
+async function errorDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = await response.json();
+    if (body?.detail) return typeof body.detail === "string" ? body.detail : fallback;
+  } catch {
+    // cuerpo no-JSON
+  }
+  return fallback;
 }
 
 /**
@@ -125,7 +152,7 @@ export async function generateProject(
   try {
     response = await fetch(GENERATE_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ prompt, language }),
     });
   } catch {
@@ -133,14 +160,8 @@ export async function generateProject(
   }
 
   if (!response.ok) {
-    let detail = `Error ${response.status}`;
-    try {
-      const body = await response.json();
-      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : detail;
-    } catch {
-      // cuerpo no-JSON
-    }
-    throw new ApiError(detail, response.status);
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, `Error ${response.status}`), response.status);
   }
 
   return (await response.json()) as GenerateResult;
@@ -194,7 +215,7 @@ export async function explainProject(
   try {
     response = await fetch(EXPLAIN_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ project_name: projectName, language }),
     });
   } catch {
@@ -263,6 +284,61 @@ export async function loginWithGoogle(credential: string): Promise<AuthUser> {
     throw new ApiError(detail, response.status);
   }
   return (await response.json()) as AuthUser;
+}
+
+// --- Cuenta por usuario + super-admin ---------------------------------------
+const ACCOUNT_ME_ENDPOINT = "/api/v1/agent/account/me";
+const ACCOUNT_UPGRADE_ENDPOINT = "/api/v1/agent/account/request-upgrade";
+const ADMIN_PENDING_ENDPOINT = "/api/v1/agent/admin/pending";
+const ADMIN_APPROVE_ENDPOINT = "/api/v1/agent/admin/approve";
+
+/** Estado de la cuenta del usuario autenticado. Null si no hay sesión. */
+export async function getAccount(): Promise<AccountStatus | null> {
+  try {
+    const response = await fetch(ACCOUNT_ME_ENDPOINT, { headers: authHeaders() });
+    if (!response.ok) {
+      handleAuthExpiry(response.status);
+      return null;
+    }
+    return (await response.json()) as AccountStatus;
+  } catch {
+    return null;
+  }
+}
+
+/** El usuario solicita un plan (queda pendiente de aprobación). */
+export async function requestUpgrade(plan = "pro"): Promise<AccountStatus> {
+  const response = await fetch(ACCOUNT_UPGRADE_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ plan }),
+  });
+  if (!response.ok) {
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, "No se pudo solicitar."), response.status);
+  }
+  return (await response.json()) as AccountStatus;
+}
+
+/** (Admin) Lista usuarios pendientes de aprobación de pago. */
+export async function adminListPending(): Promise<AccountStatus[]> {
+  const response = await fetch(ADMIN_PENDING_ENDPOINT, { headers: authHeaders() });
+  if (!response.ok) {
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, "Acceso denegado."), response.status);
+  }
+  return (await response.json()) as AccountStatus[];
+}
+
+/** (Admin) Aprueba el pago de un usuario y activa su plan. */
+export async function adminApprove(sub: string, plan = "pro"): Promise<AccountStatus> {
+  const response = await fetch(ADMIN_APPROVE_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ sub, plan }),
+  });
+  if (!response.ok) throw new ApiError(await errorDetail(response, "No se pudo aprobar."), response.status);
+  return (await response.json()) as AccountStatus;
 }
 
 /** Obtiene el estado de uso/licencia. Nunca lanza. */

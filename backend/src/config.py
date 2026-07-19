@@ -65,17 +65,31 @@ class Settings(BaseSettings):
     free_generation_limit: int = Field(
         default=3,
         ge=1,
-        description="Proyectos que se pueden generar gratis antes de pedir licencia.",
+        description="Proyectos gratis por usuario antes de requerir pago.",
+    )
+    free_lesson_limit: int = Field(
+        default=3,
+        ge=1,
+        description="Clases (Modo Profesor) gratis por usuario antes de requerir pago.",
     )
     license_keys: str = Field(
         default="META-PRO-2026",
-        description="Claves de licencia válidas, separadas por comas.",
+        description="Claves de licencia globales válidas (modo legacy).",
+    )
+    super_admin_emails: str = Field(
+        default="",
+        description="Emails de super-admin (aprueban pagos), separados por comas.",
     )
 
     @property
     def license_keys_list(self) -> list[str]:
         """Lista de claves de licencia válidas."""
         return [k.strip() for k in self.license_keys.split(",") if k.strip()]
+
+    @property
+    def super_admin_emails_list(self) -> list[str]:
+        """Lista de emails de super-admin."""
+        return [e.strip() for e in self.super_admin_emails.split(",") if e.strip()]
 
     # --- Modo simulado (pruebas sin saldo de DeepSeek) ---
     use_mock_llm: bool = Field(

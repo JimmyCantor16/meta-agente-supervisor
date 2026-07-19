@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Badge } from "../../../components/Badge";
 import { Button } from "../../../components/Button";
 import { Card } from "../../../components/Card";
+import { GoogleLoginButton } from "../../auth/GoogleLoginButton";
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import type { AccountStatus } from "../../auth/types";
 import { useAuditProject } from "../hooks/useAuditProject";
 import { useExplainProject } from "../hooks/useExplainProject";
 import { useGenerateProject } from "../hooks/useGenerateProject";
@@ -13,28 +15,28 @@ interface DashboardEvaluacionProps {
   feedback: boolean | null;
   onFeedback: (helpful: boolean) => void;
   teacherMode: boolean;
-  onProjectGenerated: () => void;
-  /** Activa una licencia (devuelve si tuvo éxito). */
-  licenseActivate: (key: string) => Promise<boolean>;
-  /** Error de activación de licencia, o null. */
-  licenseError: string | null;
-  /** Se llama al activar una licencia (para refrescar el uso). */
-  onLicenseActivated: () => void;
+  /** True si el usuario inició sesión. */
+  isLoggedIn: boolean;
+  /** Estado de la cuenta (para mostrar pendiente de pago). */
+  account: AccountStatus | null;
+  /** Se llama tras generar (refresca galería + cuenta). */
+  onAfterGenerate: () => void;
+  /** El usuario solicita continuar (plan). */
+  onRequestUpgrade: (plan?: string) => Promise<void>;
+  /** Navega a la página de Planes. */
+  onViewPlans: () => void;
 }
 
-/**
- * Panel de resultados (tema claro). Muestra el veredicto, análisis, sugerencias,
- * prompt final, generación del proyecto, auditoría, Modo Profesor y feedback.
- */
 export function DashboardEvaluacion({
   evaluation,
   feedback,
   onFeedback,
   teacherMode,
-  onProjectGenerated,
-  licenseActivate,
-  licenseError,
-  onLicenseActivated,
+  isLoggedIn,
+  account,
+  onAfterGenerate,
+  onRequestUpgrade,
+  onViewPlans,
 }: DashboardEvaluacionProps) {
   const { t } = useLanguage();
   const { status, analisis_critico, sugerencias_mejora, prompt_final_optimizado } = evaluation;
@@ -88,10 +90,11 @@ export function DashboardEvaluacion({
       <GenerateProjectSection
         prompt={prompt_final_optimizado}
         teacherMode={teacherMode}
-        onGenerated={onProjectGenerated}
-        licenseActivate={licenseActivate}
-        licenseError={licenseError}
-        onLicenseActivated={onLicenseActivated}
+        isLoggedIn={isLoggedIn}
+        account={account}
+        onAfterGenerate={onAfterGenerate}
+        onRequestUpgrade={onRequestUpgrade}
+        onViewPlans={onViewPlans}
       />
 
       {/* Feedback */}
@@ -120,7 +123,6 @@ export function DashboardEvaluacion({
   );
 }
 
-/** Prioridad -> estilo de chip (tema claro). */
 function priorityTone(priority: string): string {
   const p = priority.toLowerCase();
   if (p.startsWith("alt") || p.startsWith("hig")) return "bg-red-50 text-red-700 ring-red-200";
@@ -128,28 +130,28 @@ function priorityTone(priority: string): string {
   return "bg-slate-100 text-slate-600 ring-slate-200";
 }
 
-/** Sección del agente que construye + auditoría + Modo Profesor. */
 function GenerateProjectSection({
   prompt,
   teacherMode,
-  onGenerated,
-  licenseActivate,
-  licenseError,
-  onLicenseActivated,
+  isLoggedIn,
+  account,
+  onAfterGenerate,
+  onRequestUpgrade,
+  onViewPlans,
 }: {
   prompt: string;
   teacherMode: boolean;
-  onGenerated: () => void;
-  licenseActivate: (key: string) => Promise<boolean>;
-  licenseError: string | null;
-  onLicenseActivated: () => void;
+  isLoggedIn: boolean;
+  account: AccountStatus | null;
+  onAfterGenerate: () => void;
+  onRequestUpgrade: (plan?: string) => Promise<void>;
+  onViewPlans: () => void;
 }) {
   const { t } = useLanguage();
   const { data, loading, error, licenseRequired, generate } = useGenerateProject();
 
-  // Al generarse un proyecto, refresca la galería y el uso.
   useEffect(() => {
-    if (data) onGenerated();
+    if (data) onAfterGenerate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
@@ -157,18 +159,20 @@ function GenerateProjectSection({
     <Card title={t.dashboard.generatedTitle} icon={<span>🏗️</span>}>
       <p className="mb-4 text-sm text-slate-500">{t.dashboard.generateHint}</p>
 
-      <Button onClick={() => generate(prompt)} loading={loading}>
-        {loading ? t.dashboard.generating : t.dashboard.generateButton}
-      </Button>
+      {!isLoggedIn ? (
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-brand-100 bg-brand-50 px-4 py-4">
+          <p className="text-sm text-brand-700">🔐 {t.account.loginToGenerate}</p>
+          <GoogleLoginButton />
+        </div>
+      ) : (
+        <Button onClick={() => generate(prompt)} loading={loading}>
+          {loading ? t.dashboard.generating : t.dashboard.generateButton}
+        </Button>
+      )}
 
-      {/* Bloqueo por licencia: panel de activación */}
+      {/* Bloqueo por límite: panel de pago / pendiente */}
       {licenseRequired && (
-        <LicensePanel
-          message={error}
-          activate={licenseActivate}
-          activateError={licenseError}
-          onActivated={onLicenseActivated}
-        />
+        <PaymentPanel account={account} onRequestUpgrade={onRequestUpgrade} onViewPlans={onViewPlans} />
       )}
 
       {error && !licenseRequired && (
@@ -205,63 +209,34 @@ function GenerateProjectSection({
   );
 }
 
-/** Panel de activación de licencia (cuando se agota el cupo gratis). */
-function LicensePanel({
-  message,
-  activate,
-  activateError,
-  onActivated,
+/** Panel de pago cuando el usuario agota su cupo gratuito. */
+function PaymentPanel({
+  account,
+  onViewPlans,
 }: {
-  message: string | null;
-  activate: (key: string) => Promise<boolean>;
-  activateError: string | null;
-  onActivated: () => void;
+  account: AccountStatus | null;
+  onRequestUpgrade: (plan?: string) => Promise<void>;
+  onViewPlans: () => void;
 }) {
   const { t } = useLanguage();
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const handle = async () => {
-    if (!key.trim()) return;
-    setBusy(true);
-    const ok = await activate(key.trim());
-    setBusy(false);
-    if (ok) {
-      setDone(true);
-      onActivated();
-    }
-  };
+  const isPending = account?.status === "pending_payment";
 
   return (
     <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-      <p className="text-sm font-semibold text-amber-800">🔒 {t.license.title}</p>
-      <p className="mt-1 text-sm text-amber-700">{message || t.license.intro}</p>
+      <p className="text-sm font-semibold text-amber-800">🔒 {t.account.paymentTitle}</p>
+      <p className="mt-1 text-sm text-amber-700">{t.account.paymentIntro}</p>
 
-      {done ? (
-        <p className="mt-3 text-sm font-medium text-emerald-700">{t.license.success}</p>
+      {isPending ? (
+        <p className="mt-3 text-sm font-medium text-amber-800">{t.account.pending}</p>
       ) : (
-        <>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder={t.license.placeholder}
-              className="flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-amber-400 focus:outline-none"
-            />
-            <Button onClick={handle} loading={busy}>
-              {busy ? t.license.activating : t.license.activate}
-            </Button>
-          </div>
-          {activateError && <p className="mt-2 text-sm text-red-600">⚠ {activateError}</p>}
-          <p className="mt-2 text-xs text-amber-600">{t.license.demoHint}</p>
-        </>
+        <div className="mt-3">
+          <Button onClick={onViewPlans}>💎 {t.nav.plans}</Button>
+        </div>
       )}
     </div>
   );
 }
 
-/** Subsección de auditoría (tema claro). */
 function AuditSubsection({ projectName }: { projectName: string }) {
   const { t } = useLanguage();
   const { data, loading, error, audit } = useAuditProject();
@@ -303,7 +278,6 @@ function AuditSubsection({ projectName }: { projectName: string }) {
   );
 }
 
-/** Subsección del Modo Profesor: explica el proyecto y propone retos. */
 function TeacherSubsection({ projectName }: { projectName: string }) {
   const { t } = useLanguage();
   const { data, loading, error, explain } = useExplainProject();
@@ -319,7 +293,6 @@ function TeacherSubsection({ projectName }: { projectName: string }) {
       {data && !loading && (
         <div className="mt-4 space-y-4 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
           <p className="text-sm text-slate-700">{data.summary}</p>
-
           <TeachingList title={t.dashboard.teachingSteps} items={data.steps} icon="👣" ordered />
           <TeachingList title={t.dashboard.teachingConcepts} items={data.concepts} icon="📚" />
           <TeachingList title={t.dashboard.teachingNext} items={data.next_steps} icon="🎯" />
@@ -358,7 +331,6 @@ function TeachingList({
   );
 }
 
-/** Bloque de código con el prompt optimizado y botón copiar (tema claro). */
 function PromptFinalBlock({ prompt }: { prompt: string }) {
   const { t } = useLanguage();
   const [copied, setCopied] = useState(false);

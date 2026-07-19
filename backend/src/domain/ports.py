@@ -18,6 +18,7 @@ from src.domain.entities import (
     GeneratedFile,
     GeneratedProject,
     TeachingGuide,
+    UserAccount,
 )
 
 
@@ -40,6 +41,49 @@ class AuditError(Exception):
 
 class LicenseRequiredError(Exception):
     """Se agotaron las generaciones gratuitas y no hay licencia activa."""
+
+
+class PaymentRequiredError(Exception):
+    """El usuario agotó su cupo gratis y requiere pago aprobado por super-admin."""
+
+
+class AuthRequiredError(Exception):
+    """La acción requiere que el usuario haya iniciado sesión."""
+
+
+class UserRepositoryPort(ABC):
+    """Contrato de persistencia de cuentas de usuario."""
+
+    @abstractmethod
+    def get(self, sub: str) -> UserAccount | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert_profile(self, sub: str, email: str, name: str) -> UserAccount:
+        """Crea el usuario si no existe (o actualiza nombre/email) y lo devuelve."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def increment_generation(self, sub: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def increment_lesson(self, sub: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_pending(self, sub: str, requested_plan: str) -> None:
+        """Marca al usuario como pendiente de pago del plan solicitado."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def approve(self, sub: str, plan: str, admin_email: str) -> bool:
+        """Marca el pago como aprobado. Devuelve False si el usuario no existe."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_pending(self) -> list[UserAccount]:
+        raise NotImplementedError
 
 
 class UsageRepositoryPort(ABC):
@@ -154,6 +198,37 @@ class ProjectGeneratorPort(ABC):
 
         Raises:
             ProjectGenerationError: Si la generación falla.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def repair_with_error(
+        self, project: GeneratedProject, error: str
+    ) -> GeneratedProject:
+        """Corrige el proyecto a partir de un ERROR REAL de ejecución.
+
+        Es el corazón de la auto-verificación: en vez de reparar a ciegas, se le
+        entrega al agente el traceback exacto que produjo el código.
+
+        Args:
+            project: Proyecto generado que falló.
+            error: Salida de error real (traceback) al intentar ejecutarlo.
+
+        Returns:
+            El proyecto con los archivos corregidos.
+        """
+        raise NotImplementedError
+
+
+class ProjectVerifierPort(ABC):
+    """Contrato para verificar que un proyecto generado realmente ejecuta."""
+
+    @abstractmethod
+    def verify(self, project_dir: str) -> str | None:
+        """Comprueba el proyecto escrito en disco.
+
+        Returns:
+            None si todo está correcto; si no, el mensaje/traceback del error.
         """
         raise NotImplementedError
 

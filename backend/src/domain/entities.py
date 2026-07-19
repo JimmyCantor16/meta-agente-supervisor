@@ -189,6 +189,29 @@ class AuditReport(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class UserAccount(BaseModel):
+    """Cuenta de un usuario (identificado por su login de Google).
+
+    Modelo de negocio: gratis puede ver el MVP y recibir algunas clases; para
+    seguir debe pagar, y un super-admin marca el pago (`paid`) para desbloquearlo
+    según el plan adquirido.
+    """
+
+    sub: str = Field(..., description="ID único de Google.")
+    email: str = Field(default="")
+    name: str = Field(default="")
+    plan: str = Field(default="free", description="Plan actual: free | pro | business")
+    requested_plan: str = Field(default="", description="Plan que el usuario solicitó comprar.")
+    paid: bool = Field(default=False, description="El super-admin confirmó el pago.")
+    status: str = Field(default="active", description="active | pending_payment")
+    generations_used: int = Field(default=0)
+    lessons_used: int = Field(default=0)
+    approved_by: str = Field(default="", description="Email del super-admin que aprobó.")
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    model_config = {"extra": "ignore"}
+
+
 class TeachingGuide(BaseModel):
     """Guía didáctica del agente en 'Modo Profesor': enseña, no hace todo.
 

@@ -55,12 +55,12 @@ def auth_config() -> AuthConfigResponse:
     return AuthConfigResponse(enabled=bool(client_id), client_id=client_id)
 
 
-@router.post("/google", response_model=UserResponse)
-def login_with_google(request: GoogleLoginRequest) -> UserResponse:
-    """Verifica el ID token de Google y devuelve el usuario.
+def verify_google_token(credential: str) -> dict:
+    """Verifica un ID token de Google y devuelve su payload.
 
-    - 400: login no configurado (falta Client ID).
-    - 401: token inválido o no corresponde a este Client ID.
+    Raises:
+        HTTPException 400: si el login no está configurado.
+        HTTPException 401: si el token es inválido.
     """
     client_id = get_settings().google_client_id
     if not client_id:
@@ -68,21 +68,22 @@ def login_with_google(request: GoogleLoginRequest) -> UserResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El login con Google no está configurado en el servidor.",
         )
-
     try:
-        # Verifica firma, expiración y que el 'audience' sea nuestro Client ID.
-        info = google_id_token.verify_oauth2_token(
-            request.credential,
-            google_requests.Request(),
-            client_id,
+        return google_id_token.verify_oauth2_token(
+            credential, google_requests.Request(), client_id
         )
     except ValueError as exc:
         logger.warning("Token de Google inválido: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token de Google inválido.",
+            detail="Sesión inválida o expirada. Inicia sesión de nuevo.",
         ) from exc
 
+
+@router.post("/google", response_model=UserResponse)
+def login_with_google(request: GoogleLoginRequest) -> UserResponse:
+    """Verifica el ID token de Google y devuelve el usuario."""
+    info = verify_google_token(request.credential)
     logger.info("Login correcto: %s", info.get("email"))
     return UserResponse(
         sub=info.get("sub", ""),

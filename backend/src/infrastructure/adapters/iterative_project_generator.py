@@ -24,15 +24,22 @@ from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
 
 logger = logging.getLogger(__name__)
 
-# Límites pensados para respetar el tier GRATIS (p. ej. Groq: 12.000 tokens/min).
-# Cada llamada debe quedar bien por debajo de ese tope.
-_MAX_FILES = 8
-_MAX_CONTEXT_CHARS = 6_000  # contexto de archivos previos (~1.5k tokens)
-_MAX_REPAIR_CHARS = 18_000  # si el proyecto es mayor, se omite la reparación global
+# Límites del generador. Con la cadena multi-proveedor (GPT-4.1, Codestral,
+# DeepSeek V4...) podemos permitirnos proyectos bastante más completos que
+# cuando dependíamos solo del tier mínimo de Groq.
+_MAX_FILES = 22  # suficiente para frontend + backend + infra
+_MAX_CONTEXT_CHARS = 24_000  # contexto de archivos previos (coherencia)
+_MAX_REPAIR_CHARS = 90_000  # tamaño máximo del proyecto para el pase de reparación
 
 # Detecta imports de Python al inicio de línea (from X import ... | import X).
 _LOCAL_IMPORT_RE = re.compile(
     r"^\s*(?:from\s+([a-zA-Z_][\w.]*)\s+import|import\s+([a-zA-Z_][\w.]*))",
+    re.MULTILINE,
+)
+
+# Captura `from [.]* modulo import a, b, c` (incluye imports RELATIVOS).
+_FROM_IMPORT_RE = re.compile(
+    r"^\s*from\s+(\.*)([\w.]*)\s+import\s+([^\n#]+)",
     re.MULTILINE,
 )
 
@@ -50,15 +57,26 @@ Devuelve EXCLUSIVAMENTE un JSON válido:
 }
 
 Reglas:
-- Entre 6 y 12 archivos. Rutas SIEMPRE relativas (nunca absolutas ni con '..').
+- Entre 10 y 20 archivos. Rutas SIEMPRE relativas (nunca absolutas ni con '..').
+- Si el proyecto es una APLICACIÓN WEB, DEBES incluir **frontend Y backend**:
+  una carpeta `frontend/` con su interfaz (HTML/JS o React) y una `backend/` con
+  la API. Nunca entregues solo el backend cuando piden una app web.
 - Incluye SIEMPRE: docker-compose.yml, README.md, .env.example, CONFIGURE.md y
-  DEPLOY.md (guía de despliegue paso a paso para alguien sin experiencia:
-  hosting gratuito y cómo conectar un dominio).
+  DEPLOY.md (guía de despliegue paso a paso para alguien sin experiencia).
+- OBLIGATORIO — ARCHIVOS DE DEPENDENCIAS (se olvidan y rompen el build):
+  * Python: `requirements.txt` (con TODAS las librerías que importe el código).
+  * Node/JS: `package.json`.
+  * Si hay un Dockerfile que haga `COPY X`, ESE archivo X debe estar en la lista.
 - Divide el código en módulos coherentes (NO todo en un solo archivo).
-- CRÍTICO: si un archivo va a importar otro módulo local, ESE módulo DEBE estar
-  en la lista. Incluye explícitamente los archivos base que suelen olvidarse:
-  configuración/conexión de base de datos (p. ej. database.py), inyección de
-  dependencias (dependencies.py) y un __init__.py por cada paquete/carpeta.
+- CRÍTICO — COHERENCIA DE IMPORTS (el error más común, evítalo):
+  * Si un archivo importará `paquete.modulo`, ESE `paquete/modulo.py` DEBE estar
+    en la lista de archivos.
+  * NUNCA planifiques a la vez un archivo `X.py` y un paquete `X/` (colisionan).
+    Si necesitas varios routers, planifica el PAQUETE: `backend/routers/__init__.py`,
+    `backend/routers/users.py`, `backend/routers/tasks.py`, etc.
+  * Incluye un `__init__.py` por cada carpeta de paquete Python.
+  * Incluye los archivos base que suelen olvidarse: `database.py`, `models.py`,
+    `schemas.py`, `auth.py`, `dependencies.py` según aplique.
 - No dejes ningún import local sin su archivo correspondiente.
 """
 
@@ -73,19 +91,76 @@ Reglas:
 - Imports correctos y COMPLETOS. No uses funciones/variables/clases que no existan.
 - Coherente con los archivos ya escritos (mismos nombres de módulos, rutas, modelos).
 - Si es código, debe ejecutarse sin errores de import ni de sintaxis.
+- COHERENCIA DE VERSIONES (error frecuente y fatal):
+  * Python: usa imagen base **python:3.12-slim** o superior en el Dockerfile.
+    Si usas sintaxis moderna (`X | None`, `list[str]`, `dict[str, int]`), la
+    imagen DEBE ser 3.10+. Nunca pongas python:3.9 con esa sintaxis.
+  * En `requirements.txt` NO fijes versiones antiguas: usa rangos modernos
+    (p. ej. `fastapi>=0.111`, `pydantic>=2.7`). Si usas Pydantic v2, el código
+    debe usar sintaxis v2 (`model_config`, `model_validate`), no la v1.
+  * Nunca definas una función que se llame a sí misma sin caso base.
 """
 
 _REPAIR_SYS = """\
 Eres un revisor de código riguroso. Recibes TODOS los archivos de un proyecto y
-detectas lo que IMPIDE ejecutarlo: imports faltantes, funciones/variables/clases
-no definidas, errores de sintaxis e incoherencias entre archivos (nombres, rutas,
-firmas). También corrige inseguridades obvias (p. ej. contraseñas en texto plano).
+detectas lo que IMPIDE ejecutarlo.
+
+VERIFICA ESPECIALMENTE (son los fallos más frecuentes):
+1. Cada `from X import a, b, c`: ¿existe X entre los archivos? ¿define/contiene
+   realmente `a`, `b` y `c`? Si no, corrígelo (ajusta el import o crea el contenido).
+2. Imports circulares o de un módulo a sí mismo (p. ej. `routers.py` haciendo
+   `from .routers import ...`). Corrígelos.
+2b. RECURSIÓN INFINITA: una función que se llama a sí misma sin caso base.
+   Error típico y GRAVE: `def get_db(): db = next(get_db())` — debe usar la
+   sesión real (p. ej. `SessionLocal()`) con try/finally, NO invocarse a sí misma.
+   Revisa TODAS las funciones: si el cuerpo llama a la misma función, corrígelo.
+2c. Archivos referenciados pero inexistentes: si el Dockerfile hace
+   `COPY requirements.txt`, ese archivo debe existir (créalo con las
+   dependencias reales que importa el código).
+2d. COHERENCIA DE VERSIONES (error fatal frecuente): si el código usa sintaxis
+   moderna (`X | None`, `list[str]`), el Dockerfile NO puede usar python:3.9 —
+   súbelo a **python:3.12-slim**. Y si `requirements.txt` fija versiones viejas
+   (fastapi 0.95, pydantic 1.x) mientras el código usa Pydantic v2, corrige el
+   requirements a versiones modernas (`fastapi>=0.111`, `pydantic>=2.7`).
+3. Que dos archivos no se contradigan: si `app.py` incluye routers `users, tasks`,
+   el módulo de routers debe exponer exactamente esos.
+4. Funciones/clases/variables usadas pero nunca definidas; errores de sintaxis.
+5. Inseguridades obvias (contraseñas en texto plano, secretos hardcodeados).
 
 Corrige SOLO lo necesario y devuelve EXCLUSIVAMENTE un JSON válido:
 { "files": [ { "path": "ruta", "content": "contenido corregido COMPLETO" } ] }
 
 Incluye únicamente los archivos que cambiaste (completos, no diffs). Si no hay
 nada que corregir, devuelve { "files": [] }.
+"""
+
+
+_FIX_SYS = """\
+Eres un ingeniero depurando un proyecto que NO ARRANCA. Recibes el error REAL
+(traceback) y los archivos del proyecto.
+
+Tu tarea: identificar la causa EXACTA del error y corregirla.
+
+Devuelve EXCLUSIVAMENTE un JSON válido:
+{ "files": [ { "path": "ruta", "content": "contenido corregido COMPLETO" } ] }
+
+Reglas:
+- Incluye SOLO los archivos que modificas, con su contenido COMPLETO (no diffs).
+- Ataca la causa raíz del traceback, no síntomas.
+- Errores típicos y su arreglo:
+  * `from typing import list` -> usar `list` nativo (Python 3.9+) o `List` de typing.
+  * `RecursionError` -> una función se llama a sí misma; usa la implementación real.
+  * ALIAS QUE SE PISA (causa oculta de RecursionError, MUY común): un módulo hace
+    `from x import f`, define `def g(): ... f() ...` y al final escribe `f = g`.
+    Esa reasignación hace que dentro de `g` la llamada `f()` apunte a `g` ->
+    recursión infinita. SOLUCIÓN: elimina el alias, o importa el módulo y llama
+    cualificado (`from backend import database` … `database.get_session()`), o
+    importa con otro nombre (`from x import f as _f`). NUNCA reasignes al mismo
+    nombre que importaste si lo llamas dentro de la función.
+  * `ImportError: cannot import name X` -> X no existe en ese módulo: créalo o corrige el import.
+  * `TypeError: unsupported operand type(s) for |` -> la imagen Python es < 3.10:
+    sube el Dockerfile a python:3.12-slim (o usa Optional[...]).
+- No cambies cosas que no tengan que ver con el error.
 """
 
 
@@ -185,21 +260,75 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
                             files.append(GeneratedFile(path=init_path, content=""))
                             paths.add(init_path)
 
-            # 2) Busca imports locales que no tengan archivo.
+            # 2) Busca imports locales (absolutos Y relativos) sin su archivo.
             missing: list[str] = []
             for f in files:
                 if not f.path.endswith(".py"):
                     continue
-                for match in _LOCAL_IMPORT_RE.finditer(f.content):
-                    module = match.group(1) or match.group(2)
-                    if not module or module.split(".")[0] not in roots:
-                        continue  # stdlib / dependencia externa: se ignora
-                    rel = module.replace(".", "/")
-                    if f"{rel}.py" in paths or f"{rel}/__init__.py" in paths:
+
+                for match in _FROM_IMPORT_RE.finditer(f.content):
+                    dots, module, names_raw = match.group(1), match.group(2), match.group(3)
+
+                    if dots:
+                        # Import relativo: resolvemos desde la carpeta del archivo.
+                        parts = f.path.split("/")[:-1]
+                        up = len(dots) - 1
+                        if up:
+                            parts = parts[:-up] if up <= len(parts) else []
+                        rel = "/".join(parts + ([module.replace(".", "/")] if module else []))
+                    else:
+                        if not module or module.split(".")[0] not in roots:
+                            continue  # stdlib o dependencia externa
+                        rel = module.replace(".", "/")
+
+                    rel = rel.strip("/")
+                    if not rel:
                         continue
-                    target = f"{rel}.py"
-                    if target not in missing and target not in paths:
-                        missing.append(target)
+
+                    # ¿El módulo importado existe (como archivo o como paquete)?
+                    is_package = any(p.startswith(rel + "/") for p in paths)
+                    if f"{rel}.py" not in paths and not is_package:
+                        target = f"{rel}.py"
+                        if target not in missing:
+                            missing.append(target)
+                        continue
+
+                    # Si es un paquete, los nombres importados pueden ser submódulos.
+                    if is_package:
+                        names = [
+                            n.strip().split(" as ")[0].strip().strip("()")
+                            for n in names_raw.split(",")
+                        ]
+                        for name in names:
+                            if not name or not name.isidentifier():
+                                continue
+                            sub = f"{rel}/{name}.py"
+                            if sub not in paths and f"{rel}/{name}/__init__.py" not in paths:
+                                if sub not in missing:
+                                    missing.append(sub)
+
+            # 3) Archivos que un Dockerfile copia (COPY x) pero no existen.
+            #    Caso típico: `COPY requirements.txt` sin haberlo generado.
+            for f in files:
+                if not f.path.endswith("Dockerfile") and "Dockerfile" not in f.path:
+                    continue
+                for line in f.content.splitlines():
+                    stripped = line.strip()
+                    if not stripped.upper().startswith("COPY "):
+                        continue
+                    parts = stripped.split()[1:]
+                    if len(parts) < 2:
+                        continue
+                    src = parts[0].lstrip("./")
+                    # Solo archivos concretos (con extensión), no carpetas ni comodines.
+                    if not src or "*" in src or "." not in src.split("/")[-1]:
+                        continue
+                    base_dir = "/".join(f.path.split("/")[:-1])
+                    candidates = [src, f"{base_dir}/{src}".lstrip("/")] if base_dir else [src]
+                    if not any(c in paths for c in candidates):
+                        target = candidates[-1]
+                        if target not in missing:
+                            missing.append(target)
 
             if not missing:
                 break
@@ -251,6 +380,47 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
                 by_path[path] = GeneratedFile(path=path, content=content)
                 logger.info("Reparado: %s", path)
         return list(by_path.values())
+
+    # ------------------------------------------------------------------
+    # Auto-verificación: corregir con el ERROR REAL de ejecución
+    # ------------------------------------------------------------------
+    def repair_with_error(self, project: GeneratedProject, error: str) -> GeneratedProject:
+        """Corrige el proyecto usando el traceback real que produjo al ejecutarse."""
+        blob = "\n\n".join(f"--- {f.path} ---\n{f.content}" for f in project.files)
+        if len(blob) > _MAX_REPAIR_CHARS:
+            # Si el proyecto es enorme, mandamos solo los .py (donde está el fallo).
+            blob = "\n\n".join(
+                f"--- {f.path} ---\n{f.content}"
+                for f in project.files
+                if f.path.endswith(".py")
+            )[:_MAX_REPAIR_CHARS]
+
+        user = (
+            f"El proyecto FALLÓ al ejecutarse. Este es el error REAL:\n\n"
+            f"```\n{error}\n```\n\n"
+            f"ARCHIVOS DEL PROYECTO:\n{blob}\n\n"
+            f"Corrige EXACTAMENTE la causa de ese error."
+        )
+
+        try:
+            data = self._chat(_FIX_SYS, user)
+        except ProjectGenerationError as exc:
+            logger.warning("No se pudo corregir con el error real (%s); se deja igual.", exc)
+            return project
+
+        by_path = {f.path: f for f in project.files}
+        for fix in data.get("files", []):
+            path, content = fix.get("path"), fix.get("content")
+            if path and content is not None:
+                by_path[path] = GeneratedFile(path=path, content=content)
+                logger.info("Auto-corregido con error real: %s", path)
+
+        return GeneratedProject(
+            name=project.name,
+            summary=project.summary,
+            files=list(by_path.values()),
+            run_instructions=project.run_instructions,
+        )
 
     # ------------------------------------------------------------------
     # Cliente LLM (multi-modelo con fallback)

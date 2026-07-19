@@ -135,14 +135,34 @@ class MultiModelLLM:
     # ------------------------------------------------------------------
     @staticmethod
     def _parse_json(text: str) -> dict:
-        """Parseo tolerante: quita fences de markdown si aparecen."""
+        """Parseo TOLERANTE del JSON devuelto por el modelo.
+
+        Algunos modelos ensucian la salida (fences de markdown, o texto suelto
+        antes/después del objeto, p. ej. `We{"ok": true}`). Aquí:
+          1. Quitamos fences ```json ... ```
+          2. Intentamos parsear directo.
+          3. Si falla, extraemos el objeto entre el primer '{' y el último '}'.
+        """
         cleaned = text.strip()
+
         if cleaned.startswith("```"):
             cleaned = cleaned[3:]
             if cleaned[:4].lower() == "json":
                 cleaned = cleaned[4:]
             cleaned = cleaned.rsplit("```", 1)[0]
+            cleaned = cleaned.strip()
+
         try:
             return json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            raise LLMError("El modelo devolvió un JSON malformado.") from exc
+        except json.JSONDecodeError:
+            pass  # Intentamos rescatar el objeto JSON incrustado.
+
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end > start:
+            try:
+                return json.loads(cleaned[start : end + 1])
+            except json.JSONDecodeError as exc:
+                raise LLMError("El modelo devolvió un JSON malformado.") from exc
+
+        raise LLMError("El modelo no devolvió un objeto JSON.")

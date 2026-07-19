@@ -1,27 +1,33 @@
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
+import { useAuth } from "./features/auth/AuthProvider";
+import { AdminView } from "./features/workspace/components/AdminView";
 import { DashboardEvaluacion } from "./features/workspace/components/DashboardEvaluacion";
+import { PlansView } from "./features/workspace/components/PlansView";
 import { ProjectGallery } from "./features/workspace/components/ProjectGallery";
 import { PromptInput } from "./features/workspace/components/PromptInput";
+import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
 import { useProjects } from "./features/workspace/hooks/useProjects";
-import { useUsage } from "./features/workspace/hooks/useUsage";
 import { useLanguage } from "./i18n/LanguageProvider";
 
 /**
  * Layout raíz (estilo Skywork): sidebar + topbar + área de trabajo.
- * Tema claro y profesional.
+ * Integra login por usuario, límites por cuenta y panel de super-admin.
  */
 export default function App() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const { data, loading, error, feedback, evaluate, submitFeedback } = useEvaluatePrompt();
   const { projects, loading: loadingProjects, refresh } = useProjects();
-  const { usage, refresh: refreshUsage, activate, activateError } = useUsage();
+  const { account, refresh: refreshAccount, upgrade } = useAccount();
 
   const [view, setView] = useState("home");
   const [teacherMode, setTeacherMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const isAdmin = account?.is_admin ?? false;
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800">
@@ -30,6 +36,7 @@ export default function App() {
         onNavigate={setView}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        showAdmin={isAdmin}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -47,20 +54,21 @@ export default function App() {
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm text-slate-500">{t.hero.subtitle}</p>
 
-                  {usage && (
-                    <div className="mt-3">
-                      {usage.licensed ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                          {t.usage.licensed}
-                        </span>
-                      ) : usage.remaining > 0 ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
-                          {t.usage.freeLeft(usage.remaining)}
+                  {user && account && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {account.paid ? (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                          {t.account.planActive(account.plan)}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-                          🔒 {t.usage.limitReached}
-                        </span>
+                        <>
+                          <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
+                            🏗️ {t.account.generationsLeft(account.generations_remaining)}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
+                            🎓 {t.account.lessonsLeft(account.lessons_remaining)}
+                          </span>
+                        </>
                       )}
                     </div>
                   )}
@@ -97,17 +105,17 @@ export default function App() {
                     feedback={feedback}
                     onFeedback={submitFeedback}
                     teacherMode={teacherMode}
-                    onProjectGenerated={() => {
+                    isLoggedIn={!!user}
+                    account={account}
+                    onAfterGenerate={() => {
                       refresh();
-                      refreshUsage();
+                      refreshAccount();
                     }}
-                    licenseActivate={activate}
-                    licenseError={activateError}
-                    onLicenseActivated={refreshUsage}
+                    onRequestUpgrade={upgrade}
+                    onViewPlans={() => setView("plans")}
                   />
                 )}
 
-                {/* Galería resumida */}
                 <ProjectGallery projects={projects.slice(0, 3)} loading={loadingProjects} />
               </div>
             )}
@@ -115,6 +123,16 @@ export default function App() {
             {view === "projects" && (
               <ProjectGallery projects={projects} loading={loadingProjects} />
             )}
+
+            {view === "plans" && (
+              <PlansView
+                isLoggedIn={!!user}
+                account={account}
+                onChoose={(plan) => upgrade(plan)}
+              />
+            )}
+
+            {view === "admin" && isAdmin && <AdminView />}
 
             {view === "learn" && (
               <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -131,8 +149,8 @@ export default function App() {
               <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                 <h2 className="text-xl font-bold text-slate-900">❓ {t.nav.help}</h2>
                 <ol className="mt-3 max-w-2xl list-decimal space-y-1.5 pl-5 text-sm text-slate-600">
-                  <li>Escribe tu idea en la caja de entrada.</li>
-                  <li>Pulsa <strong>{t.promptInput.submit}</strong>.</li>
+                  <li>Inicia sesión con Google (arriba a la derecha).</li>
+                  <li>Escribe tu idea y pulsa <strong>{t.promptInput.submit}</strong>.</li>
                   <li>Genera el proyecto y audítalo.</li>
                   <li>Activa el Modo profesor para aprender mientras construyes.</li>
                 </ol>

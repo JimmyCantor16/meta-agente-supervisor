@@ -12,32 +12,36 @@ import logging
 from functools import lru_cache
 from typing import Literal
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from pathlib import Path
 
+from src.application.account_service import AccountService
 from src.application.audit_project import AuditProjectUseCase
 from src.application.evaluate_prompt import EvaluatePromptUseCase, RegisterFeedbackUseCase
 from src.application.explain_project import ExplainProjectUseCase
 from src.application.generate_project import GenerateProjectUseCase
 from src.application.usage_service import UsageService
 from src.config import Settings, get_settings
-from src.domain.entities import EvaluationStatus
+from src.domain.entities import EvaluationStatus, UserAccount
 from src.domain.ports import (
     AuditError,
     CodeAuditorPort,
     CodeTeacherPort,
     EvaluationRepositoryPort,
     LicenseRequiredError,
+    PaymentRequiredError,
     ProjectGenerationError,
     ProjectGeneratorPort,
     ProjectReaderPort,
+    ProjectVerifierPort,
     ProjectWriterPort,
     PromptEvaluationError,
     PromptEvaluatorPort,
     UsageRepositoryPort,
+    UserRepositoryPort,
 )
 from src.infrastructure.adapters.deepseek_adapter import DeepSeekPromptEvaluator
 from src.infrastructure.adapters.iterative_project_generator import IterativeProjectGenerator
@@ -48,9 +52,12 @@ from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
 from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
 from src.infrastructure.adapters.project_reader import FileSystemProjectReader
+from src.infrastructure.adapters.project_verifier import PythonProjectVerifier
 from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
 from src.infrastructure.adapters.sqlite_repository import SqliteEvaluationRepository
 from src.infrastructure.adapters.sqlite_usage_repository import SqliteUsageRepository
+from src.infrastructure.adapters.sqlite_user_repository import SqliteUserRepository
+from src.infrastructure.entrypoints.auth import verify_google_token
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +187,38 @@ class LicenseRequest(BaseModel):
     key: str = Field(..., min_length=1)
 
 
+class AccountStatusResponse(BaseModel):
+    """Estado de la cuenta del usuario (por usuario)."""
+
+    sub: str
+    email: str
+    name: str
+    plan: str
+    requested_plan: str
+    paid: bool
+    status: str
+    is_admin: bool
+    generations_used: int
+    generations_limit: int
+    generations_remaining: int
+    lessons_used: int
+    lessons_limit: int
+    lessons_remaining: int
+
+
+class ApproveRequest(BaseModel):
+    """Petición del super-admin para aprobar el pago de un usuario."""
+
+    sub: str = Field(..., min_length=1)
+    plan: str = Field(default="")
+
+
+class UpgradeRequest(BaseModel):
+    """Petición del usuario para solicitar un plan (queda pendiente de aprobación)."""
+
+    plan: str = Field(default="pro")
+
+
 # ---------------------------------------------------------------------------
 # Inyección de dependencias (composición de la arquitectura hexagonal).
 # ---------------------------------------------------------------------------
@@ -235,12 +274,19 @@ def get_project_writer() -> ProjectWriterPort:
     return FileSystemProjectWriter(get_settings().generated_dir)
 
 
+@lru_cache
+def get_project_verifier() -> ProjectVerifierPort:
+    """Provee el verificador que comprueba si el proyecto generado ejecuta."""
+    return PythonProjectVerifier()
+
+
 def get_generate_use_case(
     generator: ProjectGeneratorPort = Depends(get_project_generator),
     writer: ProjectWriterPort = Depends(get_project_writer),
+    verifier: ProjectVerifierPort = Depends(get_project_verifier),
 ) -> GenerateProjectUseCase:
-    """Construye el caso de uso de generación con sus puertos resueltos."""
-    return GenerateProjectUseCase(generator, writer)
+    """Construye el caso de uso de generación (con auto-verificación)."""
+    return GenerateProjectUseCase(generator, writer, verifier)
 
 
 @lru_cache
@@ -283,6 +329,53 @@ def get_explain_use_case(
 ) -> ExplainProjectUseCase:
     """Construye el caso de uso del Modo Profesor."""
     return ExplainProjectUseCase(reader, teacher)
+
+
+@lru_cache
+def get_user_repository() -> UserRepositoryPort:
+    """Repositorio de cuentas de usuario (SQLite)."""
+    return SqliteUserRepository(get_settings().db_path)
+
+
+def get_account_service(
+    repository: UserRepositoryPort = Depends(get_user_repository),
+) -> AccountService:
+    """Servicio de cuentas/licencia por usuario."""
+    settings = get_settings()
+    return AccountService(
+        repository,
+        settings.free_generation_limit,
+        settings.free_lesson_limit,
+        settings.super_admin_emails_list,
+    )
+
+
+def get_current_user(
+    authorization: str | None = Header(default=None),
+    account: AccountService = Depends(get_account_service),
+) -> UserAccount:
+    """Identifica al usuario a partir del token de Google (header Authorization).
+
+    Raises 401 si no hay sesión válida.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Inicia sesión con Google para continuar.",
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    info = verify_google_token(token)  # lanza 401/400
+    return account.get_or_create(info.get("sub", ""), info.get("email", ""), info.get("name", ""))
+
+
+def require_admin(
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> UserAccount:
+    """Exige que el usuario sea super-admin."""
+    if not account.is_super_admin(user.email):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere super-admin.")
+    return user
 
 
 @lru_cache
@@ -369,18 +462,20 @@ def register_feedback(
 def generate_project(
     request: GenerateRequest,
     use_case: GenerateProjectUseCase = Depends(get_generate_use_case),
-    usage: UsageService = Depends(get_usage_service),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
 ) -> GenerateResponse:
     """Toma el prompt, genera el proyecto y lo escribe en disco.
 
-    - 402: se agotó el cupo gratis y se requiere licencia.
+    - 401: sin sesión.
+    - 402: se agotó el cupo gratis del usuario y requiere pago aprobado.
     - 422: prompt inválido.
     - 502: fallo del generador o de escritura.
     """
-    # Gate de licencia: bloquea si se agotaron las generaciones gratuitas.
+    # Gate POR USUARIO: bloquea si agotó su cupo gratis y no tiene pago aprobado.
     try:
-        usage.ensure_can_generate()
-    except LicenseRequiredError as exc:
+        account.ensure_can_generate(user)
+    except PaymentRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
 
     try:
@@ -391,8 +486,8 @@ def generate_project(
         logger.error("Fallo generando el proyecto: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    # Cuenta la generación exitosa (para el límite gratuito).
-    usage.record_generation()
+    # Cuenta la generación exitosa contra el cupo del usuario.
+    account.record_generation(user)
 
     return GenerateResponse(
         name=project.name,
@@ -456,8 +551,16 @@ def audit_project(
 def explain_project(
     request: ExplainRequest,
     use_case: ExplainProjectUseCase = Depends(get_explain_use_case),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
 ) -> TeachingResponse:
-    """Genera una guía didáctica del proyecto para un aprendiz."""
+    """Genera una guía didáctica (clase) del proyecto para un aprendiz."""
+    # Gate de CLASES por usuario.
+    try:
+        account.ensure_can_learn(user)
+    except PaymentRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+
     try:
         guide = use_case.execute(request.project_name, request.language)
     except ValueError as exc:
@@ -467,6 +570,9 @@ def explain_project(
         if "no existe" in message.lower():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message) from exc
+
+    # Cuenta la clase contra el cupo del usuario.
+    account.record_lesson(user)
 
     return TeachingResponse(
         target=guide.target,
@@ -522,6 +628,52 @@ def activate_license(
             detail="Clave de licencia inválida.",
         )
     return UsageResponse(**usage.status())
+
+
+# ---------------------------------------------------------------------------
+# Cuenta por usuario + super-admin
+# ---------------------------------------------------------------------------
+@router.get("/account/me", response_model=AccountStatusResponse, tags=["account"])
+def account_me(
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """Estado de la cuenta del usuario autenticado."""
+    return AccountStatusResponse(**account.status(user))
+
+
+@router.post("/account/request-upgrade", response_model=AccountStatusResponse, tags=["account"])
+def request_upgrade(
+    request: UpgradeRequest,
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """El usuario solicita un plan (queda pendiente de aprobación del super-admin)."""
+    account.request_upgrade(user, request.plan)
+    refreshed = account.get_or_create(user.sub, user.email, user.name)
+    return AccountStatusResponse(**account.status(refreshed))
+
+
+@router.get("/admin/pending", response_model=list[AccountStatusResponse], tags=["admin"])
+def admin_pending(
+    _admin: UserAccount = Depends(require_admin),
+    account: AccountService = Depends(get_account_service),
+) -> list[AccountStatusResponse]:
+    """Lista los usuarios pendientes de aprobación de pago (solo super-admin)."""
+    return [AccountStatusResponse(**s) for s in account.list_pending()]
+
+
+@router.post("/admin/approve", response_model=AccountStatusResponse, tags=["admin"])
+def admin_approve(
+    request: ApproveRequest,
+    admin: UserAccount = Depends(require_admin),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """El super-admin confirma el pago de un usuario y activa su plan."""
+    if not account.approve(admin.email, request.sub, request.plan):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+    updated = account.get_or_create(request.sub, "", "")
+    return AccountStatusResponse(**account.status(updated))
 
 
 # ---------------------------------------------------------------------------
