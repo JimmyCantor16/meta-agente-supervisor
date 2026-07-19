@@ -220,6 +220,24 @@ class ProjectGeneratorPort(ABC):
         raise NotImplementedError
 
 
+class ProjectRunnerPort(ABC):
+    """Contrato para ARRANCAR un proyecto generado y exponer su URL.
+
+    Es lo que convierte el entregable en algo usable por alguien no técnico:
+    en vez de "aquí tienes archivos, instala Docker", se le da una URL viva.
+    """
+
+    @abstractmethod
+    def start(self, project_dir: str, project_name: str) -> str | None:
+        """Arranca el proyecto y devuelve su URL, o None si no se pudo."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def stop(self, project_name: str) -> None:
+        """Detiene el proyecto si estaba corriendo."""
+        raise NotImplementedError
+
+
 class ProjectVerifierPort(ABC):
     """Contrato para verificar que un proyecto generado realmente ejecuta."""
 

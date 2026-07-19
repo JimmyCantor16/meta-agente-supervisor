@@ -16,6 +16,7 @@ import logging
 from src.domain.entities import GeneratedProject
 from src.domain.ports import (
     ProjectGeneratorPort,
+    ProjectRunnerPort,
     ProjectVerifierPort,
     ProjectWriterPort,
 )
@@ -34,11 +35,15 @@ class GenerateProjectUseCase:
         generator: ProjectGeneratorPort,
         writer: ProjectWriterPort,
         verifier: ProjectVerifierPort | None = None,
+        runner: ProjectRunnerPort | None = None,
     ) -> None:
-        """Inyecta el generador, el escritor y (opcional) el verificador."""
+        """Inyecta el generador, el escritor y (opcionales) verificador y runner."""
         self._generator = generator
         self._writer = writer
         self._verifier = verifier
+        self._runner = runner
+        # URL del último proyecto arrancado (la expone el entrypoint).
+        self.last_url: str | None = None
 
     def execute(self, prompt: str, language: str = "es") -> tuple[GeneratedProject, str]:
         """Genera, escribe y auto-verifica el proyecto.
@@ -59,6 +64,8 @@ class GenerateProjectUseCase:
         logger.info("Proyecto '%s' generado con %d archivo(s).", project.name, len(project.files))
         output_path = self._writer.write(project)
 
+        self.last_url = None
+
         if self._verifier is None:
             return project, output_path
 
@@ -66,7 +73,8 @@ class GenerateProjectUseCase:
         for attempt in range(1, _MAX_FIX_ATTEMPTS + 1):
             error = self._verifier.verify(output_path)
             if error is None:
-                logger.info("✔ Verificación OK en el intento %d: el proyecto ejecuta.", attempt)
+                logger.info("Verificación OK en el intento %d: el proyecto ejecuta.", attempt)
+                self._launch(project, output_path)
                 return project, output_path
 
             logger.warning(
@@ -80,7 +88,8 @@ class GenerateProjectUseCase:
         # Último chequeo tras la corrección final.
         final_error = self._verifier.verify(output_path)
         if final_error is None:
-            logger.info("✔ Verificación OK tras las correcciones.")
+            logger.info("Verificación OK tras las correcciones.")
+            self._launch(project, output_path)
         else:
             logger.warning(
                 "El proyecto se entrega con un fallo pendiente tras %d intentos: %s",
@@ -88,3 +97,15 @@ class GenerateProjectUseCase:
                 final_error[:200],
             )
         return project, output_path
+
+    def _launch(self, project: GeneratedProject, output_path: str) -> None:
+        """Arranca el proyecto verificado y guarda su URL para entregarla."""
+        if self._runner is None:
+            return
+        try:
+            self.last_url = self._runner.start(output_path, project.slug())
+            if self.last_url:
+                logger.info("Proyecto disponible en %s", self.last_url)
+        except Exception as exc:  # noqa: BLE001 - arrancar es "best effort"
+            logger.warning("No se pudo arrancar el proyecto: %s", exc)
+            self.last_url = None

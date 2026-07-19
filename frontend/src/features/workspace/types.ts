@@ -24,6 +24,8 @@ export interface GenerateResult {
   output_path: string;
   files: string[];
   run_instructions: string;
+  /** URL del proyecto ya corriendo (null si no se pudo arrancar). */
+  url?: string | null;
 }
 
 // Una sugerencia de mejora del agente auditor.

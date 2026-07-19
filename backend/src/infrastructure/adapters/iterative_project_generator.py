@@ -61,8 +61,14 @@ Reglas:
 - Si el proyecto es una APLICACIÓN WEB, DEBES incluir **frontend Y backend**:
   una carpeta `frontend/` con su interfaz (HTML/JS o React) y una `backend/` con
   la API. Nunca entregues solo el backend cuando piden una app web.
-- Incluye SIEMPRE: docker-compose.yml, README.md, .env.example, CONFIGURE.md y
-  DEPLOY.md (guía de despliegue paso a paso para alguien sin experiencia).
+- Incluye SIEMPRE: docker-compose.yml, README.md, .env.example, CONFIGURE.md,
+  DEPLOY.md (despliegue paso a paso para alguien sin experiencia) y **MANUAL.md**.
+- **MANUAL.md** es el manual de usuario final (no técnico): para qué sirve el
+  sistema, cómo entrar, **USUARIOS DE PRUEBA con sus credenciales** y un paseo
+  por las funciones principales, paso a paso.
+- Si el sistema tiene login, incluye **datos semilla** (seed) que creen esos
+  usuarios de prueba al arrancar (p. ej. admin/admin123 y user/user123), para
+  que se pueda probar el MVP de inmediato sin registrarse.
 - OBLIGATORIO — ARCHIVOS DE DEPENDENCIAS (se olvidan y rompen el build):
   * Python: `requirements.txt` (con TODAS las librerías que importe el código).
   * Node/JS: `package.json`.

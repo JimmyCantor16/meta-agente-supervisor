@@ -188,6 +188,21 @@ function GenerateProjectSection({
             <span className="font-semibold text-slate-800">{data.name}</span>
             <span className="text-slate-500"> — {data.summary}</span>
           </div>
+
+          {/* El entregable: tu sistema YA corriendo, listo para abrir */}
+          {data.url && (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 transition hover:bg-emerald-100"
+            >
+              <span className="text-sm font-semibold text-emerald-800">
+                🚀 {t.dashboard.projectRunning}
+              </span>
+              <span className="font-mono text-sm text-emerald-700 underline">{data.url}</span>
+            </a>
+          )}
           <div>
             <span className="text-slate-400">{t.dashboard.generatedSavedAt}</span>
             <code className="ml-2 break-all font-mono text-slate-600">{data.output_path}</code>
