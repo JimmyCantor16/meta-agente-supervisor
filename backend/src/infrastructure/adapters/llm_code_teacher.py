@@ -43,7 +43,8 @@ class LLMCodeTeacher(CodeTeacherPort):
     """Profesor respaldado por el cliente multi-modelo."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        self._llm = MultiModelLLM()
+        # Rol "prompt": explicar, no escribir código.
+        self._llm = MultiModelLLM(role="prompt")
 
     def teach(
         self,

@@ -81,7 +81,9 @@ class DeepSeekPromptEvaluator(PromptEvaluatorPort):
 
     def __init__(self, settings: Settings | None = None) -> None:
         """Inicializa el evaluador con el cliente multi-modelo (fallback)."""
-        self._llm = MultiModelLLM()
+        # Rol "prompt": analizar y reescribir la idea. Son peticiones cortas con
+        # mucho razonamiento, ideales para los modelos pequeños y rápidos.
+        self._llm = MultiModelLLM(role="prompt")
 
     def evaluate(
         self,

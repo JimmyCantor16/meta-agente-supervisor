@@ -174,8 +174,9 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
     """Genera proyectos por fases (planificar → escribir → reparar)."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        # Cliente multi-modelo: prueba varios proveedores gratis con fallback.
-        self._llm = MultiModelLLM()
+        # Rol "code": escribir y reparar archivos. Necesita ventana grande y
+        # modelos especializados en código (Codestral), no los de 8k.
+        self._llm = MultiModelLLM(role="code")
 
     def generate(self, prompt: str, language: str = "es") -> GeneratedProject:
         # 1) PLANIFICAR

@@ -13,19 +13,66 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LLMProvider(BaseModel):
-    """Un proveedor/modelo de IA en la cadena de fallback multi-modelo."""
+    """Un proveedor/modelo de IA en la cadena de fallback multi-modelo.
+
+    Además de cómo conectarse, describe QUÉ SABE HACER y CUÁNTO AGUANTA, para
+    que el enrutador mande cada tarea al modelo adecuado en vez de probar a
+    ciegas: los modelos pequeños razonan y ordenan prompts, y los de ventana
+    grande especializados en código escriben el proyecto.
+    """
 
     name: str = Field(..., description="Etiqueta legible, p. ej. 'groq-70b'.")
     base_url: str = Field(..., description="URL base compatible con OpenAI.")
     api_key: str = Field(..., description="Clave de API del proveedor.")
     model: str = Field(..., description="Identificador del modelo.")
-    # Ventana de contexto en tokens. Sirve para NO enviar una petición que se
-    # sabe de antemano que será rechazada (413): p. ej. el tier gratis de GitHub
-    # Models corta en 8.000 tokens. Vacío = sin límite conocido (se intenta).
+
+    # --- Qué sabe hacer ---
+    # "prompt" = analizar/evaluar/enseñar (peticiones cortas, mucho razonamiento)
+    # "code"   = escribir y reparar código (peticiones largas, contexto grande)
+    # Vacío = sirve para todo (compatibilidad con configuraciones antiguas).
+    roles: list[str] = Field(
+        default_factory=list,
+        description="Roles que atiende: 'prompt', 'code'. Vacío = todos.",
+    )
+
+    # --- Cuánto aguanta ---
+    # Ventana de contexto: evita enviar una petición que se sabe que dará 413.
+    # Ojo: es el límite REAL de la capa gratuita, no el del modelo. GitHub
+    # Models sirve modelos de 128k pero su tier gratis corta la entrada en 8k.
     max_context: int | None = Field(
         default=None,
-        description="Tokens máximos que acepta el proveedor. None = desconocido.",
+        description="Tokens máximos por petición. None = desconocido.",
     )
+    max_tpm: int | None = Field(
+        default=None,
+        description="Tokens por minuto del plan gratuito. None = usa el global.",
+    )
+    max_rpm: int | None = Field(
+        default=None,
+        description="Peticiones por minuto permitidas. None = sin límite conocido.",
+    )
+    # Varios modelos de la MISMA cuenta comparten cuota (p. ej. los dos de
+    # Mistral comparten los 500k tok/min de la cuenta). Si se deja vacío, cada
+    # proveedor lleva su propia contabilidad.
+    quota_group: str = Field(
+        default="",
+        description="Etiqueta de cuota compartida. Vacío = cuota propia.",
+    )
+    # Coste real de usarlo. Los proveedores con bolsa de créditos que NO se
+    # renueva (NVIDIA) deben quedar al final: gastarlos es irreversible.
+    exhaustible: bool = Field(
+        default=False,
+        description="True si consume una bolsa de créditos que no se renueva.",
+    )
+
+    @property
+    def quota_key(self) -> str:
+        """Clave con la que se contabiliza su consumo."""
+        return self.quota_group or self.name
+
+    def serves(self, role: str | None) -> bool:
+        """Indica si este proveedor atiende el rol pedido."""
+        return not self.roles or role is None or role in self.roles
 
 
 class Settings(BaseSettings):
