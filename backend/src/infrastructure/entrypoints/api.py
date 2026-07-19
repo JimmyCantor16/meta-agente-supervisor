@@ -53,8 +53,10 @@ from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
 from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
 from src.infrastructure.adapters.project_reader import FileSystemProjectReader
-from src.infrastructure.adapters.project_runner import LocalProjectRunner
-from src.infrastructure.adapters.project_verifier import PythonProjectVerifier
+from src.infrastructure.adapters.multistack import (
+    MultiStackProjectRunner,
+    MultiStackProjectVerifier,
+)
 from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
 from src.infrastructure.adapters.postgres_repository import PostgresEvaluationRepository
 from src.infrastructure.adapters.postgres_usage_repository import PostgresUsageRepository
@@ -293,14 +295,14 @@ def get_project_writer() -> ProjectWriterPort:
 
 @lru_cache
 def get_project_verifier() -> ProjectVerifierPort:
-    """Provee el verificador que comprueba si el proyecto generado ejecuta."""
-    return PythonProjectVerifier()
+    """Provee el verificador, que elige Python o Node según el proyecto."""
+    return MultiStackProjectVerifier()
 
 
 @lru_cache
 def get_project_runner() -> ProjectRunnerPort:
-    """Provee el runner que arranca el proyecto y expone su URL."""
-    return LocalProjectRunner(get_settings().generated_public_host)
+    """Provee el runner, que sabe arrancar tanto FastAPI como Express."""
+    return MultiStackProjectRunner(get_settings().generated_public_host)
 
 
 def get_generate_use_case(

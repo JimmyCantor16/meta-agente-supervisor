@@ -23,6 +23,21 @@ from src.domain.ports import ProjectVerifierPort
 
 logger = logging.getLogger(__name__)
 
+# Cuántos endpoints fallidos se reportan (enteros) al agente reparador.
+_MAX_PROBLEMS = 3
+
+
+def _cola(texto: str, limite: int) -> str:
+    """Recorta conservando el FINAL del texto.
+
+    En un traceback de Python lo decisivo (`ValueError: ...`) está en la última
+    línea. Recortar por el principio dejaba fuera precisamente el diagnóstico.
+    """
+    texto = texto.strip()
+    if len(texto) <= limite:
+        return texto
+    return "[...]\n" + texto[-limite:]
+
 # Candidatos habituales de módulo de entrada, en orden de preferencia.
 _ENTRY_CANDIDATES = [
     "backend/main.py",
@@ -145,7 +160,15 @@ class PythonProjectVerifier(ProjectVerifierPort):
 
         py_files = [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
         if not py_files:
-            return None  # No es un proyecto Python: nada que verificar aquí.
+            # OJO: devolver None significa "verificado y correcto", y eso era una
+            # MENTIRA para un proyecto que no es Python (p. ej. Node): no se
+            # revisaba nada y aun así se reportaba OK. Se avisa en voz alta.
+            logger.warning(
+                "NO VERIFICADO: '%s' no contiene archivos .py, así que no se ha "
+                "comprobado nada. El proyecto se entrega SIN garantía de que ejecute.",
+                root.name,
+            )
+            return None
 
         # 1) Sintaxis
         syntax_error = self._check_syntax(root, py_files)
@@ -173,7 +196,7 @@ class PythonProjectVerifier(ProjectVerifierPort):
         if result.returncode != 0:
             error = (result.stderr or result.stdout).strip()
             logger.info("Verificación: error de SINTAXIS detectado.")
-            return f"ERROR DE SINTAXIS al compilar el proyecto:\n{error[:3000]}"
+            return f"ERROR DE SINTAXIS al compilar el proyecto:\n{_cola(error, 3000)}"
         return None
 
     def _check_import(self, root: Path) -> str | None:
@@ -203,7 +226,8 @@ class PythonProjectVerifier(ProjectVerifierPort):
 
         stderr = (result.stderr or "").strip()
         logger.info("Verificación: error real al importar '%s'.", module)
-        return f"ERROR REAL al importar `{module}` del proyecto generado:\n{stderr[:3000]}"
+        # Cola, no cabeza: el tipo y el mensaje de la excepción van al FINAL.
+        return f"ERROR REAL al importar `{module}` del proyecto generado:\n{_cola(stderr, 3000)}"
 
     def _check_runtime(self, root: Path) -> str | None:
         """Llama de verdad a los endpoints con TestClient de FastAPI.
@@ -238,7 +262,7 @@ class PythonProjectVerifier(ProjectVerifierPort):
         if not report.exists():
             output = ((result.stdout or "") + (result.stderr or "")).strip()
             if result.returncode != 0:
-                return f"ERROR al ejercitar la app:\n{output[:3000]}"
+                return f"ERROR al ejercitar la app:\n{_cola(output, 3000)}"
             return None
 
         try:
@@ -248,16 +272,24 @@ class PythonProjectVerifier(ProjectVerifierPort):
 
         if problems:
             logger.info("Verificación runtime: %d endpoint(s) fallando.", len(problems))
+            # Se reportan pocos problemas pero ENTEROS. Antes se unían todos y se
+            # cortaba por el final (`[:2500]`), justo donde Python escribe el tipo
+            # y el mensaje de la excepción: el agente reparador recibía un
+            # traceback decapitado y corregía a ciegas.
+            seleccion = problems[:_MAX_PROBLEMS]
             message = (
                 "ERRORES EN TIEMPO DE EJECUCIÓN al llamar a los endpoints:\n"
-                + "\n".join(problems)[:2500]
+                + "\n\n".join(_cola(p, 2000) for p in seleccion)
             )
+            if len(problems) > len(seleccion):
+                message += f"\n\n(y {len(problems) - len(seleccion)} endpoint(s) más con fallos)"
+
             # Muchas apps atrapan la excepción en un middleware y solo devuelven
             # un 500 genérico; el traceback real queda en SUS LOGS. Lo adjuntamos.
             logs = ((result.stdout or "") + (result.stderr or "")).strip()
             if "Traceback" in logs:
                 start = logs.find("Traceback")
-                message += "\n\nTRACEBACK REAL (de los logs de la app):\n" + logs[start:][:2500]
+                message += "\n\nTRACEBACK REAL (de los logs de la app):\n" + _cola(logs[start:], 2500)
             return message
 
         logger.info("Verificación runtime OK: los endpoints responden sin error 500.")
@@ -289,14 +321,23 @@ class PythonProjectVerifier(ProjectVerifierPort):
             logger.warning("No se pudo crear el venv; se usa el intérprete actual.")
             return sys.executable
 
-        requirements = root / "requirements.txt"
-        if requirements.is_file():
-            logger.info("Instalando dependencias del proyecto para verificarlo...")
+        # El requirements.txt no siempre está en la raíz: los proyectos con
+        # frontend + backend suelen ponerlo en `backend/`. Buscarlo solo en la
+        # raíz dejaba el entorno vacío y todo fallaba con un ImportError de
+        # fastapi que parecía un bug del código generado.
+        requirements = [
+            p for p in root.rglob("requirements.txt")
+            if not {"node_modules", ".git", "__pycache__"}.intersection(p.parts)
+        ]
+        for archivo in requirements:
+            logger.info("Instalando dependencias de %s...", archivo.relative_to(root))
             subprocess.run(
-                [str(python), "-m", "pip", "install", "-q", "-r", str(requirements)],
+                [str(python), "-m", "pip", "install", "-q", "-r", str(archivo)],
                 capture_output=True,
                 timeout=_PIP_TIMEOUT,
             )
+        if not requirements:
+            logger.warning("El proyecto no trae requirements.txt: el entorno quedará incompleto.")
 
         # Dependencias que necesita NUESTRO verificador (no del proyecto):
         # TestClient de FastAPI requiere httpx para ejercitar los endpoints.

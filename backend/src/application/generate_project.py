@@ -73,8 +73,15 @@ class GenerateProjectUseCase:
         for attempt in range(1, _MAX_FIX_ATTEMPTS + 1):
             error = self._verifier.verify(output_path)
             if error is None:
-                logger.info("Verificación OK en el intento %d: el proyecto ejecuta.", attempt)
+                logger.info("Verificación superada en el intento %d.", attempt)
                 self._launch(project, output_path)
+                if self.last_url is None:
+                    # Sin URL el entregable está incompleto: el usuario recibe
+                    # código en disco en vez del sistema funcionando.
+                    logger.warning(
+                        "ENTREGABLE INCOMPLETO: '%s' no se pudo arrancar, no hay URL.",
+                        project.name,
+                    )
                 return project, output_path
 
             logger.warning(

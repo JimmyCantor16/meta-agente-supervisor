@@ -44,7 +44,13 @@ class LocalProjectRunner(ProjectRunnerPort):
 
         entry = self._find_asgi_entry(root)
         if not entry:
-            logger.info("No se encontró app ASGI en '%s'; no se arranca.", project_name)
+            # Antes se registraba como INFO y pasaba desapercibido: el usuario se
+            # quedaba sin URL sin saber por qué. Es un fallo del entregable.
+            logger.warning(
+                "SIN URL para '%s': no se encontró una app ASGI de Python "
+                "(¿el proyecto no es FastAPI?). El entregable queda incompleto.",
+                project_name,
+            )
             return None
 
         self.stop(project_name)  # si ya corría una versión anterior

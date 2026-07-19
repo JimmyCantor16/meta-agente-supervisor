@@ -58,9 +58,21 @@ Devuelve EXCLUSIVAMENTE un JSON válido:
 
 Reglas:
 - Entre 10 y 20 archivos. Rutas SIEMPRE relativas (nunca absolutas ni con '..').
+- STACK: elige UNO de los dos soportados (son los únicos que el sistema sabe
+  verificar ejecutando y arrancar para entregar una URL). Por defecto, Python.
+  * **Python + FastAPI** (preferido): entrada en `backend/main.py` exponiendo
+    `app = FastAPI(...)`, y `backend/requirements.txt` OBLIGATORIO.
+    Persistencia con SQLAlchemy + SQLite (archivo local).
+  * **Node + Express**: entrada en `backend/server.js` con su `package.json`
+    (con script `start`). El servidor DEBE escuchar en `process.env.PORT`
+    (`const port = process.env.PORT || 3000`), o no se podrá publicar su URL.
+  * No mezcles ambos backends, y no uses otros frameworks (NestJS, Django…).
 - Si el proyecto es una APLICACIÓN WEB, DEBES incluir **frontend Y backend**:
-  una carpeta `frontend/` con su interfaz (HTML/JS o React) y una `backend/` con
-  la API. Nunca entregues solo el backend cuando piden una app web.
+  una carpeta `frontend/` con su interfaz y una `backend/` con la API en FastAPI.
+  Nunca entregues solo el backend cuando piden una app web.
+  * El frontend debe ser **HTML + CSS + JavaScript sin compilar** (sin React, sin
+    npm, sin build): páginas que se abren tal cual y llaman a la API con `fetch`.
+    Así el usuario final no necesita instalar nada.
 - Incluye SIEMPRE: docker-compose.yml, README.md, .env.example, CONFIGURE.md,
   DEPLOY.md (despliegue paso a paso para alguien sin experiencia) y **MANUAL.md**.
 - **MANUAL.md** es el manual de usuario final (no técnico): para qué sirve el
@@ -181,9 +193,19 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
     def generate(self, prompt: str, language: str = "es") -> GeneratedProject:
         # 1) PLANIFICAR
         manifest = self._plan(prompt, language)
-        specs = [f for f in manifest.get("files", []) if f.get("path")][:_MAX_FILES]
-        if not specs:
+        planificados = [f for f in manifest.get("files", []) if f.get("path")]
+        if not planificados:
             raise ProjectGenerationError("El planificador no devolvió archivos válidos.")
+
+        specs = self._priorizar(planificados)
+        if len(planificados) > _MAX_FILES:
+            # Recortar en silencio hacía desaparecer archivos sin dejar rastro.
+            conservados = {f["path"] for f in specs}
+            descartados = [f["path"] for f in planificados if f["path"] not in conservados]
+            logger.warning(
+                "El plan traía %d archivos y el máximo es %d. DESCARTADOS: %s",
+                len(planificados), _MAX_FILES, descartados,
+            )
         logger.info("Plan: %d archivo(s) -> %s", len(specs), [s["path"] for s in specs])
 
         # 2) ESCRIBIR archivo por archivo (con contexto de los ya escritos)
@@ -215,6 +237,7 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
 
         # 3) COMPLETAR (generar módulos importados pero no creados + __init__.py)
         files = self._ensure_complete(prompt, manifest, files, language)
+        files = self._ensure_requirements(files, language)
 
         # 4) REPARAR (auto-corrección de lo que rompe la ejecución)
         files = self._repair(files, language)
@@ -225,6 +248,34 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
             files=files,
             run_instructions=manifest.get("run_instructions", ""),
         )
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _priorizar(planificados: list[dict]) -> list[dict]:
+        """Recorta al máximo de archivos SIN perder los imprescindibles.
+
+        Los planificadores tienden a listar el código primero y dejar al final
+        `requirements.txt`, `README.md` o `MANUAL.md`. Con un recorte por orden
+        de llegada, justo esos desaparecían: sin `requirements.txt` el proyecto
+        ni siquiera puede instalar sus dependencias, y sin `MANUAL.md` el usuario
+        se queda sin las credenciales de prueba.
+        """
+        imprescindibles = (
+            "requirements.txt", "package.json", "manual.md", "readme.md", ".env.example",
+        )
+
+        def es_imprescindible(spec: dict) -> bool:
+            return spec["path"].lower().rsplit("/", 1)[-1] in imprescindibles
+
+        clave = [s for s in planificados if es_imprescindible(s)]
+        resto = [s for s in planificados if not es_imprescindible(s)]
+
+        # Los imprescindibles entran siempre; el resto llena el hueco que quede.
+        seleccion = clave + resto[: max(0, _MAX_FILES - len(clave))]
+        # Se devuelve en el orden original del plan para no romper la coherencia
+        # del contexto incremental (cada archivo ve los anteriores).
+        elegidos = {s["path"] for s in seleccion}
+        return [s for s in planificados if s["path"] in elegidos]
 
     # ------------------------------------------------------------------
     # Fases
@@ -256,6 +307,53 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         if content is None:
             raise ProjectGenerationError(f"No se generó contenido para {spec['path']}.")
         return content
+
+    def _ensure_requirements(
+        self, files: list[GeneratedFile], language: str
+    ) -> list[GeneratedFile]:
+        """Garantiza que un proyecto Python lleve su `requirements.txt`.
+
+        Sin él, el verificador monta un entorno vacío y el proyecto falla al
+        importar `fastapi`; encima el pase de reparación no puede arreglarlo,
+        porque solo edita archivos existentes, no los crea. Es un fallo mortal
+        y silencioso, así que se cubre aquí de forma explícita.
+        """
+        rutas = {f.path for f in files}
+        hay_python = any(f.path.endswith(".py") for f in files)
+        if not hay_python or any(r.endswith("requirements.txt") for r in rutas):
+            return files
+
+        logger.warning("Falta requirements.txt en un proyecto Python; se genera.")
+        codigo = "\n\n".join(
+            f"--- {f.path} ---\n{f.content[:2000]}"
+            for f in files if f.path.endswith(".py")
+        )[:_MAX_CONTEXT_CHARS]
+
+        system = (
+            "Eres un ingeniero Python. Dado el código de un proyecto, devuelves "
+            'EXCLUSIVAMENTE un JSON: { "content": "contenido de requirements.txt" }.\n'
+            "Incluye TODAS las librerías de terceros que el código importa (y solo "
+            "esas; nada de la librería estándar). Usa rangos modernos, p. ej. "
+            "fastapi>=0.111, uvicorn[standard]>=0.30, sqlalchemy>=2.0, pydantic>=2.7. "
+            "Una por línea, sin comentarios."
+        )
+        try:
+            data = self._chat(system, f"[Idioma: {language}]\n\nCÓDIGO:\n{codigo}")
+            contenido = data.get("content")
+        except (LLMError, ProjectGenerationError) as exc:
+            logger.warning("No se pudo generar requirements.txt (%s).", exc)
+            contenido = None
+
+        if not contenido:
+            # Mínimo viable: sin esto el proyecto no arranca de ninguna manera.
+            contenido = "fastapi>=0.111\nuvicorn[standard]>=0.30\nsqlalchemy>=2.0\npydantic>=2.7\n"
+
+        destino = "backend/requirements.txt" if any(
+            f.path.startswith("backend/") for f in files
+        ) else "requirements.txt"
+        files.append(GeneratedFile(path=destino, content=contenido))
+        logger.info("Generado %s", destino)
+        return files
 
     def _ensure_complete(
         self, prompt: str, manifest: dict, files: list[GeneratedFile], language: str
