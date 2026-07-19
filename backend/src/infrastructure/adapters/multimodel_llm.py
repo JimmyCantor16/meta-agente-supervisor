@@ -84,50 +84,113 @@ class MultiModelLLM:
         ]
         response_format = {"type": "json_object"} if want_json else None
         errors: list[str] = []
+        estimated = self._estimate_tokens(system, user)
+
+        # Proveedores que servirían pero están en su tope de tokens/minuto. Se
+        # dejan para el final: es mejor probar otro proveedor libre que dormir.
+        throttled: list[tuple[float, LLMProvider, OpenAI]] = []
 
         for provider, client in self._clients:
-            self._respect_tpm(provider.name)
-            try:
-                response = client.chat.completions.create(
-                    model=provider.model,
-                    messages=messages,  # type: ignore[arg-type]
-                    temperature=temperature,
-                    response_format=response_format,  # type: ignore[arg-type]
+            # 1) ¿Cabe la petición? Si sabemos que no, ni la mandamos: sería un
+            #    413 seguro y un viaje de ida y vuelta desperdiciado.
+            if provider.max_context is not None and estimated > provider.max_context:
+                logger.debug(
+                    "Salta '%s': la petición (~%d tok) supera su ventana (%d tok).",
+                    provider.name, estimated, provider.max_context,
                 )
-            except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as exc:
-                # Este proveedor no pudo: registramos y probamos el siguiente.
-                logger.warning("Proveedor '%s' falló (%s). Probando el siguiente...", provider.name, exc)
-                errors.append(f"{provider.name}: {exc}")
+                errors.append(f"{provider.name}: no cabe (~{estimated} > {provider.max_context})")
                 continue
 
-            if not response.choices or not response.choices[0].message.content:
-                logger.warning("Proveedor '%s' devolvió respuesta vacía. Siguiente...", provider.name)
-                errors.append(f"{provider.name}: respuesta vacía")
+            # 2) ¿Está saturado? Lo aparcamos y seguimos con el siguiente.
+            wait = self._throttle_wait(provider.name, estimated)
+            if wait > 0:
+                logger.debug("Aparca '%s': saturado (%.0fs). Probando otro...", provider.name, wait)
+                throttled.append((wait, provider, client))
                 continue
 
-            if response.usage is not None:
-                self._record(provider.name, response.usage.total_tokens)
-                logger.info("OK con '%s' (tokens: %s).", provider.name, response.usage.total_tokens)
+            content = self._try_provider(provider, client, messages, temperature, response_format, errors)
+            if content is not None:
+                return content
 
-            return response.choices[0].message.content
+        # Todos los proveedores que caben estaban saturados: ahora sí toca
+        # esperar, empezando por el que antes se libera.
+        throttled.sort(key=lambda item: item[0])
+        for wait, provider, client in throttled:
+            logger.info(
+                "Todos los proveedores saturados; esperando %.0fs por '%s'.", wait, provider.name
+            )
+            time.sleep(min(wait, 61))
+            content = self._try_provider(provider, client, messages, temperature, response_format, errors)
+            if content is not None:
+                return content
 
         # Se agotaron todos los proveedores.
         raise LLMError("Todos los proveedores de IA fallaron. Detalle: " + " | ".join(errors))
 
+    def _try_provider(
+        self,
+        provider: LLMProvider,
+        client: OpenAI,
+        messages: list[dict],
+        temperature: float,
+        response_format: dict | None,
+        errors: list[str],
+    ) -> str | None:
+        """Intenta una llamada. Devuelve el contenido, o None si hay que seguir."""
+        try:
+            response = client.chat.completions.create(
+                model=provider.model,
+                messages=messages,  # type: ignore[arg-type]
+                temperature=temperature,
+                response_format=response_format,  # type: ignore[arg-type]
+            )
+        except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as exc:
+            # Este proveedor no pudo: registramos y probamos el siguiente.
+            logger.warning("Proveedor '%s' falló (%s). Probando el siguiente...", provider.name, exc)
+            errors.append(f"{provider.name}: {exc}")
+            return None
+
+        if not response.choices or not response.choices[0].message.content:
+            logger.warning("Proveedor '%s' devolvió respuesta vacía. Siguiente...", provider.name)
+            errors.append(f"{provider.name}: respuesta vacía")
+            return None
+
+        if response.usage is not None:
+            self._record(provider.name, response.usage.total_tokens)
+            logger.info("OK con '%s' (tokens: %s).", provider.name, response.usage.total_tokens)
+
+        return response.choices[0].message.content
+
+    @staticmethod
+    def _estimate_tokens(system: str, user: str) -> int:
+        """Estima los tokens de la petición (~4 caracteres por token).
+
+        Es una aproximación deliberadamente conservadora: solo se usa para
+        decidir a quién NO preguntar, así que pasarse un poco es preferible a
+        quedarse corto y comerse un 413.
+        """
+        return (len(system) + len(user)) // 4 + 200
+
     # ------------------------------------------------------------------
     # Throttling por proveedor (tokens/minuto)
     # ------------------------------------------------------------------
-    def _respect_tpm(self, provider_name: str, anticipated: int = 2500) -> None:
+    def _throttle_wait(self, provider_name: str, anticipated: int) -> float:
+        """Segundos que habría que esperar para no pasarse del TPM del proveedor.
+
+        Devuelve 0 si se puede llamar ya. NO duerme: quien decide es `_chat`,
+        que prefiere cambiar de proveedor antes que esperar.
+        """
         now = time.monotonic()
         log = [(t, k) for (t, k) in self._usage.get(provider_name, []) if now - t < 60]
         self._usage[provider_name] = log
         used = sum(k for _, k in log)
-        if used + anticipated > _TPM_BUDGET and log:
-            oldest = min(t for t, _ in log)
-            wait = 60 - (now - oldest) + 1
-            if wait > 0:
-                logger.info("Throttle '%s': esperando %.0fs (~%d tok/min).", provider_name, wait, used)
-                time.sleep(min(wait, 61))
+
+        if not log or used + anticipated <= _TPM_BUDGET:
+            return 0.0
+
+        # Hay que esperar a que la llamada más antigua salga de la ventana de 60s.
+        oldest = min(t for t, _ in log)
+        return max(0.0, 60 - (now - oldest) + 1)
 
     def _record(self, provider_name: str, tokens: int) -> None:
         self._usage.setdefault(provider_name, []).append((time.monotonic(), tokens))

@@ -19,6 +19,13 @@ class LLMProvider(BaseModel):
     base_url: str = Field(..., description="URL base compatible con OpenAI.")
     api_key: str = Field(..., description="Clave de API del proveedor.")
     model: str = Field(..., description="Identificador del modelo.")
+    # Ventana de contexto en tokens. Sirve para NO enviar una petición que se
+    # sabe de antemano que será rechazada (413): p. ej. el tier gratis de GitHub
+    # Models corta en 8.000 tokens. Vacío = sin límite conocido (se intenta).
+    max_context: int | None = Field(
+        default=None,
+        description="Tokens máximos que acepta el proveedor. None = desconocido.",
+    )
 
 
 class Settings(BaseSettings):
