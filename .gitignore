@@ -25,6 +25,10 @@ frontend/vite.config.d.ts
 desktop/node_modules/
 desktop/src-tauri/target/
 desktop/dist/
+# Backend empaquetado con PyInstaller (se reconstruye con build-desktop.ps1)
+desktop/src-tauri/binaries/
+backend/dist-desktop/
+backend/build-desktop/
 
 # --- Editores / SO ---
 .vscode/
