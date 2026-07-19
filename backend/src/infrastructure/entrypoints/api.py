@@ -36,6 +36,7 @@ from src.domain.ports import (
     ProjectGenerationError,
     ProjectGeneratorPort,
     ProjectReaderPort,
+    ProjectRunnerPort,
     ProjectVerifierPort,
     ProjectWriterPort,
     PromptEvaluationError,
@@ -52,8 +53,12 @@ from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
 from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
 from src.infrastructure.adapters.project_reader import FileSystemProjectReader
+from src.infrastructure.adapters.project_runner import LocalProjectRunner
 from src.infrastructure.adapters.project_verifier import PythonProjectVerifier
 from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
+from src.infrastructure.adapters.postgres_repository import PostgresEvaluationRepository
+from src.infrastructure.adapters.postgres_usage_repository import PostgresUsageRepository
+from src.infrastructure.adapters.postgres_user_repository import PostgresUserRepository
 from src.infrastructure.adapters.sqlite_repository import SqliteEvaluationRepository
 from src.infrastructure.adapters.sqlite_usage_repository import SqliteUsageRepository
 from src.infrastructure.adapters.sqlite_user_repository import SqliteUserRepository
@@ -120,6 +125,10 @@ class GenerateResponse(BaseModel):
     output_path: str = Field(..., description="Ruta absoluta donde se escribió el proyecto.")
     files: list[str] = Field(..., description="Rutas relativas de los archivos generados.")
     run_instructions: str
+    url: str | None = Field(
+        default=None,
+        description="URL del proyecto ya corriendo (si se pudo arrancar).",
+    )
 
 
 class AuditRequest(BaseModel):
@@ -224,8 +233,16 @@ class UpgradeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 @lru_cache
 def get_repository() -> EvaluationRepositoryPort:
-    """Provee el repositorio de evaluaciones (memoria del agente)."""
-    return SqliteEvaluationRepository(get_settings().db_path)
+    """Provee el repositorio de evaluaciones (memoria del agente).
+
+    Elige PostgreSQL si hay `DATABASE_URL` (despliegue cloud, disco efímero) o
+    SQLite en caso contrario (desarrollo local y escritorio).
+    """
+    settings = get_settings()
+    if settings.uses_postgres:
+        logger.info("Persistencia: PostgreSQL (DATABASE_URL).")
+        return PostgresEvaluationRepository(settings.database_url)
+    return SqliteEvaluationRepository(settings.db_path)
 
 
 @lru_cache
@@ -280,13 +297,20 @@ def get_project_verifier() -> ProjectVerifierPort:
     return PythonProjectVerifier()
 
 
+@lru_cache
+def get_project_runner() -> ProjectRunnerPort:
+    """Provee el runner que arranca el proyecto y expone su URL."""
+    return LocalProjectRunner(get_settings().generated_public_host)
+
+
 def get_generate_use_case(
     generator: ProjectGeneratorPort = Depends(get_project_generator),
     writer: ProjectWriterPort = Depends(get_project_writer),
     verifier: ProjectVerifierPort = Depends(get_project_verifier),
+    runner: ProjectRunnerPort = Depends(get_project_runner),
 ) -> GenerateProjectUseCase:
-    """Construye el caso de uso de generación (con auto-verificación)."""
-    return GenerateProjectUseCase(generator, writer, verifier)
+    """Construye el caso de uso de generación (auto-verificación + arranque)."""
+    return GenerateProjectUseCase(generator, writer, verifier, runner)
 
 
 @lru_cache
@@ -333,8 +357,11 @@ def get_explain_use_case(
 
 @lru_cache
 def get_user_repository() -> UserRepositoryPort:
-    """Repositorio de cuentas de usuario (SQLite)."""
-    return SqliteUserRepository(get_settings().db_path)
+    """Repositorio de cuentas de usuario (PostgreSQL en cloud, SQLite en local)."""
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresUserRepository(settings.database_url)
+    return SqliteUserRepository(settings.db_path)
 
 
 def get_account_service(
@@ -380,8 +407,11 @@ def require_admin(
 
 @lru_cache
 def get_usage_repository() -> UsageRepositoryPort:
-    """Provee el repositorio de uso/licencia (SQLite)."""
-    return SqliteUsageRepository(get_settings().db_path)
+    """Provee el repositorio de uso/licencia (PostgreSQL en cloud, SQLite en local)."""
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresUsageRepository(settings.database_url)
+    return SqliteUsageRepository(settings.db_path)
 
 
 def get_usage_service(
@@ -495,6 +525,7 @@ def generate_project(
         output_path=output_path,
         files=[f.path for f in project.files],
         run_instructions=project.run_instructions,
+        url=use_case.last_url,
     )
 
 

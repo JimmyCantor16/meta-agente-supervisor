@@ -54,11 +54,32 @@ class Settings(BaseSettings):
         default="evaluations.db",
         description="Ruta del archivo SQLite donde se guardan las evaluaciones.",
     )
+    # En despliegues cloud (Render) el disco es efímero: un archivo SQLite se
+    # perdería en cada deploy. Si esta variable trae una URL de PostgreSQL, los
+    # repositorios usan los adaptadores Postgres en vez de los SQLite.
+    database_url: str = Field(
+        default="",
+        description="URL de PostgreSQL. Vacío = usar SQLite local (`db_path`).",
+    )
+    # URL interna de Redis (caché/estado compartido entre instancias). Opcional.
+    redis_url: str = Field(
+        default="",
+        description="URL de Redis. Vacío = sin caché distribuida.",
+    )
+
+    @property
+    def uses_postgres(self) -> bool:
+        """True si hay que persistir en PostgreSQL en lugar de SQLite."""
+        return self.database_url.startswith(("postgres://", "postgresql://"))
 
     # --- Agente que construye (proyectos generados) ---
     generated_dir: str = Field(
         default="generated",
         description="Carpeta donde se escriben los proyectos generados.",
+    )
+    generated_public_host: str = Field(
+        default="localhost",
+        description="Host con el que se construye la URL de los proyectos arrancados.",
     )
 
     # --- Licencia / modelo de negocio ---

@@ -13,16 +13,22 @@ import type {
 } from "../features/workspace/types";
 import type { Language } from "../i18n/translations";
 
-const EVALUATE_ENDPOINT = "/api/v1/agent/evaluate";
-const FEEDBACK_ENDPOINT = "/api/v1/agent/feedback";
-const GENERATE_ENDPOINT = "/api/v1/agent/generate";
-const AUDIT_ENDPOINT = "/api/v1/agent/audit";
-const EXPLAIN_ENDPOINT = "/api/v1/agent/explain";
-const PROJECTS_ENDPOINT = "/api/v1/agent/projects";
-const USAGE_ENDPOINT = "/api/v1/agent/usage";
-const LICENSE_ENDPOINT = "/api/v1/agent/license";
-const AUTH_CONFIG_ENDPOINT = "/api/v1/auth/config";
-const AUTH_GOOGLE_ENDPOINT = "/api/v1/auth/google";
+// Base de la API. Vacía = rutas relativas, que es lo correcto cuando algo hace
+// de proxy hacia el backend (Vite en desarrollo, Nginx en Docker, o un rewrite
+// en Render). Si el frontend se despliega suelto (sin proxy), se define
+// `VITE_API_URL` en el build y las peticiones van directas al backend.
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
+const EVALUATE_ENDPOINT = `${API_BASE}/api/v1/agent/evaluate`;
+const FEEDBACK_ENDPOINT = `${API_BASE}/api/v1/agent/feedback`;
+const GENERATE_ENDPOINT = `${API_BASE}/api/v1/agent/generate`;
+const AUDIT_ENDPOINT = `${API_BASE}/api/v1/agent/audit`;
+const EXPLAIN_ENDPOINT = `${API_BASE}/api/v1/agent/explain`;
+const PROJECTS_ENDPOINT = `${API_BASE}/api/v1/agent/projects`;
+const USAGE_ENDPOINT = `${API_BASE}/api/v1/agent/usage`;
+const LICENSE_ENDPOINT = `${API_BASE}/api/v1/agent/license`;
+const AUTH_CONFIG_ENDPOINT = `${API_BASE}/api/v1/auth/config`;
+const AUTH_GOOGLE_ENDPOINT = `${API_BASE}/api/v1/auth/google`;
 
 /**
  * Error tipado para fallos de la API, con el mensaje ya legible para la UI.
@@ -287,10 +293,10 @@ export async function loginWithGoogle(credential: string): Promise<AuthUser> {
 }
 
 // --- Cuenta por usuario + super-admin ---------------------------------------
-const ACCOUNT_ME_ENDPOINT = "/api/v1/agent/account/me";
-const ACCOUNT_UPGRADE_ENDPOINT = "/api/v1/agent/account/request-upgrade";
-const ADMIN_PENDING_ENDPOINT = "/api/v1/agent/admin/pending";
-const ADMIN_APPROVE_ENDPOINT = "/api/v1/agent/admin/approve";
+const ACCOUNT_ME_ENDPOINT = `${API_BASE}/api/v1/agent/account/me`;
+const ACCOUNT_UPGRADE_ENDPOINT = `${API_BASE}/api/v1/agent/account/request-upgrade`;
+const ADMIN_PENDING_ENDPOINT = `${API_BASE}/api/v1/agent/admin/pending`;
+const ADMIN_APPROVE_ENDPOINT = `${API_BASE}/api/v1/agent/admin/approve`;
 
 /** Estado de la cuenta del usuario autenticado. Null si no hay sesión. */
 export async function getAccount(): Promise<AccountStatus | null> {
