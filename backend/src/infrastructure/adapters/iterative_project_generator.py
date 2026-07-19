@@ -189,13 +189,29 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         # 2) ESCRIBIR archivo por archivo (con contexto de los ya escritos)
         files: list[GeneratedFile] = []
         context = ""
+        fallidos: list[str] = []
         for i, spec in enumerate(specs, start=1):
-            content = self._write_file(prompt, manifest, spec, context, language)
+            try:
+                content = self._write_file(prompt, manifest, spec, context, language)
+            except (ProjectGenerationError, LLMError) as exc:
+                # Un archivo que falla NO debe tirar el proyecto entero: se
+                # anota y se sigue. El pase de completitud lo genera después,
+                # igual que hace con los módulos importados que faltan.
+                logger.warning("Falló %s (%s). Se intentará en el pase de completitud.",
+                               spec["path"], exc)
+                fallidos.append(spec["path"])
+                continue
+
             files.append(GeneratedFile(path=spec["path"], content=content))
             block = f"--- {spec['path']} ---\n{content}\n"
             if len(context) + len(block) <= _MAX_CONTEXT_CHARS:
                 context += block
             logger.info("Escrito %d/%d: %s", i, len(specs), spec["path"])
+
+        if not files:
+            raise ProjectGenerationError("No se pudo escribir ningún archivo del proyecto.")
+        if fallidos:
+            logger.warning("%d archivo(s) pendientes tras la escritura: %s", len(fallidos), fallidos)
 
         # 3) COMPLETAR (generar módulos importados pero no creados + __init__.py)
         files = self._ensure_complete(prompt, manifest, files, language)

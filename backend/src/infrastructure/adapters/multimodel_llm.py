@@ -130,7 +130,9 @@ class MultiModelLLM:
                 throttled.append((wait, provider, client))
                 continue
 
-            content = self._try_provider(provider, client, messages, temperature, response_format, errors)
+            content = self._try_provider(
+                provider, client, messages, temperature, response_format, errors, want_json
+            )
             if content is not None:
                 return content
 
@@ -142,7 +144,9 @@ class MultiModelLLM:
                 "Todos los proveedores saturados; esperando %.0fs por '%s'.", wait, provider.name
             )
             time.sleep(min(wait, 61))
-            content = self._try_provider(provider, client, messages, temperature, response_format, errors)
+            content = self._try_provider(
+                provider, client, messages, temperature, response_format, errors, want_json
+            )
             if content is not None:
                 return content
 
@@ -157,8 +161,15 @@ class MultiModelLLM:
         temperature: float,
         response_format: dict | None,
         errors: list[str],
+        want_json: bool = False,
     ) -> str | None:
-        """Intenta una llamada. Devuelve el contenido, o None si hay que seguir."""
+        """Intenta una llamada. Devuelve el contenido, o None si hay que seguir.
+
+        La respuesta se VALIDA aquí, dentro del bucle de fallback: si viene
+        cortada o su JSON no se puede parsear, se descarta y el siguiente
+        proveedor tiene su oportunidad. Validar fuera del bucle hacía que una
+        respuesta mala de un proveedor tumbara toda la tarea.
+        """
         try:
             response = client.chat.completions.create(
                 model=provider.model,
@@ -176,6 +187,28 @@ class MultiModelLLM:
             logger.warning("Proveedor '%s' devolvió respuesta vacía. Siguiente...", provider.name)
             errors.append(f"{provider.name}: respuesta vacía")
             return None
+
+        choice = response.choices[0]
+
+        # Respuesta cortada por el límite de salida: el JSON queda a medias y
+        # sería imposible de parsear. Mejor probar con otro proveedor.
+        if choice.finish_reason == "length":
+            logger.warning(
+                "Proveedor '%s' cortó la respuesta (límite de salida). Siguiente...", provider.name
+            )
+            errors.append(f"{provider.name}: respuesta truncada")
+            return None
+
+        # Se valida el JSON aquí para que un formato roto no tumbe la tarea:
+        # cuenta como fallo de ESTE proveedor y se prueba el siguiente.
+        if want_json:
+            try:
+                self._parse_json(choice.message.content)
+            except LLMError as exc:
+                logger.warning("Proveedor '%s' devolvió JSON inválido (%s). Siguiente...",
+                               provider.name, exc)
+                errors.append(f"{provider.name}: JSON inválido")
+                return None
 
         # Se contabiliza siempre: aunque el proveedor no informe del consumo,
         # la petición cuenta para su límite de peticiones/minuto.
@@ -233,8 +266,8 @@ class MultiModelLLM:
         self._usage.setdefault(quota_key, []).append((time.monotonic(), tokens))
 
     # ------------------------------------------------------------------
-    @staticmethod
-    def _parse_json(text: str) -> dict:
+    @classmethod
+    def _parse_json(cls, text: str) -> dict:
         """Parseo TOLERANTE del JSON devuelto por el modelo.
 
         Algunos modelos ensucian la salida (fences de markdown, o texto suelto
@@ -252,17 +285,30 @@ class MultiModelLLM:
             cleaned = cleaned.rsplit("```", 1)[0]
             cleaned = cleaned.strip()
 
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            pass  # Intentamos rescatar el objeto JSON incrustado.
+        # `strict=False` permite saltos de línea y tabuladores LITERALES dentro
+        # de las cadenas. Es imprescindible aquí: los modelos devuelven código
+        # fuente dentro de un campo JSON y muy a menudo no lo escapan.
+        for candidato in (cleaned, cls._extraer_objeto(cleaned)):
+            if candidato is None:
+                continue
+            for strict in (True, False):
+                try:
+                    return json.loads(candidato, strict=strict)
+                except json.JSONDecodeError:
+                    continue
 
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start != -1 and end > start:
-            try:
-                return json.loads(cleaned[start : end + 1])
-            except json.JSONDecodeError as exc:
-                raise LLMError("El modelo devolvió un JSON malformado.") from exc
+        if "{" not in cleaned:
+            raise LLMError("El modelo no devolvió un objeto JSON.")
+        raise LLMError("El modelo devolvió un JSON malformado.")
 
-        raise LLMError("El modelo no devolvió un objeto JSON.")
+    @staticmethod
+    def _extraer_objeto(texto: str) -> str | None:
+        """Recorta el objeto entre la primera '{' y la última '}'.
+
+        Sirve cuando el modelo añade texto suelto alrededor del JSON.
+        """
+        start = texto.find("{")
+        end = texto.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        return texto[start : end + 1]
