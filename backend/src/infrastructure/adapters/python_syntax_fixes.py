@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 _DEF = re.compile(r"\b(?:async\s+)?def\s+\w+\s*\(")
 _APERTURA = {"(": ")", "[": "]", "{": "}"}
 
+# Módulos que arrancan la aplicación: nunca son origen de símbolos compartidos.
+_ENTRADAS = {"main", "app", "server", "wsgi", "asgi"}
+
 
 def sanear(path: str, content: str) -> str:
     """Devuelve el código corregido si se puede arreglar mecánicamente.
@@ -70,6 +73,257 @@ def _aplicar(path: str, content: str, arreglo, descripcion: str) -> str:
         return content  # El arreglo rompió algo: se descarta.
     logger.info("Arreglo automático en %s: %s.", path, descripcion)
     return propuesta
+
+
+# ----------------------------------------------------------------------
+_MONTAJES = {
+    "StaticFiles": (".css", ".js", ".png", ".jpg", ".svg", ".ico"),
+    "Jinja2Templates": (".html",),
+}
+_ANCLA = "_BASE_DIR"
+
+
+def arreglar_rutas_estaticas(archivos: dict[str, str]) -> dict[str, str]:
+    """Ancla las rutas de plantillas y estáticos a la carpeta REAL que existe.
+
+    Dos fallos que van juntos y solo aparecen al arrancar la aplicación:
+
+    1. La ruta se resuelve contra el directorio de trabajo, no contra el
+       archivo. `directory="../frontend/static"` funciona si arrancas dentro de
+       `backend/`, pero apunta FUERA del proyecto si arrancas desde la raíz,
+       que es lo normal. Se ancla a `__file__`, que no depende de dónde se
+       lance el proceso.
+    2. La carpeta referenciada no existe: el planificador dejó el frontend
+       plano y el código lo escribió anidado. Se apunta a la carpeta que de
+       verdad contiene esos archivos.
+
+    Si no hay una carpeta clara a la que apuntar, no se toca nada.
+    """
+    carpetas: dict[str, set[str]] = {}
+    for path in archivos:
+        carpeta, _, nombre = path.rpartition("/")
+        extension = "." + nombre.rpartition(".")[2] if "." in nombre else ""
+        carpetas.setdefault(carpeta, set()).add(extension)
+
+    resultado = dict(archivos)
+    for path, contenido in archivos.items():
+        if not path.endswith(".py") or not any(m in contenido for m in _MONTAJES):
+            continue
+        nuevo = _anclar_rutas(path, contenido, carpetas)
+        if nuevo != contenido:
+            resultado[path] = nuevo
+    return resultado
+
+
+def _anclar_rutas(path: str, contenido: str, carpetas: dict[str, set[str]]) -> str:
+    """Reescribe los `directory=` de StaticFiles/Jinja2Templates."""
+    origen = path.rpartition("/")[0]
+    resultado = contenido
+    cambios = 0
+
+    for clase, extensiones in _MONTAJES.items():
+        destino = _mejor_carpeta(carpetas, extensiones)
+        if destino is None:
+            continue
+        relativa = _ruta_relativa(origen, destino)
+
+        # Se sustituye el literal del `directory=` dentro de esa llamada.
+        patron = re.compile(
+            re.escape(clase) + r"\s*\(\s*directory\s*=\s*(['\"])(.*?)\1",
+        )
+
+        def cambiar(m: re.Match) -> str:
+            return f'{clase}(directory=str({_ANCLA} / "{relativa}")'
+
+        resultado, n = patron.subn(cambiar, resultado)
+        cambios += n
+
+    if not cambios:
+        return contenido
+
+    resultado = _asegurar_ancla(resultado)
+    try:
+        compile(resultado, path, "exec")
+    except SyntaxError:
+        return contenido
+
+    logger.info("Arreglo automático en %s: %d ruta(s) ancladas al archivo.", path, cambios)
+    return resultado
+
+
+def _mejor_carpeta(carpetas: dict[str, set[str]], extensiones: tuple[str, ...]) -> str | None:
+    """Carpeta del proyecto que contiene ese tipo de archivos."""
+    candidatas = [c for c, exts in carpetas.items() if exts & set(extensiones)]
+    if not candidatas:
+        return None
+    # La menos profunda: si hay `frontend` y `frontend/static`, gana la que
+    # realmente agrupa los archivos servidos.
+    return min(candidatas, key=lambda c: (c.count("/"), len(c)))
+
+
+def _ruta_relativa(origen: str, destino: str) -> str:
+    """Ruta de `origen` a `destino` en formato POSIX."""
+    partes_o = [p for p in origen.split("/") if p]
+    partes_d = [p for p in destino.split("/") if p]
+    comun = 0
+    while comun < min(len(partes_o), len(partes_d)) and partes_o[comun] == partes_d[comun]:
+        comun += 1
+    return "/".join([".."] * (len(partes_o) - comun) + partes_d[comun:]) or "."
+
+
+def _asegurar_ancla(contenido: str) -> str:
+    """Define `_BASE_DIR` (la carpeta del archivo) si aún no está."""
+    if _ANCLA in contenido.split("\n")[0:1] or f"{_ANCLA} =" in contenido:
+        return contenido
+
+    try:
+        arbol = ast.parse(contenido)
+    except SyntaxError:
+        return contenido
+
+    fin = 0
+    for nodo in arbol.body:
+        if isinstance(nodo, (ast.Import, ast.ImportFrom)):
+            fin = max(fin, getattr(nodo, "end_lineno", nodo.lineno))
+        elif fin:
+            break
+
+    lineas = contenido.split("\n")
+    bloque = ["from pathlib import Path as _Path", f"{_ANCLA} = _Path(__file__).resolve().parent"]
+    lineas[fin:fin] = bloque
+    return "\n".join(lineas)
+
+
+def resolver_referencias(archivos: dict[str, str]) -> dict[str, str]:
+    """Corrige las referencias a símbolos que están en OTRO módulo del proyecto.
+
+    El generador escribe un archivo por llamada, con contexto limitado, así que
+    inventa referencias cruzadas plausibles pero equivocadas: llama a
+    `database.get_db()` cuando `get_db` vive en `dependencies`. El resultado es
+
+        AttributeError: module 'backend.database' has no attribute 'get_db'
+
+    que solo aparece al ejecutar. Aquí se comprueba cada acceso `modulo.simbolo`
+    contra lo que ese módulo define de verdad y, si el símbolo está en un ÚNICO
+    módulo del proyecto, se reapunta la referencia. Si hay ambigüedad se deja
+    como está: es preferible un fallo honesto a una corrección inventada.
+    """
+    exportados = {
+        _modulo(path): _simbolos_publicos(contenido)
+        for path, contenido in archivos.items()
+        if path.endswith(".py") and _modulo(path) != "__init__"
+    }
+    if not exportados:
+        return archivos
+
+    resultado = dict(archivos)
+    for path, contenido in archivos.items():
+        if not path.endswith(".py"):
+            continue
+        nuevo = _reapuntar(path, contenido, exportados)
+        if nuevo != contenido:
+            resultado[path] = nuevo
+    return resultado
+
+
+def _modulo(path: str) -> str:
+    """Nombre de módulo de un archivo (su nombre sin extensión)."""
+    return path.rpartition("/")[2][:-3]
+
+
+def _simbolos_publicos(contenido: str) -> set[str]:
+    """Funciones, clases y variables que un módulo define en su nivel superior."""
+    try:
+        arbol = ast.parse(contenido)
+    except SyntaxError:
+        return set()
+
+    simbolos: set[str] = set()
+    for nodo in arbol.body:
+        if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            simbolos.add(nodo.name)
+        elif isinstance(nodo, ast.Assign):
+            simbolos.update(d.id for d in nodo.targets if isinstance(d, ast.Name))
+        elif isinstance(nodo, ast.AnnAssign) and isinstance(nodo.target, ast.Name):
+            simbolos.add(nodo.target.id)
+        elif isinstance(nodo, (ast.Import, ast.ImportFrom)):
+            # Lo reexportado también es accesible como atributo del módulo.
+            for alias in nodo.names:
+                simbolos.add(alias.asname or alias.name.split(".")[0])
+    return simbolos
+
+
+def _reapuntar(path: str, contenido: str, exportados: dict[str, set[str]]) -> str:
+    """Reescribe los accesos `modulo.simbolo` que apuntan al módulo equivocado."""
+    try:
+        arbol = ast.parse(contenido)
+    except SyntaxError:
+        return contenido
+
+    alias = _alias_de_modulos(arbol, exportados)
+    if not alias:
+        return contenido
+
+    propio = _modulo(path)
+    # (línea, col_inicio, col_fin, módulo_correcto)
+    cambios: list[tuple[int, int, int, str]] = []
+
+    for nodo in ast.walk(arbol):
+        if not (isinstance(nodo, ast.Attribute) and isinstance(nodo.value, ast.Name)):
+            continue
+        modulo = alias.get(nodo.value.id)
+        if modulo is None or nodo.attr in exportados.get(modulo, set()):
+            continue  # No es un módulo del proyecto, o el símbolo sí está ahí.
+
+        # El punto de entrada no es una librería: importar de él crearía un
+        # import circular (main importa los routers, los routers importarían
+        # main). Aunque defina el símbolo, nunca es el origen correcto.
+        candidatos = [
+            m for m, s in exportados.items()
+            if nodo.attr in s and m != propio and m not in _ENTRADAS
+        ]
+        if len(candidatos) != 1:
+            continue  # Ambiguo o inexistente: no inventamos.
+
+        cambios.append(
+            (nodo.value.lineno, nodo.value.col_offset, nodo.value.end_col_offset, candidatos[0])
+        )
+
+    if not cambios:
+        return contenido
+
+    lineas = contenido.split("\n")
+    # De derecha a izquierda para que los reemplazos no desplacen las columnas.
+    for linea, inicio, fin, destino in sorted(cambios, key=lambda c: (-c[0], -c[1])):
+        texto = lineas[linea - 1]
+        lineas[linea - 1] = texto[:inicio] + destino + texto[fin:]
+
+    resultado = "\n".join(lineas)
+    try:
+        compile(resultado, path, "exec")
+    except SyntaxError:
+        return contenido
+
+    destinos = sorted({c[3] for c in cambios})
+    logger.info("Arreglo automático en %s: %d referencia(s) reapuntadas a %s.",
+                path, len(cambios), ", ".join(destinos))
+    return resultado
+
+
+def _alias_de_modulos(arbol: ast.Module, exportados: dict[str, set[str]]) -> dict[str, str]:
+    """Nombres locales que apuntan a un módulo del proyecto."""
+    alias: dict[str, str] = {}
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            for a in nodo.names:
+                raiz = a.name.split(".")[-1]
+                if raiz in exportados:
+                    alias[a.asname or a.name.split(".")[0]] = raiz
+        elif isinstance(nodo, ast.ImportFrom):
+            for a in nodo.names:
+                if a.name in exportados:  # `from . import models`
+                    alias[a.asname or a.name] = a.name
+    return alias
 
 
 # ----------------------------------------------------------------------

@@ -21,7 +21,12 @@ from src.config import Settings
 from src.domain.entities import GeneratedFile, GeneratedProject
 from src.domain.ports import ProjectGenerationError, ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
-from src.infrastructure.adapters.python_syntax_fixes import anadir_imports_faltantes, sanear
+from src.infrastructure.adapters.python_syntax_fixes import (
+    anadir_imports_faltantes,
+    arreglar_rutas_estaticas,
+    resolver_referencias,
+    sanear,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +209,43 @@ Reglas:
 """
 
 
+# Librerías que hacen falta aunque el código NUNCA las importe: FastAPI las
+# carga por debajo. Se detectan por lo que el código usa, no por sus imports.
+_INDIRECTAS = {
+    "jinja2>=3.1": ("Jinja2Templates",),
+    "python-multipart>=0.0.9": ("Form(", "UploadFile", "OAuth2PasswordRequestForm"),
+    "bcrypt>=4.1": ("CryptContext", "bcrypt"),
+    "email-validator>=2.1": ("EmailStr",),
+}
+
+
+def _completar_indirectas(requirements: str, files: list[GeneratedFile]) -> str:
+    """Añade las dependencias que el código necesita pero no importa.
+
+    Son la causa de un arranque fallido especialmente desconcertante: el código
+    no menciona `jinja2` por ningún lado, pero sin él `Jinja2Templates` revienta
+    al importarse. Derivar el requirements.txt solo de los `import` las pierde.
+    """
+    codigo = "\n".join(f.content for f in files if f.path.endswith(".py"))
+    presentes = {
+        linea.split("[")[0].split(">")[0].split("=")[0].strip().lower()
+        for linea in requirements.split("\n") if linea.strip()
+    }
+
+    anadidas = []
+    for paquete, marcadores in _INDIRECTAS.items():
+        nombre = paquete.split(">")[0].split("[")[0].lower()
+        if nombre in presentes:
+            continue
+        if any(m in codigo for m in marcadores):
+            anadidas.append(paquete)
+
+    if anadidas:
+        logger.info("Dependencias indirectas añadidas: %s", ", ".join(anadidas))
+        requirements = requirements.rstrip("\n") + "\n" + "\n".join(anadidas) + "\n"
+    return requirements
+
+
 def _arreglar_imports_del_proyecto(files: list[GeneratedFile]) -> list[GeneratedFile]:
     """Añade los imports de módulos hermanos que falten, en todo el proyecto.
 
@@ -233,7 +275,27 @@ def _arreglar_imports_del_proyecto(files: list[GeneratedFile]) -> list[Generated
         resultado.append(
             f if nuevo == f.content else GeneratedFile(path=f.path, content=nuevo)
         )
-    return resultado
+
+    # Con los imports ya en su sitio, se reapuntan las referencias que señalan
+    # al módulo equivocado (`database.get_db` cuando vive en `dependencies`).
+    contenidos = arreglar_rutas_estaticas({f.path: f.content for f in resultado})
+    contenidos = resolver_referencias(contenidos)
+    resultado = [GeneratedFile(path=f.path, content=contenidos[f.path]) for f in resultado]
+
+    # Reapuntar puede estrenar un módulo que aún no estaba importado.
+    final = []
+    for f in resultado:
+        if not f.path.endswith(".py"):
+            final.append(f)
+            continue
+        carpeta = f.path.rpartition("/")[0]
+        vecinos = set(modulos_por_carpeta.get(carpeta, set()))
+        if "/" in carpeta:
+            vecinos |= modulos_por_carpeta.get(carpeta.rpartition("/")[0], set())
+        vecinos.discard(f.path.rpartition("/")[2][:-3])
+        nuevo = anadir_imports_faltantes(f.path, f.content, vecinos)
+        final.append(f if nuevo == f.content else GeneratedFile(path=f.path, content=nuevo))
+    return final
 
 
 def _preparar_correccion(path: str, content: str) -> str:
@@ -433,9 +495,20 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         porque solo edita archivos existentes, no los crea. Es un fallo mortal
         y silencioso, así que se cubre aquí de forma explícita.
         """
-        rutas = {f.path for f in files}
         hay_python = any(f.path.endswith(".py") for f in files)
-        if not hay_python or any(r.endswith("requirements.txt") for r in rutas):
+        if not hay_python:
+            return files
+
+        # Si ya existe, no se regenera: solo se le añaden las indirectas, que
+        # el modelo omite casi siempre por no aparecer como `import`.
+        existente = next((f for f in files if f.path.endswith("requirements.txt")), None)
+        if existente is not None:
+            completo = _completar_indirectas(existente.content, files)
+            if completo != existente.content:
+                files = [
+                    GeneratedFile(path=f.path, content=completo) if f is existente else f
+                    for f in files
+                ]
             return files
 
         logger.warning("Falta requirements.txt en un proyecto Python; se genera.")
@@ -450,7 +523,13 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
             "Incluye TODAS las librerías de terceros que el código importa (y solo "
             "esas; nada de la librería estándar). Usa rangos modernos, p. ej. "
             "fastapi>=0.111, uvicorn[standard]>=0.30, sqlalchemy>=2.0, pydantic>=2.7. "
-            "Una por línea, sin comentarios."
+            "Una por línea, sin comentarios.\n"
+            "NO OLVIDES LAS DEPENDENCIAS INDIRECTAS (no aparecen como `import` "
+            "pero sin ellas la app no arranca):\n"
+            "* `Jinja2Templates` necesita `jinja2`.\n"
+            "* Los endpoints con `Form(...)` o `UploadFile` necesitan `python-multipart`.\n"
+            "* `OAuth2PasswordRequestForm` necesita también `python-multipart`.\n"
+            "* El hasheo de contraseñas con passlib suele necesitar `bcrypt`."
         )
         try:
             data = self._chat(system, f"[Idioma: {language}]\n\nCÓDIGO:\n{codigo}")
@@ -462,6 +541,8 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         if not contenido:
             # Mínimo viable: sin esto el proyecto no arranca de ninguna manera.
             contenido = "fastapi>=0.111\nuvicorn[standard]>=0.30\nsqlalchemy>=2.0\npydantic>=2.7\n"
+
+        contenido = _completar_indirectas(contenido, files)
 
         destino = "backend/requirements.txt" if any(
             f.path.startswith("backend/") for f in files
