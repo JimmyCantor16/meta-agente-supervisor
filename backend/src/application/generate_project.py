@@ -98,10 +98,13 @@ class GenerateProjectUseCase:
             logger.info("Verificación OK tras las correcciones.")
             self._launch(project, output_path)
         else:
+            # Se registra el final del error (donde está el diagnóstico), no los
+            # primeros 200 caracteres, que solo mostraban la cabecera inútil del
+            # traceback y dejaban a ciegas a quien revisa los logs.
             logger.warning(
-                "El proyecto se entrega con un fallo pendiente tras %d intentos: %s",
+                "El proyecto se entrega con un fallo pendiente tras %d intentos:\n%s",
                 _MAX_FIX_ATTEMPTS,
-                final_error[:200],
+                final_error[-1500:],
             )
         return project, output_path
 

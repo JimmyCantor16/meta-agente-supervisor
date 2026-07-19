@@ -21,6 +21,7 @@ from src.config import Settings
 from src.domain.entities import GeneratedFile, GeneratedProject
 from src.domain.ports import ProjectGenerationError, ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
+from src.infrastructure.adapters.python_syntax_fixes import anadir_imports_faltantes, sanear
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,20 @@ Reglas:
     (p. ej. `fastapi>=0.111`, `pydantic>=2.7`). Si usas Pydantic v2, el código
     debe usar sintaxis v2 (`model_config`, `model_validate`), no la v1.
   * Nunca definas una función que se llame a sí misma sin caso base.
+- ORDEN DE PARÁMETROS EN FASTAPI (error de sintaxis MUY frecuente):
+  `SyntaxError: parameter without a default follows parameter with a default`.
+  Ocurre al poner una dependencia SIN valor por defecto detrás de parámetros que
+  sí lo tienen. MAL:
+      def listar(skip: int = 0, db: Annotated[Session, Depends(get_db)]):
+  BIEN (elige una y sé consistente):
+      def listar(db: Annotated[Session, Depends(get_db)], skip: int = 0):
+      def listar(skip: int = 0, db: Session = Depends(get_db)):
+  Regla simple: todo parámetro que vaya DESPUÉS de uno con `=` debe tener `=`.
+- PLANTILLAS JINJA CON FASTAPI: el `request` va PRIMERO (firma moderna).
+  MAL:  return templates.TemplateResponse("index.html", {"request": request})
+  BIEN: return templates.TemplateResponse(request, "index.html", {})
+  Con la forma antigua el código compila pero falla al ejecutarse con
+  `TypeError: unhashable type: 'dict'`.
 """
 
 _REPAIR_SYS = """\
@@ -167,6 +182,13 @@ Reglas:
 - Ataca la causa raíz del traceback, no síntomas.
 - Errores típicos y su arreglo:
   * `from typing import list` -> usar `list` nativo (Python 3.9+) o `List` de typing.
+  * `parameter without a default follows parameter with a default` -> en la firma
+    hay una dependencia sin `=` detrás de parámetros que sí lo tienen. Muévela al
+    PRINCIPIO de la firma, o dale valor por defecto (`db: Session = Depends(get_db)`).
+    Todo parámetro posterior a uno con `=` debe tener `=`.
+  * `TypeError: unhashable type: 'dict'` en una plantilla -> `TemplateResponse`
+    con la firma antigua. El `request` va primero:
+    `TemplateResponse(request, "index.html", {...})`.
   * `RecursionError` -> una función se llama a sí misma; usa la implementación real.
   * ALIAS QUE SE PISA (causa oculta de RecursionError, MUY común): un módulo hace
     `from x import f`, define `def g(): ... f() ...` y al final escribe `f = g`.
@@ -180,6 +202,73 @@ Reglas:
     sube el Dockerfile a python:3.12-slim (o usa Optional[...]).
 - No cambies cosas que no tengan que ver con el error.
 """
+
+
+def _arreglar_imports_del_proyecto(files: list[GeneratedFile]) -> list[GeneratedFile]:
+    """Añade los imports de módulos hermanos que falten, en todo el proyecto.
+
+    Se hace a nivel de proyecto porque un archivo por sí solo no puede saber
+    qué módulos existen a su lado.
+    """
+    modulos_por_carpeta: dict[str, set[str]] = {}
+    for f in files:
+        if f.path.endswith(".py"):
+            carpeta, _, nombre = f.path.rpartition("/")
+            if nombre != "__init__.py":
+                modulos_por_carpeta.setdefault(carpeta, set()).add(nombre[:-3])
+
+    resultado = []
+    for f in files:
+        if not f.path.endswith(".py"):
+            resultado.append(f)
+            continue
+        carpeta = f.path.rpartition("/")[0]
+        # Módulos hermanos, y los del paquete padre (los routers usan `..`).
+        vecinos = set(modulos_por_carpeta.get(carpeta, set()))
+        if "/" in carpeta:
+            vecinos |= modulos_por_carpeta.get(carpeta.rpartition("/")[0], set())
+        vecinos.discard(f.path.rpartition("/")[2][:-3])  # no importarse a sí mismo
+
+        nuevo = anadir_imports_faltantes(f.path, f.content, vecinos)
+        resultado.append(
+            f if nuevo == f.content else GeneratedFile(path=f.path, content=nuevo)
+        )
+    return resultado
+
+
+def _preparar_correccion(path: str, content: str) -> str:
+    """Aplica los arreglos mecánicos antes de juzgar una corrección."""
+    return sanear(path, content)
+
+
+def _correccion_valida(
+    path: str, content: str, anterior: GeneratedFile | None
+) -> bool:
+    """Decide si una corrección se acepta o se descarta.
+
+    El agente reparador reescribe archivos enteros y a veces devuelve uno con
+    un error de SINTAXIS: entonces cada intento dejaba el proyecto peor que
+    antes y el bucle no convergía nunca. Aquí se compila la propuesta y, si no
+    compila, se conserva la versión anterior. La reparación solo puede mejorar
+    o quedarse igual, nunca degradar.
+    """
+    if not path.endswith(".py"):
+        return True  # Otros formatos no se pueden comprobar así de barato.
+
+    try:
+        compile(content, path, "exec")
+        return True
+    except SyntaxError as exc:
+        if anterior is None:
+            # No había versión previa: peor es quedarse sin el archivo.
+            logger.warning("La corrección de %s no compila (%s), pero es nueva; se acepta.",
+                           path, exc.msg)
+            return True
+        logger.warning(
+            "DESCARTADA la corrección de %s: introduce un error de sintaxis (%s, línea %s).",
+            path, exc.msg, exc.lineno,
+        )
+        return False
 
 
 class IterativeProjectGenerator(ProjectGeneratorPort):
@@ -238,6 +327,7 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         # 3) COMPLETAR (generar módulos importados pero no creados + __init__.py)
         files = self._ensure_complete(prompt, manifest, files, language)
         files = self._ensure_requirements(files, language)
+        files = _arreglar_imports_del_proyecto(files)
 
         # 4) REPARAR (auto-corrección de lo que rompe la ejecución)
         files = self._repair(files, language)
@@ -306,6 +396,31 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         content = data.get("content")
         if content is None:
             raise ProjectGenerationError(f"No se generó contenido para {spec['path']}.")
+
+        # Un .py con sintaxis rota contamina el contexto de todos los archivos
+        # siguientes (que lo toman como ejemplo) y consume después intentos de
+        # reparación. Primero se intenta el arreglo mecánico (gratis y seguro);
+        # solo si no basta se vuelve a molestar al modelo.
+        if spec["path"].endswith(".py"):
+            content = sanear(spec["path"], content)
+            try:
+                compile(content, spec["path"], "exec")
+            except SyntaxError as exc:
+                logger.warning("%s vino con error de sintaxis (%s); se reintenta una vez.",
+                               spec["path"], exc.msg)
+                reintento = self._chat(
+                    _WRITER_SYS,
+                    user + f"\n\nATENCIÓN: tu intento anterior tenía un ERROR DE SINTAXIS "
+                           f"en la línea {exc.lineno}: {exc.msg}. Devuelve el archivo COMPLETO "
+                           f"y sintácticamente válido.",
+                )
+                if (nuevo := reintento.get("content")) is not None:
+                    try:
+                        compile(nuevo, spec["path"], "exec")
+                        content = nuevo
+                    except SyntaxError:
+                        logger.warning("El reintento de %s sigue roto; se deja al reparador.",
+                                       spec["path"])
         return content
 
     def _ensure_requirements(
@@ -498,6 +613,8 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         for fix in data.get("files", []):
             path, content = fix.get("path"), fix.get("content")
             if path and content is not None:
+                content = _preparar_correccion(path, content)
+            if path and content is not None and _correccion_valida(path, content, by_path.get(path)):
                 by_path[path] = GeneratedFile(path=path, content=content)
                 logger.info("Reparado: %s", path)
         return list(by_path.values())
@@ -533,6 +650,8 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         for fix in data.get("files", []):
             path, content = fix.get("path"), fix.get("content")
             if path and content is not None:
+                content = _preparar_correccion(path, content)
+            if path and content is not None and _correccion_valida(path, content, by_path.get(path)):
                 by_path[path] = GeneratedFile(path=path, content=content)
                 logger.info("Auto-corregido con error real: %s", path)
 
