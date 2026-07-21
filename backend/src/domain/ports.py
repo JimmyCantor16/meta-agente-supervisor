@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from src.domain.entities import (
     AgentEvaluation,
     AuditReport,
+    CambioArchivo,
     DeveloperPrompt,
     EvaluationRecord,
     FewShotExample,
@@ -336,5 +337,40 @@ class CodeAuditorPort(ABC):
 
         Raises:
             AuditError: Si la auditoría falla.
+        """
+        raise NotImplementedError
+
+
+class AjustadorModuloPort(ABC):
+    """Contrato del agente que CONVIERTE una lección en un cambio de código.
+
+    Se separa del profesor a propósito: el profesor explica (no toca nada), y
+    este propone el cambio concreto. Así el modo profesor sigue siendo seguro
+    por construcción y la capacidad de modificar es una decisión explícita.
+    """
+
+    @abstractmethod
+    def proponer(
+        self,
+        target_name: str,
+        files: list[GeneratedFile],
+        ajuste: str,
+        language: str = "es",
+    ) -> tuple[list[CambioArchivo], str, str]:
+        """Traduce el ajuste pedido a cambios concretos sobre los archivos.
+
+        Args:
+            target_name: Proyecto sobre el que se trabaja.
+            files: Archivos actuales del proyecto.
+            ajuste: Lo que el alumno quiere ajustar, en sus palabras.
+            language: Idioma de la explicación.
+
+        Returns:
+            Tupla (cambios, explicación didáctica, concepto que enseña). Los
+            cambios traen el contenido COMPLETO de cada archivo tocado; el diff
+            lo calcula el caso de uso, que es quien conoce lo que había.
+
+        Raises:
+            AuditError: Si no se puede proponer el ajuste.
         """
         raise NotImplementedError

@@ -226,3 +226,51 @@ class TeachingGuide(BaseModel):
     next_steps: list[str] = Field(default_factory=list, description="Retos para practicar.")
 
     model_config = {"extra": "ignore"}
+
+
+class NivelAutonomia(str, Enum):
+    """Cuánto hace la IA por el aprendiz en un ajuste de la clase.
+
+    La promesa del producto es ENSEÑAR: si la IA lo hace todo por defecto, el
+    aprendiz no aprende. Por eso `PROPONER` es el nivel recomendado —muestra el
+    cambio y el alumno decide— y `EJECUTAR` es una elección explícita.
+    """
+
+    EXPLICAR = "explicar"   # solo explica; el aprendiz escribe el código
+    PROPONER = "proponer"   # genera el cambio y lo muestra para aprobar
+    EJECUTAR = "ejecutar"   # lo aplica y lo verifica ejecutando
+
+
+class CambioArchivo(BaseModel):
+    """Un archivo que el ajuste modifica, con su diff para poder revisarlo."""
+
+    path: str = Field(..., description="Ruta del archivo dentro del proyecto.")
+    contenido_nuevo: str = Field(..., description="Contenido completo propuesto.")
+    diff: str = Field(default="", description="Diff unificado contra lo que había.")
+    es_nuevo: bool = Field(default=False, description="El archivo no existía antes.")
+
+    model_config = {"extra": "ignore"}
+
+
+class ResultadoAjuste(BaseModel):
+    """Qué pasó al pedir un ajuste de módulo en la clase.
+
+    Es deliberadamente explícito sobre el fracaso: si el cambio se aplicó pero
+    la verificación falló, se revierte y se dice. El sistema no declara éxito
+    sin haberlo comprobado ejecutando.
+    """
+
+    proyecto: str = Field(..., description="Proyecto sobre el que se trabajó.")
+    ajuste: str = Field(..., description="El ajuste solicitado, en palabras del alumno.")
+    nivel: NivelAutonomia = Field(..., description="Nivel de autonomía usado.")
+    explicacion: str = Field(default="", description="Por qué se hace y qué se aprende.")
+    concepto: str = Field(default="", description="Concepto técnico que enseña este ajuste.")
+    cambios: list[CambioArchivo] = Field(
+        default_factory=list, description="Cambios propuestos o aplicados."
+    )
+    aplicado: bool = Field(default=False, description="Se escribió en disco.")
+    verificado: bool = Field(default=False, description="La verificación por ejecución pasó.")
+    revertido: bool = Field(default=False, description="Se deshizo por fallar la verificación.")
+    detalle: str = Field(default="", description="Error/traceback real si algo falló.")
+
+    model_config = {"extra": "ignore"}

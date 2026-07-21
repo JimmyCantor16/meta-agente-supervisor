@@ -19,14 +19,16 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 
 from src.application.account_service import AccountService
+from src.application.aplicar_ajuste import AplicarAjusteUseCase
 from src.application.audit_project import AuditProjectUseCase
 from src.application.evaluate_prompt import EvaluatePromptUseCase, RegisterFeedbackUseCase
 from src.application.explain_project import ExplainProjectUseCase
 from src.application.generate_project import GenerateProjectUseCase
 from src.application.usage_service import UsageService
 from src.config import Settings, get_settings
-from src.domain.entities import EvaluationStatus, UserAccount
+from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount
 from src.domain.ports import (
+    AjustadorModuloPort,
     AuditError,
     CodeAuditorPort,
     CodeTeacherPort,
@@ -46,9 +48,11 @@ from src.domain.ports import (
 )
 from src.infrastructure.adapters.deepseek_adapter import DeepSeekPromptEvaluator
 from src.infrastructure.adapters.iterative_project_generator import IterativeProjectGenerator
+from src.infrastructure.adapters.llm_ajustador import LLMAjustadorModulo
 from src.infrastructure.adapters.llm_code_auditor import LLMCodeAuditor
 from src.infrastructure.adapters.llm_code_teacher import LLMCodeTeacher
 from src.infrastructure.adapters.mock_adapter import MockPromptEvaluator
+from src.infrastructure.adapters.mock_ajustador import MockAjustadorModulo
 from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
 from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
@@ -181,6 +185,43 @@ class TeachingResponse(BaseModel):
     steps: list[str]
     concepts: list[str]
     next_steps: list[str]
+
+
+class AjusteRequest(BaseModel):
+    """Cuerpo para ajustar un módulo durante una clase."""
+
+    project_name: str = Field(..., min_length=1)
+    ajuste: str = Field(..., min_length=1, description="Qué quiere ajustar el alumno.")
+    nivel: Literal["explicar", "proponer", "ejecutar"] = Field(
+        default="proponer",
+        description="Cuánto hace la IA. 'proponer' (recomendado) muestra el cambio "
+                    "para que el alumno lo apruebe; 'ejecutar' lo aplica y lo verifica.",
+    )
+    language: Literal["es", "en"] = Field(default="es")
+
+
+class CambioDTO(BaseModel):
+    """Un archivo tocado por el ajuste, con su diff para revisarlo."""
+
+    path: str
+    diff: str
+    es_nuevo: bool
+    contenido_nuevo: str
+
+
+class AjusteResponse(BaseModel):
+    """Resultado del ajuste: qué se propuso, si se aplicó y si se verificó."""
+
+    proyecto: str
+    ajuste: str
+    nivel: str
+    explicacion: str
+    concepto: str
+    cambios: list[CambioDTO]
+    aplicado: bool
+    verificado: bool
+    revertido: bool
+    detalle: str
 
 
 class ProjectSummary(BaseModel):
@@ -344,6 +385,24 @@ def get_audit_use_case(
 ) -> AuditProjectUseCase:
     """Construye el caso de uso de auditoría con sus puertos resueltos."""
     return AuditProjectUseCase(reader, auditor)
+
+
+@lru_cache
+def get_ajustador() -> AjustadorModuloPort:
+    """Provee el ajustador de módulos: IA real o mock, según configuración."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        return MockAjustadorModulo()
+    return LLMAjustadorModulo()
+
+
+def get_ajuste_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    ajustador: AjustadorModuloPort = Depends(get_ajustador),
+    verifier: ProjectVerifierPort = Depends(get_project_verifier),
+) -> AplicarAjusteUseCase:
+    """Construye el caso de uso de ajuste (propone, aplica y verifica)."""
+    return AplicarAjusteUseCase(reader, ajustador, verifier, get_settings().generated_dir)
 
 
 @lru_cache
@@ -639,6 +698,67 @@ def explain_project(
         steps=guide.steps,
         concepts=guide.concepts,
         next_steps=guide.next_steps,
+    )
+
+
+@router.post(
+    "/lecciones/ajuste",
+    response_model=AjusteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Ajusta un módulo durante la clase (explicar / proponer / ejecutar).",
+)
+def ajustar_modulo(
+    request: AjusteRequest,
+    use_case: AplicarAjusteUseCase = Depends(get_ajuste_use_case),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
+) -> AjusteResponse:
+    """Convierte un punto de la clase en un cambio de código.
+
+    El alumno elige cuánto hace la IA. En 'ejecutar', si la verificación por
+    ejecución falla el cambio se revierte: una clase nunca deja el proyecto
+    peor de como estaba.
+    """
+    # Un ajuste es parte de la clase: cuenta contra el mismo cupo.
+    try:
+        account.ensure_can_learn(user)
+    except PaymentRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+
+    try:
+        resultado = use_case.execute(
+            request.project_name,
+            request.ajuste,
+            NivelAutonomia(request.nivel),
+            request.language,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except AuditError as exc:
+        message = str(exc)
+        if "no existe" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message) from exc
+
+    account.record_lesson(user)
+
+    return AjusteResponse(
+        proyecto=resultado.proyecto,
+        ajuste=resultado.ajuste,
+        nivel=resultado.nivel.value,
+        explicacion=resultado.explicacion,
+        concepto=resultado.concepto,
+        cambios=[
+            CambioDTO(
+                path=c.path, diff=c.diff, es_nuevo=c.es_nuevo,
+                contenido_nuevo=c.contenido_nuevo,
+            )
+            for c in resultado.cambios
+        ],
+        aplicado=resultado.aplicado,
+        verificado=resultado.verificado,
+        revertido=resultado.revertido,
+        detalle=resultado.detalle,
     )
 
 
