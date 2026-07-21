@@ -14,17 +14,30 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from src.domain.ports import ProjectVerifierPort
+from src.infrastructure.adapters.db_verificacion import (
+    motor_requerido,
+    url_de_verificacion,
+    variables_de_entorno,
+)
 
 logger = logging.getLogger(__name__)
 
 # Cuántos endpoints fallidos se reportan (enteros) al agente reparador.
 _MAX_PROBLEMS = 3
+
+
+def _slug_bd(nombre: str) -> str:
+    """Nombre de base de datos válido y propio de cada proyecto."""
+    limpio = re.sub(r"[^a-zA-Z0-9_]", "_", nombre).strip("_").lower()
+    return f"v_{limpio}"[:60] or "verificacion"
 
 
 def _cola(texto: str, limite: int) -> str:
@@ -151,6 +164,23 @@ _PIP_TIMEOUT = 420  # instalar dependencias del proyecto
 class PythonProjectVerifier(ProjectVerifierPort):
     """Verifica sintaxis e importabilidad real del proyecto generado."""
 
+    @staticmethod
+    def _entorno(root: Path) -> dict[str, str]:
+        """Entorno para los subprocesos, con la base de datos que el proyecto pida.
+
+        Si el MVP necesita PostgreSQL o MySQL, se le presta el del entorno de
+        verificación. Antes fallaba al conectar y el error real quedaba oculto
+        tras un traceback de conexión que no decía nada del código.
+        """
+        entorno = dict(os.environ)
+        motor = motor_requerido(str(root))
+        if motor:
+            url = url_de_verificacion(motor, _slug_bd(root.name))
+            if url:
+                entorno.update(variables_de_entorno(motor, url))
+                logger.info("Inyectada base de datos %s para verificar '%s'.", motor, root.name)
+        return entorno
+
     def verify(self, project_dir: str) -> str | None:
         # Resolvemos a ruta ABSOLUTA: los subprocesos corren con cwd=root y las
         # rutas relativas dejarían de resolver.
@@ -185,19 +215,34 @@ class PythonProjectVerifier(ProjectVerifierPort):
 
     # ------------------------------------------------------------------
     def _check_syntax(self, root: Path, py_files: list[Path]) -> str | None:
-        """Compila todos los .py; devuelve el error de sintaxis si lo hay."""
-        result = subprocess.run(
-            [sys.executable, "-m", "py_compile", *[str(p.resolve()) for p in py_files]],
-            capture_output=True,
-            text=True,
-            timeout=_TIMEOUT,
-            cwd=str(root),
+        """Compila los .py y devuelve TODOS los errores de sintaxis a la vez.
+
+        `py_compile` se detiene en el primer archivo roto, así que reportaba uno
+        por pasada. Con varios archivos rotos el bucle gastaba un intento por
+        cada uno y no llegaba a converger nunca. Darlos todos juntos permite
+        arreglarlos en una sola corrección.
+        """
+        errores: list[str] = []
+        for archivo in py_files:
+            try:
+                compile(archivo.read_text(encoding="utf-8", errors="ignore"),
+                        str(archivo), "exec")
+            except SyntaxError as exc:
+                errores.append(
+                    f"--- {archivo.relative_to(root)} ---\n"
+                    f"línea {exc.lineno}: {exc.msg}\n{(exc.text or '').rstrip()}"
+                )
+            except (OSError, ValueError):
+                continue
+
+        if not errores:
+            return None
+
+        logger.info("Verificación: %d archivo(s) con error de SINTAXIS.", len(errores))
+        return (
+            f"ERRORES DE SINTAXIS en {len(errores)} archivo(s). "
+            f"Corrígelos TODOS en una sola respuesta:\n\n" + "\n\n".join(errores)
         )
-        if result.returncode != 0:
-            error = (result.stderr or result.stdout).strip()
-            logger.info("Verificación: error de SINTAXIS detectado.")
-            return f"ERROR DE SINTAXIS al compilar el proyecto:\n{_cola(error, 3000)}"
-        return None
 
     def _check_import(self, root: Path) -> str | None:
         """Instala dependencias en un entorno aislado e importa el proyecto."""
@@ -216,6 +261,7 @@ class PythonProjectVerifier(ProjectVerifierPort):
                 text=True,
                 timeout=_TIMEOUT,
                 cwd=str(root),
+                env=self._entorno(root),
             )
         except subprocess.TimeoutExpired:
             return f"El proyecto se colgó al importar `{module}` (posible bucle infinito)."
@@ -255,6 +301,7 @@ class PythonProjectVerifier(ProjectVerifierPort):
                 text=True,
                 timeout=_TIMEOUT,
                 cwd=str(root),
+                env=self._entorno(root),
             )
         except subprocess.TimeoutExpired:
             return "La app se colgó al atender una petición (posible bucle/recursión infinita)."

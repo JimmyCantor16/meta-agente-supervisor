@@ -71,17 +71,20 @@ class SqliteUserRepository(UserRepositoryPort):
         return self._to_account(row) if row else None
 
     def upsert_profile(self, sub: str, email: str, name: str) -> UserAccount:
-        existing = self.get(sub)
+        """Crea o actualiza el perfil en UNA sola sentencia atómica.
+
+        Antes se comprobaba y luego se insertaba, y en el primer login el
+        frontend lanza varias peticiones a la vez (sesión, cuenta, proyectos):
+        todas veían "no existe" y todas insertaban, así que saltaba
+        `UNIQUE constraint failed: users.sub`. Le ocurría al 100% de los
+        usuarios nuevos. `ON CONFLICT` lo resuelve sin condición de carrera.
+        """
         with self._connect() as conn:
-            if existing is None:
-                conn.execute(
-                    "INSERT INTO users (sub, email, name, created_at) VALUES (?, ?, ?, ?)",
-                    (sub, email, name, datetime.now(timezone.utc).isoformat()),
-                )
-            else:
-                conn.execute(
-                    "UPDATE users SET email = ?, name = ? WHERE sub = ?", (email, name, sub)
-                )
+            conn.execute(
+                "INSERT INTO users (sub, email, name, created_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(sub) DO UPDATE SET email = excluded.email, name = excluded.name",
+                (sub, email, name, datetime.now(timezone.utc).isoformat()),
+            )
         return self.get(sub)  # type: ignore[return-value]
 
     def increment_generation(self, sub: str) -> None:

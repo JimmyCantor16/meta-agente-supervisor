@@ -26,6 +26,8 @@ export interface GenerateResult {
   run_instructions: string;
   /** URL del proyecto ya corriendo (null si no se pudo arrancar). */
   url?: string | null;
+  /** Manual de usuario con las credenciales de prueba, para mostrarlo tal cual. */
+  manual?: string | null;
 }
 
 // Una sugerencia de mejora del agente auditor.

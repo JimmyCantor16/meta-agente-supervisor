@@ -219,6 +219,16 @@ class ProjectGeneratorPort(ABC):
         """
         raise NotImplementedError
 
+    def aplicar_stubs(self, project: GeneratedProject) -> GeneratedProject:
+        """Genera stubs para los símbolos que faltan, para que el sistema arranque.
+
+        Último recurso cuando la reparación no logra implementar unas funciones:
+        se crean versiones vacías pero seguras, el proyecto compila y arranca, y
+        esas funciones quedan como ejercicio para el modo profesor. Por defecto
+        no hace nada (los generadores que no lo necesiten heredan este no-op).
+        """
+        return project
+
 
 class ProjectRunnerPort(ABC):
     """Contrato para ARRANCAR un proyecto generado y exponer su URL.

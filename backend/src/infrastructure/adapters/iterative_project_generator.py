@@ -15,7 +15,10 @@ mismo cliente compatible con OpenAI (Groq/DeepSeek/OpenRouter).
 from __future__ import annotations
 
 import logging
+import os
 import re
+import subprocess
+import tempfile
 
 from src.config import Settings
 from src.domain.entities import GeneratedFile, GeneratedProject
@@ -23,7 +26,33 @@ from src.domain.ports import ProjectGenerationError, ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
 from src.infrastructure.adapters.python_syntax_fixes import (
     anadir_imports_faltantes,
+    arreglar_define_suelto,
+    api_a_rutas_relativas,
+    arreglar_estructura_vite,
+    completar_dependencias_node,
+    crear_stubs_simbolos_js,
+    crear_stubs_metodos_modulo,
+    garantizar_jwt_secret,
+    inyectar_token_axios,
+    enganchar_seed,
+    alinear_contrato_auth,
+    inyectar_login_premium,
+    inyectar_estilos_base,
+    ocultar_navbar_en_rutas_auth,
+    envolver_con_providers,
+    quitar_autoimports,
+    quitar_imports_a_backend,
+    forzar_motor_bd,
+    alinear_modelos_factory,
+    romper_ciclo_sequelize,
+    garantizar_listen_incondicional,
+    frontend_a_esm,
+    arreglar_jsx_en_js,
     arreglar_rutas_estaticas,
+    crear_css_faltantes,
+    sacar_listen_del_then,
+    servir_frontend_en_express,
+    contrato_markdown,
     resolver_referencias,
     sanear,
 )
@@ -33,9 +62,35 @@ logger = logging.getLogger(__name__)
 # Límites del generador. Con la cadena multi-proveedor (GPT-4.1, Codestral,
 # DeepSeek V4...) podemos permitirnos proyectos bastante más completos que
 # cuando dependíamos solo del tier mínimo de Groq.
-_MAX_FILES = 22  # suficiente para frontend + backend + infra
+_MAX_FILES = 50  # front + back completos. Viable porque el contrato mantiene
+                 # el contexto plano: el coste ya no crece con el nº de archivos.
 _MAX_CONTEXT_CHARS = 24_000  # contexto de archivos previos (coherencia)
-_MAX_REPAIR_CHARS = 90_000  # tamaño máximo del proyecto para el pase de reparación
+_MAX_RECIENTES = 6_000  # extracto de los últimos archivos (continuidad de estilo)
+
+# Imports relativos de JS/JSX: `import X from './y'` / `from '../z/w'`.
+# Solo los relativos: los paquetes de npm los resuelve node_modules.
+_IMPORT_JS = re.compile(r"""(?:from|import)\s+['"](\.{1,2}/[^'"]+)['"]""")
+
+
+def _resolver_ruta(carpeta: str, relativa: str) -> str | None:
+    """Convierte un import relativo en ruta del proyecto (sin extensión)."""
+    partes = [p for p in carpeta.split("/") if p]
+    for trozo in relativa.split("/"):
+        if trozo in ("", "."):
+            continue
+        if trozo == "..":
+            if not partes:
+                return None
+            partes.pop()
+        else:
+            partes.append(trozo)
+    ruta = "/".join(partes)
+    for ext in (".js", ".jsx", ".css"):
+        if ruta.endswith(ext):
+            return ruta[: -len(ext)] if ext != ".css" else None  # el CSS ya se cubre aparte
+    return ruta
+_MAX_REPAIR_CHARS = 160_000  # tamaño máximo del proyecto para el pase de reparación
+                             # (subido con el tope de archivos, o se saltaría siempre)
 
 # Detecta imports de Python al inicio de línea (from X import ... | import X).
 _LOCAL_IMPORT_RE = re.compile(
@@ -63,22 +118,67 @@ Devuelve EXCLUSIVAMENTE un JSON válido:
 }
 
 Reglas:
-- Entre 10 y 20 archivos. Rutas SIEMPRE relativas (nunca absolutas ni con '..').
-- STACK: elige UNO de los dos soportados (son los únicos que el sistema sabe
-  verificar ejecutando y arrancar para entregar una URL). Por defecto, Python.
-  * **Python + FastAPI** (preferido): entrada en `backend/main.py` exponiendo
-    `app = FastAPI(...)`, y `backend/requirements.txt` OBLIGATORIO.
+- El número MÍNIMO de archivos necesario, hasta un máximo de 45. El máximo es un
+  techo, NO un objetivo: no inventes archivos para llenarlo. Cada archivo debe
+  tener un propósito que ningún otro cubra. Si dudas si hace falta, no lo crees.
+  * Señal de relleno (NO lo hagas): duplicar en el frontend utilidades que ya
+    están en el backend (`email.js`, `logger.js`, `validations.js`…). El
+    navegador no envía correos ni escribe registros del servidor.
+- Rutas SIEMPRE relativas (nunca absolutas ni con '..').
+- STACK: elige UNO de los dos soportados (los únicos que el sistema sabe
+  verificar ejecutando y arrancar para entregar una URL):
+  * **Python + FastAPI**: entrada en `backend/main.py` exponiendo
+    `app = FastAPI(...)` y `backend/requirements.txt` OBLIGATORIO.
     Persistencia con SQLAlchemy + SQLite (archivo local).
-  * **Node + Express**: entrada en `backend/server.js` con su `package.json`
-    (con script `start`). El servidor DEBE escuchar en `process.env.PORT`
-    (`const port = process.env.PORT || 3000`), o no se podrá publicar su URL.
+  * **Node + Express**: entrada en `backend/server.js` con su `backend/package.json`
+    (con script `start` y TODAS las dependencias declaradas). El servidor DEBE
+    escuchar en `process.env.PORT` (`const port = process.env.PORT || 3000`), o
+    no se podrá publicar su URL. Persistencia con SQLite (better-sqlite3 o
+    sqlite3), sin servicios externos.
   * No mezcles ambos backends, y no uses otros frameworks (NestJS, Django…).
-- Si el proyecto es una APLICACIÓN WEB, DEBES incluir **frontend Y backend**:
-  una carpeta `frontend/` con su interfaz y una `backend/` con la API en FastAPI.
-  Nunca entregues solo el backend cuando piden una app web.
-  * El frontend debe ser **HTML + CSS + JavaScript sin compilar** (sin React, sin
-    npm, sin build): páginas que se abren tal cual y llaman a la API con `fetch`.
-    Así el usuario final no necesita instalar nada.
+  * Declara las dependencias, NUNCA las generes: se instalan con un comando
+    (`pip install` / `npm install`) en una fase posterior.
+  * EL SERVIDOR DEBE ESCUCHAR SIEMPRE. Nunca metas `app.listen()` dentro de un
+    `.then()` de la base de datos: si esa promesa no se resuelve, el proceso se
+    queda vivo, mudo y sin escuchar, y es imposible de diagnosticar. Llama a
+    `app.listen(PORT)` en el nivel superior, imprime un mensaje al arrancar, y
+    conecta la base de datos aparte con su `.catch()` que registre el error.
+- PROHIBIDO DEPENDER DE SERVICIOS EXTERNOS. El sistema se verifica arrancándolo
+  en una máquina donde SOLO existe el propio proyecto:
+  * NADA de PostgreSQL, MySQL, MongoDB, Redis ni colas de mensajes. Ni sus
+    drivers (`pg`, `mysql2`, `mongoose`, `psycopg`, `redis`), ni un servicio en
+    `docker-compose.yml` del que dependa el arranque.
+  * La base de datos es SIEMPRE **SQLite en un archivo dentro del proyecto**, y
+    las tablas se crean al arrancar (o con un script incluido), no con
+    migraciones que requieran un servidor levantado.
+  * Un proyecto que necesite algo que no venga en el propio repositorio NO se
+    puede verificar ni entregar funcionando, y por tanto no sirve.
+- FRONTEND: elige el enfoque que pida el prompt. Hay dos soportados:
+  * **React con Vite** (si el prompt pide React): `frontend/package.json` con
+    `vite` y `@vitejs/plugin-react`, script `"build": "vite build"`, y
+    `frontend/vite.config.js` con `base: './'` y salida en `dist`. Componentes
+    en `frontend/src/`, entrada `frontend/src/main.jsx` e `frontend/index.html`.
+    **`index.html` va en la RAÍZ del frontend (`frontend/index.html`), NUNCA en
+    `public/`**, y debe incluir `<script type="module" src="/src/main.jsx">`:
+    Vite lo exige ahí y si no el build falla con `Could not resolve entry
+    module`. El sistema ejecutará `npm install` y `npm run build` por ti.
+  * **HTML + CSS + JS plano** (si no se pide framework): una página por pantalla.
+    Ahí el JS corre directo en el navegador: **NUNCA `require(...)` ni
+    `module.exports`**, y no declares dos veces el mismo nombre, porque los
+    scripts comparten el ámbito global.
+- EL BACKEND DEBE SERVIR EL FRONTEND para que todo viva en UNA sola URL:
+  * Con React: sirve `frontend/dist` como estáticos y devuelve `index.html` para
+    cualquier ruta desconocida (SPA).
+  * Con HTML plano: sirve la carpeta `frontend` tal cual.
+  * Sin esto no hay una URL única que entregar al usuario.
+- NUNCA planifiques `node_modules`, `dist`, `build` ni nada que produzca un
+  comando: las dependencias se DECLARAN y se instalan al verificar.
+- DEBES incluir frontend Y backend: un backend sin pantallas no es un sistema
+  que alguien pueda usar. Planifica una pantalla por cada caso de uso real.
+- NO planifiques archivos de PRUEBAS (`tests/`, `*.test.py`, `*_test.py`,
+  `conftest.py`). Se generan en una fase posterior, cuando el sistema ya esté
+  funcionando y las pruebas puedan EJECUTARSE de verdad. Ahora solo consumirían
+  espacio del plan sin poder comprobarse.
 - Incluye SIEMPRE: docker-compose.yml, README.md, .env.example, CONFIGURE.md,
   DEPLOY.md (despliegue paso a paso para alguien sin experiencia) y **MANUAL.md**.
 - **MANUAL.md** es el manual de usuario final (no técnico): para qué sirve el
@@ -246,7 +346,53 @@ def _completar_indirectas(requirements: str, files: list[GeneratedFile]) -> str:
     return requirements
 
 
-def _arreglar_imports_del_proyecto(files: list[GeneratedFile]) -> list[GeneratedFile]:
+def _motor_del_prompt(prompt: str) -> str | None:
+    """Motor de base de datos que el usuario pidió en el prompt, si lo nombró."""
+    p = prompt.lower()
+    if "postgres" in p or "postgresql" in p:
+        return "postgres"
+    if "mysql" in p or "mariadb" in p:
+        return "mysql"
+    return None
+
+
+def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -> list[GeneratedFile]:
+    """Aplica los arreglos mecánicos a cualquier versión del proyecto.
+
+    Sirve tanto para el proyecto recién generado como para el que sale de una
+    reparación: son invariantes que deben cumplirse siempre, no un paso único.
+    """
+    contenidos = crear_css_faltantes({f.path: f.content for f in files})
+    if motor:
+        contenidos = forzar_motor_bd(contenidos, motor)
+    contenidos = alinear_modelos_factory(contenidos)
+    contenidos = romper_ciclo_sequelize(contenidos)
+    contenidos = garantizar_listen_incondicional(contenidos)
+    contenidos = crear_stubs_metodos_modulo(contenidos)
+    contenidos = garantizar_jwt_secret(contenidos)
+    contenidos = enganchar_seed(contenidos)
+    contenidos = alinear_contrato_auth(contenidos)
+    contenidos = inyectar_token_axios(contenidos)
+    contenidos = quitar_autoimports(contenidos)
+    contenidos = quitar_imports_a_backend(contenidos)
+    contenidos = frontend_a_esm(contenidos)
+    contenidos = envolver_con_providers(contenidos)
+    contenidos = inyectar_login_premium(contenidos)
+    contenidos = inyectar_estilos_base(contenidos)
+    contenidos = ocultar_navbar_en_rutas_auth(contenidos)
+    contenidos = api_a_rutas_relativas(contenidos)
+    contenidos = servir_frontend_en_express(contenidos)
+    contenidos = completar_dependencias_node(contenidos)
+    contenidos = arreglar_jsx_en_js(contenidos)
+    contenidos = arreglar_estructura_vite(contenidos)
+    contenidos = sacar_listen_del_then(contenidos)
+    contenidos = arreglar_define_suelto(contenidos)
+    return [GeneratedFile(path=p, content=c) for p, c in contenidos.items()]
+
+
+def _arreglar_imports_del_proyecto(
+    files: list[GeneratedFile], motor: str | None = None
+) -> list[GeneratedFile]:
     """Añade los imports de módulos hermanos que falten, en todo el proyecto.
 
     Se hace a nivel de proyecto porque un archivo por sí solo no puede saber
@@ -278,7 +424,17 @@ def _arreglar_imports_del_proyecto(files: list[GeneratedFile]) -> list[Generated
 
     # Con los imports ya en su sitio, se reapuntan las referencias que señalan
     # al módulo equivocado (`database.get_db` cuando vive en `dependencies`).
-    contenidos = arreglar_rutas_estaticas({f.path: f.content for f in resultado})
+    contenidos = crear_css_faltantes({f.path: f.content for f in resultado})
+    if motor:
+        contenidos = forzar_motor_bd(contenidos, motor)
+    contenidos = sacar_listen_del_then(contenidos)
+    contenidos = arreglar_define_suelto(contenidos)
+    contenidos = arreglar_jsx_en_js(contenidos)
+    contenidos = arreglar_estructura_vite(contenidos)
+    # La estructura puede cambiar rutas (index.html sube de `public/`), así que
+    # se rehace la lista antes de los pases que dependen de ellas.
+    resultado = [GeneratedFile(path=p, content=c) for p, c in contenidos.items()]
+    contenidos = arreglar_rutas_estaticas(contenidos)
     contenidos = resolver_referencias(contenidos)
     resultado = [GeneratedFile(path=f.path, content=contenidos[f.path]) for f in resultado]
 
@@ -295,12 +451,143 @@ def _arreglar_imports_del_proyecto(files: list[GeneratedFile]) -> list[Generated
         vecinos.discard(f.path.rpartition("/")[2][:-3])
         nuevo = anadir_imports_faltantes(f.path, f.content, vecinos)
         final.append(f if nuevo == f.content else GeneratedFile(path=f.path, content=nuevo))
-    return final
+
+    # Pipeline COMPLETO al final: los mismos invariantes que en la reparación
+    # (completar dependencias npm, servir el frontend, forzar el motor…). Antes
+    # la generación y la reparación aplicaban pases distintos, y por eso un
+    # proyecto recién generado podía quedar sin el driver de la base de datos.
+    return _normalizar_proyecto(final, motor)
 
 
 def _preparar_correccion(path: str, content: str) -> str:
     """Aplica los arreglos mecánicos antes de juzgar una corrección."""
     return sanear(path, content)
+
+
+def _normalizar_ruta(path: str, conocidas: set[str]) -> str | None:
+    """Devuelve la ruta relativa del proyecto, o None si no es utilizable.
+
+    El agente reparador recibe errores que contienen rutas ABSOLUTAS del
+    contenedor (`/app/generated/proyecto/backend/package.json`) y devuelve la
+    corrección con ese mismo formato. El escritor lo rechaza —con razón, es su
+    defensa contra escrituras fuera del proyecto— pero eso tumbaba la
+    generación entera por una diferencia de formato.
+    """
+    limpia = path.replace("\\", "/").strip()
+    if limpia in conocidas:
+        return limpia
+
+    segmentos = limpia.split("/")
+    # Se busca el sufijo que coincida con un archivo real del proyecto: así se
+    # recupera la ruta relativa de una absoluta, sin abrir la puerta a otras.
+    utiles = [p for p in segmentos if p not in ("", ".", "..")]
+    for inicio in range(len(utiles)):
+        candidata = "/".join(utiles[inicio:])
+        if candidata in conocidas:
+            logger.info("Ruta normalizada: '%s' -> '%s'", path, candidata)
+            return candidata
+
+    # Archivo nuevo: solo se acepta si es claramente relativo y seguro. Se
+    # comprueba sobre los segmentos ORIGINALES, no sobre los ya filtrados.
+    if limpia.startswith("/") or ".." in segmentos or ":" in limpia:
+        logger.warning("Descartada corrección con ruta insegura: '%s'", path)
+        return None
+    return limpia
+
+
+_SERVICIOS_EXTERNOS = {
+    "postgres": ("postgres", "postgresql", "psycopg", '"pg"', "pg^", "pgadmin"),
+    "mysql": ("mysql", "mariadb", "mysql2"),
+    "mongodb": ("mongodb", "mongoose", "mongo "),
+    "redis": ("redis",),
+}
+
+
+def _servicio_externo(manifest: dict) -> str | None:
+    """Nombre del servicio externo del que depende el plan, si lo hay.
+
+    Se mira el texto del manifiesto (resumen, instrucciones y propósito de cada
+    archivo), que es donde el planificador declara sus intenciones antes de que
+    cueste 38 llamadas descubrirlo.
+    """
+    texto = " ".join([
+        str(manifest.get("summary", "")),
+        str(manifest.get("run_instructions", "")),
+        " ".join(f"{f.get('path','')} {f.get('purpose','')}" for f in manifest.get("files", [])),
+    ]).lower()
+
+    for servicio, marcadores in _SERVICIOS_EXTERNOS.items():
+        if any(m in texto for m in marcadores):
+            # SQLite menciona "sql" pero no es un servicio: no debe confundirse.
+            if servicio == "postgres" and "postgres" not in texto and "psycopg" not in texto:
+                continue
+            return servicio
+    return None
+
+
+def _filtrar_no_generables(planificados: list[dict]) -> tuple[list[dict], list[str]]:
+    """Quita del plan lo que no debe generarse como archivo.
+
+    Dos categorías:
+      * Dependencias y artefactos de build (`node_modules`, `dist`…). Se
+        instalan con un comando; generarlos serían miles de archivos.
+      * Pruebas. Se escriben cuando el sistema ya arranca y pueden EJECUTARSE;
+        antes son afirmaciones que nadie puede comprobar.
+    """
+    artefactos = ("node_modules/", "dist/", "build/", ".venv/", "__pycache__/", "vendor/")
+    nombres_test = ("conftest.py", "jest.config.js", "pytest.ini")
+    # Un modelo no puede escribir un binario como texto: si "genera" un .sqlite
+    # produce basura que el código abrirá con un error incomprensible
+    # (`file is not a database`). Estos archivos los crea la app al arrancar.
+    binarios = (".sqlite", ".sqlite3", ".db", ".pyc", ".log", ".png", ".jpg", ".ico", ".zip")
+
+    def es_prueba(ruta: str) -> bool:
+        r = ruta.lower()
+        nombre = r.rsplit("/", 1)[-1]
+        return (
+            r.startswith("tests/") or "/tests/" in r or "/__tests__/" in r
+            or nombre.startswith("test_") or nombre.endswith(("_test.py", ".test.js", ".spec.js"))
+            or nombre in nombres_test
+        )
+
+    # Un proyecto Node no lleva `__init__.py`, ni uno Python lleva package.json
+    # en el backend. Mezclarlos no solo produce archivos muertos: dos
+    # `__init__.py` sueltos bastaron para que el despachador tratara un
+    # proyecto Node como si fuera Python y se saltara toda la verificación.
+    rutas = [s["path"].lower() for s in planificados]
+    es_node = any(r.endswith("package.json") and "frontend/" not in r for r in rutas)
+
+    conservados, excluidos = [], []
+    for spec in planificados:
+        ruta = spec["path"]
+        r = ruta.lower()
+        intruso = es_node and r.endswith((".py", "requirements.txt"))
+        if any(a in r for a in artefactos) or r.endswith(binarios) or es_prueba(ruta) or intruso:
+            excluidos.append(ruta)
+        else:
+            conservados.append(spec)
+    return conservados, excluidos
+
+
+def _error_sintaxis_js(content: str) -> str | None:
+    """Mensaje de error si el JavaScript no es sintácticamente válido."""
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
+                                         encoding="utf-8") as tmp:
+            tmp.write(content)
+            ruta = tmp.name
+        try:
+            resultado = subprocess.run(
+                ["node", "--check", ruta], capture_output=True, text=True, timeout=30
+            )
+            if resultado.returncode == 0:
+                return None
+            detalle = (resultado.stderr or resultado.stdout).strip()
+            return detalle.splitlines()[-1][:160] if detalle else "sintaxis inválida"
+        finally:
+            os.unlink(ruta)
+    except (OSError, subprocess.SubprocessError):
+        return None  # Sin Node no se puede juzgar: no se bloquea la corrección.
 
 
 def _correccion_valida(
@@ -314,6 +601,18 @@ def _correccion_valida(
     compila, se conserva la versión anterior. La reparación solo puede mejorar
     o quedarse igual, nunca degradar.
     """
+    if path.endswith((".js", ".mjs")):
+        # Node está disponible en el contenedor, así que las correcciones de
+        # JavaScript se validan igual que las de Python. Aceptarlas a ciegas
+        # dejaba que una reparación introdujera un error nuevo.
+        error = _error_sintaxis_js(content)
+        if error is None:
+            return True
+        if anterior is None:
+            return True
+        logger.warning("DESCARTADA la corrección de %s: %s", path, error)
+        return False
+
     if not path.endswith(".py"):
         return True  # Otros formatos no se pueden comprobar así de barato.
 
@@ -342,9 +641,18 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         self._llm = MultiModelLLM(role="code")
 
     def generate(self, prompt: str, language: str = "es") -> GeneratedProject:
+        # El motor de BD que pidió el usuario se recuerda para imponerlo: si el
+        # modelo se desvía a otro (p. ej. SQLite cuando se pidió PostgreSQL), se
+        # corrige, porque degradar el motor es entregar algo distinto.
+        self._motor = _motor_del_prompt(prompt)
         # 1) PLANIFICAR
         manifest = self._plan(prompt, language)
         planificados = [f for f in manifest.get("files", []) if f.get("path")]
+        # No basta con pedirlo en el prompt: se filtra aquí lo que no debe
+        # generarse nunca, porque las reglas escritas se incumplen.
+        planificados, excluidos = _filtrar_no_generables(planificados)
+        if excluidos:
+            logger.info("Excluidos del plan (%d): %s", len(excluidos), excluidos[:8])
         if not planificados:
             raise ProjectGenerationError("El planificador no devolvió archivos válidos.")
 
@@ -364,8 +672,12 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         context = ""
         fallidos: list[str] = []
         for i, spec in enumerate(specs, start=1):
+            # El contexto que ve el modelo es el CONTRATO de lo ya escrito (qué
+            # expone cada archivo) más un extracto de los últimos archivos, en
+            # vez de un volcado de código que no le decía dónde vive cada cosa.
+            contrato = contrato_markdown({f.path: f.content for f in files})
             try:
-                content = self._write_file(prompt, manifest, spec, context, language)
+                content = self._write_file(prompt, manifest, spec, contrato, context, language)
             except (ProjectGenerationError, LLMError) as exc:
                 # Un archivo que falla NO debe tirar el proyecto entero: se
                 # anota y se sigue. El pase de completitud lo genera después,
@@ -376,9 +688,9 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
                 continue
 
             files.append(GeneratedFile(path=spec["path"], content=content))
-            block = f"--- {spec['path']} ---\n{content}\n"
-            if len(context) + len(block) <= _MAX_CONTEXT_CHARS:
-                context += block
+            # Solo se arrastran los últimos archivos, para dar continuidad de
+            # estilo; la coherencia estructural la aporta el contrato.
+            context = (f"--- {spec['path']} ---\n{content}\n" + context)[:_MAX_RECIENTES]
             logger.info("Escrito %d/%d: %s", i, len(specs), spec["path"])
 
         if not files:
@@ -388,8 +700,9 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
 
         # 3) COMPLETAR (generar módulos importados pero no creados + __init__.py)
         files = self._ensure_complete(prompt, manifest, files, language)
+        files = self._ensure_modulos_js(prompt, manifest, files, language)
         files = self._ensure_requirements(files, language)
-        files = _arreglar_imports_del_proyecto(files)
+        files = _arreglar_imports_del_proyecto(files, getattr(self, "_motor", None))
 
         # 4) REPARAR (auto-corrección de lo que rompe la ejecución)
         files = self._repair(files, language)
@@ -412,12 +725,20 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         ni siquiera puede instalar sus dependencias, y sin `MANUAL.md` el usuario
         se queda sin las credenciales de prueba.
         """
+        # Sin estos el proyecto no se instala, no se entiende o no se puede usar.
         imprescindibles = (
             "requirements.txt", "package.json", "manual.md", "readme.md", ".env.example",
         )
 
         def es_imprescindible(spec: dict) -> bool:
-            return spec["path"].lower().rsplit("/", 1)[-1] in imprescindibles
+            nombre = spec["path"].lower().rsplit("/", 1)[-1]
+            # La INTERFAZ es imprescindible: un proyecto sin pantallas no es un
+            # sistema que alguien pueda usar. Antes se conservaba el
+            # `frontend/package.json` y se descartaba el `index.html`, que es
+            # exactamente al revés de lo que importa.
+            if nombre.endswith(".html"):
+                return True
+            return nombre in imprescindibles
 
         clave = [s for s in planificados if es_imprescindible(s)]
         resto = [s for s in planificados if not es_imprescindible(s)]
@@ -437,10 +758,18 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         data = self._chat(_PLANNER_SYS, user)
         if "files" not in data:
             raise ProjectGenerationError("El plan no incluye la clave 'files'.")
+
+        # El motor de base de datos que elija el plan SE RESPETA. Degradarlo a
+        # SQLite para que arrancara en el entorno de pruebas sería entregar algo
+        # distinto de lo que el usuario pidió; el entorno de verificación ahora
+        # presta PostgreSQL y MySQL reales para poder comprobarlo tal cual.
+        if externo := _servicio_externo(data):
+            logger.info("El plan usa %s; se verificará con esa base de datos.", externo)
         return data
 
     def _write_file(
-        self, prompt: str, manifest: dict, spec: dict, context: str, language: str
+        self, prompt: str, manifest: dict, spec: dict, contrato: str,
+        recientes: str, language: str,
     ) -> str:
         structure = "\n".join(
             f"- {f.get('path')}: {f.get('purpose', '')}" for f in manifest.get("files", [])
@@ -449,8 +778,14 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
             f"[Idioma: {language}]\n\n"
             f"PROYECTO: {manifest.get('name')} — {manifest.get('summary')}\n\n"
             f"OBJETIVO GLOBAL (prompt original):\n{prompt}\n\n"
-            f"ESTRUCTURA COMPLETA:\n{structure}\n\n"
-            f"ARCHIVOS YA ESCRITOS (mantén coherencia):\n{context or '(ninguno todavía)'}\n\n"
+            f"ESTRUCTURA COMPLETA PLANIFICADA:\n{structure}\n\n"
+            f"CONTRATO — QUÉ EXPONE CADA ARCHIVO YA ESCRITO:\n"
+            f"{contrato or '(ninguno todavía)'}\n\n"
+            f"REGLA: usa ÚNICAMENTE símbolos que aparezcan en el contrato, y "
+            f"pídeselos al archivo que realmente los declara. Si necesitas algo "
+            f"que no está en la lista, defínelo en ESTE archivo.\n\n"
+            f"ÚLTIMOS ARCHIVOS (solo como referencia de estilo):\n"
+            f"{recientes or '(ninguno todavía)'}\n\n"
             f"Escribe AHORA el contenido completo de: {spec['path']}\n"
             f"Propósito: {spec.get('purpose', '')}"
         )
@@ -484,6 +819,65 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
                         logger.warning("El reintento de %s sigue roto; se deja al reparador.",
                                        spec["path"])
         return content
+
+    def _ensure_modulos_js(
+        self, prompt: str, manifest: dict, files: list[GeneratedFile], language: str
+    ) -> list[GeneratedFile]:
+        """Genera los módulos JS/JSX que el código importa pero nadie escribió.
+
+        Es el gemelo de `_ensure_complete` para JavaScript. El generador escribe
+        `import ProtectedRoute from './components/ProtectedRoute'` dando por
+        hecho que existe, y el build muere con `Could not resolve`. El pase de
+        reparación no puede salvarlo porque solo edita archivos existentes.
+        """
+        existentes = {f.path for f in files}
+        pendientes: dict[str, str] = {}  # ruta -> quién lo importa
+
+        for f in files:
+            if not f.path.endswith((".js", ".jsx")):
+                continue
+            carpeta = f.path.rsplit("/", 1)[0]
+            for relativa in _IMPORT_JS.findall(f.content):
+                base = _resolver_ruta(carpeta, relativa)
+                if base is None:
+                    continue
+                # El import va sin extensión: puede ser cualquiera de estas.
+                variantes = [base, f"{base}.js", f"{base}.jsx",
+                             f"{base}/index.js", f"{base}/index.jsx"]
+                if any(v in existentes for v in variantes):
+                    continue
+                # Un import que se sale de su propia mitad del proyecto
+                # (frontend pidiéndole código al backend) es un ERROR, no un
+                # archivo que falte: crearlo en `frontend/backend/...` sería
+                # inventar una carpeta absurda y esconder el problema.
+                mitad_origen = f.path.split("/", 1)[0]
+                if base.split("/", 1)[0] != mitad_origen:
+                    logger.warning(
+                        "Import cruzado inválido en %s -> '%s': el frontend y el "
+                        "backend son procesos distintos y no comparten código.",
+                        f.path, relativa,
+                    )
+                    continue
+
+                destino = f"{base}.jsx" if "/components/" in base or "/pages/" in base \
+                    else f"{base}.js"
+                pendientes.setdefault(destino, f.path)
+
+        if not pendientes:
+            return files
+
+        logger.warning("Faltan %d módulo(s) JS que el código importa: %s",
+                       len(pendientes), list(pendientes)[:5])
+        for destino, quien in pendientes.items():
+            try:
+                contenido = self._write_missing(prompt, manifest, files, destino, language)
+            except (ProjectGenerationError, LLMError) as exc:
+                logger.warning("No se pudo generar %s (%s).", destino, exc)
+                continue
+            if contenido:
+                files.append(GeneratedFile(path=destino, content=contenido))
+                logger.info("Generado el módulo que faltaba: %s (lo usa %s)", destino, quien)
+        return files
 
     def _ensure_requirements(
         self, files: list[GeneratedFile], language: str
@@ -661,22 +1055,42 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         self, prompt: str, manifest: dict, files: list[GeneratedFile], target: str, language: str
     ) -> str:
         """Genera el contenido de un módulo que otros archivos importan."""
-        context = ""
-        for f in files:
-            block = f"--- {f.path} ---\n{f.content}\n"
-            if len(context) + len(block) <= _MAX_CONTEXT_CHARS:
-                context += block
+        # Aquí el contrato es aún más decisivo: hay que crear justo los símbolos
+        # que otros módulos ya están importando, con esos nombres exactos.
+        contrato = contrato_markdown({f.path: f.content for f in files})
+        usos = self._quien_lo_usa(target, files)
         user = (
             f"[Idioma: {language}]\n\n"
             f"PROYECTO: {manifest.get('name')} — {manifest.get('summary')}\n\n"
             f"OBJETIVO GLOBAL:\n{prompt}\n\n"
-            f"ARCHIVOS EXISTENTES (mantén coherencia con ellos):\n{context}\n\n"
-            f"FALTA el archivo '{target}': otros módulos lo importan pero no existe. "
-            f"Escribe su contenido COMPLETO y coherente para que el proyecto se ejecute "
-            f"(imports correctos, nombres que coincidan con quienes lo usan)."
+            f"CONTRATO — QUÉ EXPONE CADA ARCHIVO EXISTENTE:\n{contrato}\n\n"
+            f"FALTA el archivo '{target}': otros módulos lo importan pero no existe.\n"
+            f"QUIÉN LO USA Y QUÉ LE PIDE:\n{usos or '(no se detectaron usos concretos)'}\n\n"
+            f"Escribe su contenido COMPLETO definiendo EXACTAMENTE esos símbolos, "
+            f"con esos nombres, para que el proyecto se ejecute."
         )
         data = self._chat(_WRITER_SYS, user)
         return data.get("content") or ""
+
+    @staticmethod
+    def _quien_lo_usa(target: str, files: list[GeneratedFile]) -> str:
+        """Líneas de otros archivos que importan o usan el módulo que falta.
+
+        Sin esto, el módulo se genera "a ojo" y define nombres parecidos pero
+        distintos a los que sus consumidores esperan.
+        """
+        modulo = target.rpartition("/")[2][:-3]
+        hallazgos: list[str] = []
+        for f in files:
+            if not f.path.endswith(".py") or f.path == target:
+                continue
+            for linea in f.content.split("\n"):
+                limpia = linea.strip()
+                if f"{modulo}." in limpia or f"import {modulo}" in limpia:
+                    hallazgos.append(f"  [{f.path}] {limpia[:110]}")
+                if len(hallazgos) >= 25:
+                    return "\n".join(hallazgos)
+        return "\n".join(hallazgos)
 
     def _repair(self, files: list[GeneratedFile], language: str) -> list[GeneratedFile]:
         blob = "\n\n".join(f"--- {f.path} ---\n{f.content}" for f in files)
@@ -694,6 +1108,8 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         for fix in data.get("files", []):
             path, content = fix.get("path"), fix.get("content")
             if path and content is not None:
+                path = _normalizar_ruta(path, set(by_path))
+            if path and content is not None:
                 content = _preparar_correccion(path, content)
             if path and content is not None and _correccion_valida(path, content, by_path.get(path)):
                 by_path[path] = GeneratedFile(path=path, content=content)
@@ -703,6 +1119,19 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
     # ------------------------------------------------------------------
     # Auto-verificación: corregir con el ERROR REAL de ejecución
     # ------------------------------------------------------------------
+    def aplicar_stubs(self, project: GeneratedProject) -> GeneratedProject:
+        """Crea stubs para los símbolos que ningún módulo llegó a exportar."""
+        original = {f.path: f.content for f in project.files}
+        contenidos = crear_stubs_simbolos_js(original)
+        contenidos = crear_stubs_metodos_modulo(contenidos)
+        if contenidos == original:
+            return project
+        return GeneratedProject(
+            name=project.name, summary=project.summary,
+            files=[GeneratedFile(path=p, content=c) for p, c in contenidos.items()],
+            run_instructions=project.run_instructions,
+        )
+
     def repair_with_error(self, project: GeneratedProject, error: str) -> GeneratedProject:
         """Corrige el proyecto usando el traceback real que produjo al ejecutarse."""
         blob = "\n\n".join(f"--- {f.path} ---\n{f.content}" for f in project.files)
@@ -731,15 +1160,21 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         for fix in data.get("files", []):
             path, content = fix.get("path"), fix.get("content")
             if path and content is not None:
+                path = _normalizar_ruta(path, set(by_path))
+            if path and content is not None:
                 content = _preparar_correccion(path, content)
             if path and content is not None and _correccion_valida(path, content, by_path.get(path)):
                 by_path[path] = GeneratedFile(path=path, content=content)
                 logger.info("Auto-corregido con error real: %s", path)
 
+        # Los arreglos deterministas se aplican TAMBIÉN aquí. Corrían solo al
+        # generar, pero el reparador escribe código nuevo que puede reintroducir
+        # justo lo que esos pases resuelven: añadía un `import './x.css'` sin
+        # crear el archivo y el build volvía a romperse por un fallo ya resuelto.
         return GeneratedProject(
             name=project.name,
             summary=project.summary,
-            files=list(by_path.values()),
+            files=_normalizar_proyecto(list(by_path.values()), getattr(self, "_motor", None)),
             run_instructions=project.run_instructions,
         )
 

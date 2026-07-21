@@ -20,11 +20,15 @@ from src.infrastructure.adapters.node_project_verifier import (
     _free_port,
     _terminar,
     _wait_http,
+    entorno_con_bd,
+    espejo_local,
 )
 
 logger = logging.getLogger(__name__)
 
-_STARTUP_TIMEOUT = 40
+# Margen amplio: cargar dependencias desde el bind mount es lento (ver la nota
+# en node_project_verifier). La URL que se entrega al usuario depende de esto.
+_STARTUP_TIMEOUT = 90
 
 
 class NodeProjectRunner(ProjectRunnerPort):
@@ -41,9 +45,15 @@ class NodeProjectRunner(ProjectRunnerPort):
         return NodeProjectVerifier.detecta(project_dir)
 
     def start(self, project_dir: str, project_name: str) -> str | None:
-        root = Path(project_dir).resolve()
-        if not root.is_dir():
+        original = Path(project_dir).resolve()
+        if not original.is_dir():
             return None
+
+        # Se arranca desde la copia en disco local que dejó el verificador (con
+        # las dependencias ya instaladas): en el bind mount, solo cargar las
+        # librerías tardaría 60-90 s. `reutilizar=True` para NO recopiar sin
+        # node_modules.
+        root = espejo_local(original, reutilizar=True)
 
         pkg_dir = NodeProjectVerifier._find_package(root)  # noqa: SLF001
         if pkg_dir is None:
@@ -65,7 +75,7 @@ class NodeProjectRunner(ProjectRunnerPort):
             return None
 
         # El servidor debe leer el puerto de PORT (así lo exige el planificador).
-        env = {**os.environ, "PORT": str(port), "NODE_ENV": "production"}
+        env = {**entorno_con_bd(pkg_dir), "PORT": str(port), "NODE_ENV": "production"}
         try:
             process = subprocess.Popen(
                 ["node", entry.name],

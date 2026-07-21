@@ -24,7 +24,10 @@ from src.infrastructure.adapters.project_verifier import PythonProjectVerifier
 logger = logging.getLogger(__name__)
 
 _STARTUP_TIMEOUT = 40  # segundos esperando a que la app responda
-_PORT_RANGE = (8100, 8300)  # rango donde publicamos los proyectos generados
+# Rango donde publicamos los proyectos generados. DEBE coincidir con los
+# puertos publicados en docker-compose.yml: si no, la URL entregada al usuario
+# apuntaría a un puerto inalcanzable desde su navegador.
+_PORT_RANGE = (8100, 8120)
 
 
 class LocalProjectRunner(ProjectRunnerPort):
@@ -69,6 +72,9 @@ class LocalProjectRunner(ProjectRunnerPort):
                 cwd=str(root),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                # Misma base de datos con la que se verificó: si no, arrancaría
+                # sin poder conectarse a nada.
+                env=PythonProjectVerifier._entorno(root),  # noqa: SLF001
             )
         except OSError as exc:
             logger.warning("No se pudo arrancar '%s': %s", project_name, exc)

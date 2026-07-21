@@ -131,6 +131,13 @@ class GenerateResponse(BaseModel):
         default=None,
         description="URL del proyecto ya corriendo (si se pudo arrancar).",
     )
+    # El manual viaja COMPLETO, no su ruta: quien va a usar el sistema no tiene
+    # por qué abrir archivos ni saber qué es una ruta. Ahí están los usuarios de
+    # prueba y las credenciales para entrar.
+    manual: str | None = Field(
+        default=None,
+        description="Contenido del manual de usuario (MANUAL.md), si se generó.",
+    )
 
 
 class AuditRequest(BaseModel):
@@ -528,7 +535,26 @@ def generate_project(
         files=[f.path for f in project.files],
         run_instructions=project.run_instructions,
         url=use_case.last_url,
+        manual=_manual_del_proyecto(project),
     )
+
+
+def _manual_del_proyecto(project) -> str | None:
+    """Contenido del manual de usuario, para mostrarlo en la conversación.
+
+    Se generaba y nadie llegaba a leerlo: la interfaz solo enseñaba una ruta
+    (además la del contenedor, que no existe en la máquina del usuario). Quien
+    va a probar el sistema necesita las credenciales delante, no una dirección
+    de archivo.
+    """
+    for archivo in project.files:
+        if archivo.path.upper().endswith("MANUAL.MD"):
+            return archivo.content
+    # Sin manual, al menos el README explica de qué va el sistema.
+    for archivo in project.files:
+        if archivo.path.upper().endswith("README.MD"):
+            return archivo.content
+    return None
 
 
 @router.post(

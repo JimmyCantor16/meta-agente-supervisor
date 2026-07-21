@@ -195,18 +195,30 @@ function GenerateProjectSection({
               href={data.url}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 transition hover:bg-emerald-100"
+              className="block rounded-xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-center transition hover:bg-emerald-100"
             >
-              <span className="text-sm font-semibold text-emerald-800">
+              <span className="block text-base font-bold text-emerald-800">
                 🚀 {t.dashboard.projectRunning}
               </span>
-              <span className="font-mono text-sm text-emerald-700 underline">{data.url}</span>
+              <span className="mt-1 block font-mono text-sm text-emerald-700 underline">
+                {data.url}
+              </span>
             </a>
           )}
-          <div>
-            <span className="text-slate-400">{t.dashboard.generatedSavedAt}</span>
-            <code className="ml-2 break-all font-mono text-slate-600">{data.output_path}</code>
-          </div>
+
+          {/* Los usuarios de prueba se muestran AQUÍ: quien va a probar el
+              sistema no debería tener que abrir un archivo para entrar. */}
+          {data.manual && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+              <p className="mb-2 text-sm font-bold text-sky-900">
+                📋 {t.dashboard.howToUse}
+              </p>
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-sky-900">
+                {data.manual}
+              </pre>
+            </div>
+          )}
+
           <div>
             <span className="text-slate-400">{t.dashboard.generatedFiles}</span>
             <ul className="mt-1 grid grid-cols-1 gap-x-4 font-mono text-xs text-slate-500 sm:grid-cols-2">

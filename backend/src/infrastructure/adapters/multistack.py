@@ -23,10 +23,43 @@ from src.infrastructure.adapters.project_verifier import PythonProjectVerifier
 logger = logging.getLogger(__name__)
 
 
+_ENTRADAS_PYTHON = ("backend/main.py", "app/main.py", "src/main.py", "main.py",
+                    "backend/app.py", "app.py")
+_IGNORAR = {"__pycache__", "node_modules", ".git", "dist", "build"}
+
+
 def _es_python(project_dir: str) -> bool:
-    """True si el proyecto tiene código Python que verificar."""
+    """True si el proyecto es realmente un proyecto Python.
+
+    Antes bastaba con que existiera UN archivo .py, y eso resultó desastroso:
+    un proyecto Node al que el planificador le coló dos `__init__.py` vacíos se
+    enviaba al verificador de Python, que no encontraba módulo de entrada, se
+    saltaba todas las comprobaciones y devolvía "correcto". El proyecto se
+    entregaba sin que nadie hubiera ejecutado una sola línea.
+
+    Ahora manda el PUNTO DE ENTRADA, y si no hay ninguno claro, quién domina.
+    """
     root = Path(project_dir).resolve()
-    return any(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
+
+    # 1) Un punto de entrada Python real decide sin ambigüedad.
+    for candidato in _ENTRADAS_PYTHON:
+        ruta = root / candidato
+        if ruta.is_file() and "app" in ruta.read_text(encoding="utf-8", errors="ignore"):
+            return True
+
+    # 2) Si hay un package.json con servidor, es Node aunque haya .py sueltos.
+    if any(p for p in root.rglob("package.json") if not _IGNORAR.intersection(p.parts)):
+        logger.info("Se detecta package.json: el proyecto se trata como Node.")
+        return False
+
+    # 3) Sin entrada ni package.json: gana quien tenga más código propio. Los
+    #    `__init__.py` no cuentan, porque suelen ir vacíos y no son señal.
+    py = [
+        p for p in root.rglob("*.py")
+        if not _IGNORAR.intersection(p.parts) and p.name != "__init__.py"
+    ]
+    js = [p for p in root.rglob("*.js") if not _IGNORAR.intersection(p.parts)]
+    return len(py) >= len(js) and bool(py)
 
 
 class MultiStackProjectVerifier(ProjectVerifierPort):
