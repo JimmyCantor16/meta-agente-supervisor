@@ -1140,12 +1140,14 @@ def inyectar_estilos_base(archivos: dict[str, str]) -> dict[str, str]:
 
 
 def ocultar_navbar_en_rutas_auth(archivos: dict[str, str]) -> dict[str, str]:
-    """Esconde la barra de navegación en el login (y en registro).
+    """Esconde navegación Y footer en el login (y en registro).
 
     El login es una pantalla completa; un menú encima —y sin estilos— la parte
-    por la mitad. Se envuelve el `return` en un ternario en lugar de hacer un
-    `return` temprano: así TODOS los hooks se siguen llamando en el mismo orden
-    y React no protesta con "rendered fewer hooks than expected".
+    por la mitad, y un footer con "enlaces rápidos" a rutas que exigen sesión
+    solo mete ruido (visto en 'multiplicando-aventuras'). Se envuelve el
+    `return` en un ternario en lugar de hacer un `return` temprano: así TODOS
+    los hooks se siguen llamando en el mismo orden y React no protesta con
+    "rendered fewer hooks than expected".
     """
     rutas = "['/login','/register','/registro','/signup']"
     resultado = dict(archivos)
@@ -1153,7 +1155,7 @@ def ocultar_navbar_en_rutas_auth(archivos: dict[str, str]) -> dict[str, str]:
         if not ruta.endswith(".jsx"):
             continue
         nombre = ruta.rsplit("/", 1)[-1].lower()
-        if "navbar" not in nombre and "header" not in nombre and "menu" not in nombre:
+        if all(p not in nombre for p in ("navbar", "header", "menu", "footer")):
             continue
         if "_rutaActual" in cont or "react-router-dom" not in cont:
             continue
