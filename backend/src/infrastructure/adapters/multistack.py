@@ -19,6 +19,7 @@ from src.infrastructure.adapters.node_project_runner import NodeProjectRunner
 from src.infrastructure.adapters.node_project_verifier import NodeProjectVerifier
 from src.infrastructure.adapters.project_runner import LocalProjectRunner
 from src.infrastructure.adapters.project_verifier import PythonProjectVerifier
+from src.infrastructure.adapters.static_site import StaticSiteRunner, StaticSiteVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class MultiStackProjectVerifier(ProjectVerifierPort):
     def __init__(self) -> None:
         self._python = PythonProjectVerifier()
         self._node = NodeProjectVerifier()
+        self._static = StaticSiteVerifier()
 
     def verify(self, project_dir: str) -> str | None:
         if _es_python(project_dir):
@@ -78,13 +80,21 @@ class MultiStackProjectVerifier(ProjectVerifierPort):
             logger.info("Verificando como proyecto Node.")
             return self._node.verify(project_dir)
 
-        # Ni Python ni Node: se dice claramente, en vez de fingir que está bien.
-        logger.warning(
-            "NO VERIFICADO: no se reconoce el stack de '%s'. Se entrega sin "
-            "comprobar que ejecute.",
-            Path(project_dir).name,
+        if StaticSiteVerifier.detecta(project_dir):
+            logger.info("Verificando como sitio estático.")
+            return self._static.verify(project_dir)
+
+        # Stack desconocido: antes esto devolvía None y contaba como
+        # "verificación superada" sin haber mirado NADA (mentira técnica).
+        # Ahora es un fallo explícito: activa la reparación y, si no se
+        # arregla, la entrega dirá la verdad.
+        logger.warning("Stack desconocido en '%s': se reporta como fallo.",
+                       Path(project_dir).name)
+        return (
+            "No se reconoce el stack del proyecto: no hay entrada Python "
+            "(main.py/app.py), ni package.json (Node), ni index.html (sitio "
+            "estático). Genera el punto de entrada que corresponda al stack pedido."
         )
-        return None
 
 
 class MultiStackProjectRunner(ProjectRunnerPort):
@@ -93,12 +103,15 @@ class MultiStackProjectRunner(ProjectRunnerPort):
     def __init__(self, public_host: str = "localhost") -> None:
         self._python = LocalProjectRunner(public_host)
         self._node = NodeProjectRunner(public_host)
+        self._static = StaticSiteRunner(public_host)
 
     def start(self, project_dir: str, project_name: str) -> str | None:
         if _es_python(project_dir):
             return self._python.start(project_dir, project_name)
         if NodeProjectRunner.detecta(project_dir):
             return self._node.start(project_dir, project_name)
+        if StaticSiteRunner.detecta(project_dir):
+            return self._static.start(project_dir, project_name)
 
         logger.warning(
             "SIN URL para '%s': no se reconoce el stack, no se sabe cómo arrancarlo.",
@@ -107,6 +120,7 @@ class MultiStackProjectRunner(ProjectRunnerPort):
         return None
 
     def stop(self, project_name: str) -> None:
-        # No sabemos cuál lo tenía; ambos ignoran los nombres desconocidos.
+        # No sabemos cuál lo tenía; todos ignoran los nombres desconocidos.
         self._python.stop(project_name)
         self._node.stop(project_name)
+        self._static.stop(project_name)

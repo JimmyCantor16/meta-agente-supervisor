@@ -1125,6 +1125,158 @@ def ocultar_navbar_en_rutas_auth(archivos: dict[str, str]) -> dict[str, str]:
     return resultado
 
 
+def garantizar_contenido_visible(archivos: dict[str, str]) -> dict[str, str]:
+    """Neutraliza las animaciones de scroll que dejan la página EN BLANCO.
+
+    Patrón recurrente del modelo ("animaciones sutiles al hacer scroll"):
+
+        section.style.opacity = '0';            // al cargar: TODO oculto
+        window.addEventListener('scroll', ...)  // revela… solo si haces scroll
+
+    Resultado: la página carga sin errores de consola pero no se ve NADA
+    (y la rama else del listener re-oculta lo que sale del viewport). Como el
+    contenido correcto está en el HTML, la única solución con garantía es no
+    permitir jamás que el JS ponga la página en opacidad 0: se cambia cada
+    `opacity = '0'` por '1' y el transform de ocultación por su posición final.
+    La transición CSS se conserva; la fiabilidad gana a la animación.
+    """
+    resultado = dict(archivos)
+    patron_op = re.compile(r"(\.style\.opacity\s*=\s*)(['\"])0(?:\.\d+)?\2")
+    patron_tr = re.compile(
+        r"(\.style\.transform\s*=\s*)(['\"])translate[XY]?\([^)]+\)\2")
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith((".js", ".jsx")):
+            continue
+        nuevo = patron_op.sub(r"\g<1>\g<2>1\g<2>", contenido)
+        nuevo = patron_tr.sub(r"\g<1>\g<2>none\g<2>", nuevo)
+        if nuevo != contenido and _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: animación de scroll que ocultaba "
+                        "el contenido, neutralizada.", ruta)
+
+    # El mismo patrón en CSS: `section { opacity: 0; }` esperando a un JS que
+    # añada la clase "visible". Solo se toca el selector de secciones.
+    patron_css = re.compile(
+        r"((?:^|\})\s*(?:section|main|article)[^{]*\{[^}]*?opacity\s*:\s*)0(?:\.\d+)?",
+        re.S)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith(".css"):
+            continue
+        nuevo = patron_css.sub(r"\g<1>1", contenido)
+        if nuevo != contenido:
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: secciones con opacity 0 en CSS, "
+                        "puestas visibles.", ruta)
+    return resultado
+
+
+def arreglar_texto_gradiente_invisible(archivos: dict[str, str]) -> dict[str, str]:
+    """Repara el texto con gradiente que queda INVISIBLE sobre su propio fondo.
+
+    Patrón del modelo: un título con el efecto de texto-gradiente
+    (`background-clip: text; color: transparent`) usando EXACTAMENTE el mismo
+    `linear-gradient(...)` que el fondo de su contenedor. Resultado: camuflaje
+    perfecto — el nombre del titular desaparece del hero. Si el mismo gradiente
+    aparece en otra regla sin clip (el contenedor), el texto recortado se pasa
+    a color sólido blanco, que sobre ese fondo siempre se lee.
+    """
+    patron_regla = re.compile(r"([^{}]+)\{([^}]*)\}", re.S)
+    patron_grad = re.compile(r"linear-gradient\([^)]*\)")
+    resultado = dict(archivos)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith(".css"):
+            continue
+        reglas = patron_regla.findall(contenido)
+        con_clip, sin_clip = [], set()
+        for selector, cuerpo in reglas:
+            grads = set(patron_grad.findall(cuerpo))
+            if not grads:
+                continue
+            if "background-clip" in cuerpo and "transparent" in cuerpo:
+                con_clip.append((selector.strip(), cuerpo, grads))
+            else:
+                sin_clip |= grads
+        nuevo = contenido
+        for selector, cuerpo, grads in con_clip:
+            if not (grads & sin_clip):
+                continue  # el gradiente del texto no coincide con ningún fondo
+            cuerpo_nuevo = re.sub(r"color\s*:\s*transparent\s*;?",
+                                  "color: #ffffff;", cuerpo)
+            nuevo = nuevo.replace(cuerpo, cuerpo_nuevo)
+        if nuevo != contenido:
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: texto-gradiente invisible sobre "
+                        "el mismo gradiente, pasado a color sólido.", ruta)
+    return resultado
+
+
+def garantizar_manual(archivos: dict[str, str]) -> dict[str, str]:
+    """Garantiza que todo proyecto se entregue con un MANUAL.md.
+
+    Parte de la definición de "hecho" del producto: entregado = URL viva +
+    manual con credenciales y modo de uso. El planificador a veces lo omite
+    (si el prompt del usuario lista entregables sin mencionarlo), así que se
+    genera aquí de forma determinista: título del index.html o del
+    package.json, credenciales extraídas de la semilla si existen, y pasos de
+    uso. Si el proyecto ya trae su MANUAL.md, no se toca.
+    """
+    if any(p.rsplit("/", 1)[-1].upper() == "MANUAL.MD" for p in archivos):
+        return archivos
+
+    # Título: <title> del index.html, o el name del package.json, o genérico.
+    titulo = "Proyecto generado"
+    for ruta, cont in archivos.items():
+        if ruta.endswith("index.html"):
+            m = re.search(r"<title>\s*([^<]+?)\s*</title>", cont)
+            if m:
+                titulo = m.group(1).strip()
+                break
+    else:
+        for ruta, cont in archivos.items():
+            if ruta.endswith("package.json"):
+                m = re.search(r'"name"\s*:\s*"([^"]+)"', cont)
+                if m:
+                    titulo = m.group(1)
+                    break
+
+    # Credenciales: pares usuario/contraseña de los archivos de semilla.
+    credenciales: list[tuple[str, str]] = []
+    for ruta, cont in archivos.items():
+        if "seed" not in ruta.rsplit("/", 1)[-1].lower():
+            continue
+        usuarios = re.findall(r"username:\s*['\"]([^'\"]+)['\"]", cont)
+        claves = re.findall(r"(?:bcrypt\.hash\(|password:\s*)['\"]([^'\"]+)['\"]", cont)
+        for i, u in enumerate(usuarios):
+            clave = claves[i] if i < len(claves) else (claves[-1] if claves else "?")
+            credenciales.append((u, clave))
+
+    if credenciales:
+        seccion_acceso = "## Usuarios de prueba\n\n" + "\n".join(
+            f"- **{u}** — contraseña: `{c}`" for u, c in credenciales
+        )
+    else:
+        seccion_acceso = ("## Acceso\n\nEste proyecto no requiere inicio de sesión: "
+                          "se usa directamente al abrir la URL.")
+
+    listado = "\n".join(f"- `{p}`" for p in sorted(archivos))
+    manual = (
+        f"# Manual de uso — {titulo}\n\n"
+        f"## Cómo empezar\n\n"
+        f"1. Abre en el navegador la **URL** que entrega el sistema al terminar la generación.\n"
+        f"2. La página carga lista para usarse; no hay que instalar nada.\n\n"
+        f"{seccion_acceso}\n\n"
+        f"## Archivos del proyecto\n\n{listado}\n\n"
+        f"---\n"
+        f"*Manual generado automáticamente. Los campos marcados como pendientes "
+        f"(si los hay) deben completarse por el propietario del proyecto.*\n"
+    )
+    resultado = dict(archivos)
+    resultado["MANUAL.md"] = manual
+    logger.info("Arreglo automático: MANUAL.md generado (%d credencial(es) detectada(s)).",
+                len(credenciales))
+    return resultado
+
+
 def _simbolos_exportados_js(contenido: str) -> set[str]:
     """Nombres que un módulo JS pone a disposición de los demás."""
     simbolos: set[str] = set()

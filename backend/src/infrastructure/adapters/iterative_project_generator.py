@@ -39,6 +39,9 @@ from src.infrastructure.adapters.python_syntax_fixes import (
     inyectar_login_premium,
     inyectar_estilos_base,
     ocultar_navbar_en_rutas_auth,
+    garantizar_contenido_visible,
+    arreglar_texto_gradiente_invisible,
+    garantizar_manual,
     envolver_con_providers,
     quitar_autoimports,
     quitar_imports_a_backend,
@@ -387,6 +390,9 @@ def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -
     contenidos = arreglar_estructura_vite(contenidos)
     contenidos = sacar_listen_del_then(contenidos)
     contenidos = arreglar_define_suelto(contenidos)
+    contenidos = garantizar_contenido_visible(contenidos)
+    contenidos = arreglar_texto_gradiente_invisible(contenidos)
+    contenidos = garantizar_manual(contenidos)
     return [GeneratedFile(path=p, content=c) for p, c in contenidos.items()]
 
 

@@ -21,6 +21,7 @@ from pathlib import Path
 from src.application.account_service import AccountService
 from src.application.aplicar_ajuste import AplicarAjusteUseCase
 from src.application.audit_project import AuditProjectUseCase
+from src.application.mejorar_proyecto import MejorarProyectoUseCase
 from src.application.evaluate_prompt import EvaluatePromptUseCase, RegisterFeedbackUseCase
 from src.application.explain_project import ExplainProjectUseCase
 from src.application.generate_project import GenerateProjectUseCase
@@ -405,6 +406,15 @@ def get_ajuste_use_case(
     return AplicarAjusteUseCase(reader, ajustador, verifier, get_settings().generated_dir)
 
 
+def get_mejorar_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    auditor: CodeAuditorPort = Depends(get_code_auditor),
+    ajustar: AplicarAjusteUseCase = Depends(get_ajuste_use_case),
+) -> MejorarProyectoUseCase:
+    """Construye el bucle de auto-mejora (auditar → aplicar → verificar)."""
+    return MejorarProyectoUseCase(reader, auditor, ajustar)
+
+
 @lru_cache
 def get_code_teacher() -> CodeTeacherPort:
     """Provee el agente profesor: IA real o mock, según configuración."""
@@ -759,6 +769,65 @@ def ajustar_modulo(
         verificado=resultado.verificado,
         revertido=resultado.revertido,
         detalle=resultado.detalle,
+    )
+
+
+class MejorarRequest(BaseModel):
+    """Cuerpo para lanzar una pasada de auto-mejora sobre un proyecto."""
+
+    project_name: str = Field(..., min_length=1)
+    language: Literal["es", "en"] = Field(default="es")
+
+
+class MejoraResponse(BaseModel):
+    """Resultado de la pasada: qué entró verificado y qué se revirtió."""
+
+    proyecto: str
+    diagnostico: str
+    sugerencias_totales: int
+    intentadas: int
+    aplicadas: list[str]
+    revertidas: list[str]
+    sin_cambios: list[str]
+
+
+@router.post(
+    "/lecciones/mejorar",
+    response_model=MejoraResponse,
+    status_code=status.HTTP_200_OK,
+    summary="El agente audita el proyecto y aplica las mejoras (fase construcción).",
+)
+def mejorar_proyecto(
+    request: MejorarRequest,
+    use_case: MejorarProyectoUseCase = Depends(get_mejorar_use_case),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
+) -> MejoraResponse:
+    """Bucle de auto-mejora: cada sugerencia se aplica verificada o se revierte."""
+    try:
+        account.ensure_can_learn(user)
+    except PaymentRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+
+    try:
+        resumen = use_case.execute(request.project_name, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except AuditError as exc:
+        message = str(exc)
+        if "no existe" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message) from exc
+
+    account.record_lesson(user)
+    return MejoraResponse(
+        proyecto=resumen.proyecto,
+        diagnostico=resumen.diagnostico,
+        sugerencias_totales=resumen.sugerencias_totales,
+        intentadas=resumen.intentadas,
+        aplicadas=resumen.aplicadas,
+        revertidas=resumen.revertidas,
+        sin_cambios=resumen.sin_cambios,
     )
 
 
