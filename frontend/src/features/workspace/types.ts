@@ -8,6 +8,8 @@ export interface AgentEvaluation {
   status: EvaluationStatus;
   analisis_critico: string;
   sugerencias_mejora: string[];
+  /** Preguntas de aterrizaje: datos que solo el usuario puede aportar. */
+  preguntas_para_el_usuario?: string[];
   prompt_final_optimizado: string;
 }
 

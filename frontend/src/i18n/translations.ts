@@ -61,6 +61,21 @@ const es = {
     title: "Convierte tu idea en un sistema real",
     subtitle:
       "Describe lo que quieres construir. Evalúo la idea, la optimizo, genero el proyecto y te enseño a completarlo.",
+    chatTitle: "¿En qué puedo ayudarte a construir hoy?",
+    chatSubtitle:
+      "Cuéntame tu idea en tus palabras. Yo la convierto en un sistema real y te enseño en el camino.",
+    chipCv: "🧑‍💻 Un CV web para conseguir trabajo",
+    chipStore: "🛒 Una tienda con carrito y pagos",
+    chipBooking: "📅 Reservas para mi negocio",
+  },
+  preflight: {
+    title: "Antes de construir, cuéntame",
+    hint: "Estos datos solo los sabes tú. Lo que respondas se usa tal cual; lo que dejes vacío irá marcado como pendiente en el manual.",
+    answerPlaceholder: "Tu respuesta…",
+    answeredNote: (n: number, total: number) =>
+      `${n} de ${total} respondidas — se incluirán en la generación.`,
+    dataHeader:
+      "DATOS REALES APORTADOS POR EL USUARIO (úsalos tal cual, no inventes):",
   },
   promptInput: {
     placeholder:
@@ -193,6 +208,20 @@ const en: Translation = {
     title: "Turn your idea into a real system",
     subtitle:
       "Describe what you want to build. I assess the idea, optimize it, generate the project, and teach you how to finish it.",
+    chatTitle: "What can I help you build today?",
+    chatSubtitle:
+      "Tell me your idea in your own words. I'll turn it into a real system and teach you along the way.",
+    chipCv: "🧑‍💻 A web CV to land a job",
+    chipStore: "🛒 A store with cart and payments",
+    chipBooking: "📅 Bookings for my business",
+  },
+  preflight: {
+    title: "Before building, tell me",
+    hint: "Only you know these details. Your answers are used as-is; anything left blank will be marked as pending in the manual.",
+    answerPlaceholder: "Your answer…",
+    answeredNote: (n: number, total: number) =>
+      `${n} of ${total} answered — they will be included in the generation.`,
+    dataHeader: "REAL DATA PROVIDED BY THE USER (use as-is, do not invent):",
   },
   promptInput: {
     placeholder:

@@ -75,6 +75,13 @@ class AgentEvaluation(BaseModel):
         default_factory=list,
         description="Lista de mejoras de arquitectura o lógica omitida.",
     )
+    preguntas_para_el_usuario: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Preguntas de aterrizaje: datos que SOLO el usuario puede aportar "
+            "(nombres reales, enlaces, productos, precios). Vacía si no faltan."
+        ),
+    )
     prompt_final_optimizado: str = Field(
         ...,
         min_length=1,

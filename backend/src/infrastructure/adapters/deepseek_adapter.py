@@ -51,6 +51,7 @@ texto fuera del JSON) con exactamente estas claves:
   "status": "aprobado" | "sugerir_ajustes",
   "analisis_critico": "Evaluación técnica de la viabilidad de la idea y sus reglas de negocio.",
   "sugerencias_mejora": ["Sugerencia concreta 1", "Sugerencia concreta 2"],
+  "preguntas_para_el_usuario": ["Pregunta 1", "Pregunta 2"],
   "prompt_final_optimizado": "El prompt de grado de ingeniería listo para inyectar en un modelo de generación de código autónomo."
 }
 
@@ -59,6 +60,12 @@ Reglas estrictas:
   detectes ambigüedad relevante o lógica faltante, usa "sugerir_ajustes".
 - "sugerencias_mejora" debe ir vacía ([]) únicamente cuando el status sea
   "aprobado" y no queden mejoras materiales.
+- "preguntas_para_el_usuario" son EXCLUSIVAMENTE datos que SOLO el usuario puede
+  aportar y que, si faltan, el sistema tendría que INVENTAR relleno: nombres
+  reales de personas o marcas, enlaces (GitHub, redes), productos y precios
+  reales, textos propios, credenciales de servicios. NO son preguntas técnicas
+  de arquitectura (eso decídelo tú). Máximo 4, concretas y fáciles de responder.
+  Déjala vacía ([]) si la idea no necesita datos personales del usuario.
 - "prompt_final_optimizado" SIEMPRE debe entregarse, incluso si el status es
   "aprobado" (en ese caso, es la versión pulida de la idea original).
 - Redacta TODOS los valores de texto del JSON en el idioma que se te indique al

@@ -42,6 +42,23 @@ export function DashboardEvaluacion({
   const { status, analisis_critico, sugerencias_mejora, prompt_final_optimizado } = evaluation;
   const needsChanges = status === "sugerir_ajustes";
 
+  // --- Pre-Flight: respuestas del usuario a las preguntas de aterrizaje ---
+  const preguntas = evaluation.preguntas_para_el_usuario ?? [];
+  const [respuestas, setRespuestas] = useState<Record<number, string>>({});
+  useEffect(() => setRespuestas({}), [evaluation.id]);
+
+  // El prompt que se genera lleva las respuestas del usuario incrustadas:
+  // datos reales en vez de relleno inventado.
+  const contestadas = preguntas
+    .map((q, i) => ({ q, a: (respuestas[i] ?? "").trim() }))
+    .filter((par) => par.a.length > 0);
+  const promptEnriquecido =
+    contestadas.length === 0
+      ? prompt_final_optimizado
+      : `${prompt_final_optimizado}\n\n${t.preflight.dataHeader}\n${contestadas
+          .map((par) => `- ${par.q}: ${par.a}`)
+          .join("\n")}`;
+
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
@@ -85,10 +102,40 @@ export function DashboardEvaluacion({
         </Card>
       </div>
 
+      {/* Pre-Flight: la conversación que aterriza la idea con datos reales */}
+      {preguntas.length > 0 && (
+        <Card title={t.preflight.title} icon={<span>💬</span>}>
+          <p className="mb-4 text-sm text-slate-500">{t.preflight.hint}</p>
+          <div className="space-y-4">
+            {preguntas.map((pregunta, i) => (
+              <div key={i} className="space-y-2">
+                {/* Burbuja del agente */}
+                <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-brand-100 bg-brand-50 px-4 py-2.5 text-sm text-brand-900">
+                  {pregunta}
+                </div>
+                {/* Respuesta del usuario */}
+                <input
+                  type="text"
+                  value={respuestas[i] ?? ""}
+                  onChange={(e) =>
+                    setRespuestas((prev) => ({ ...prev, [i]: e.target.value }))
+                  }
+                  placeholder={t.preflight.answerPlaceholder}
+                  className="ml-auto block w-[85%] rounded-2xl rounded-br-sm border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                />
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-xs font-medium text-slate-400">
+            {t.preflight.answeredNote(contestadas.length, preguntas.length)}
+          </p>
+        </Card>
+      )}
+
       <PromptFinalBlock prompt={prompt_final_optimizado} />
 
       <GenerateProjectSection
-        prompt={prompt_final_optimizado}
+        prompt={promptEnriquecido}
         teacherMode={teacherMode}
         isLoggedIn={isLoggedIn}
         account={account}

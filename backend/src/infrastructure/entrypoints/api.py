@@ -102,6 +102,10 @@ class EvaluationResponse(BaseModel):
     status: EvaluationStatus
     analisis_critico: str
     sugerencias_mejora: list[str]
+    preguntas_para_el_usuario: list[str] = Field(
+        default_factory=list,
+        description="Datos que solo el usuario puede aportar antes de generar.",
+    )
     prompt_final_optimizado: str
 
 
@@ -538,6 +542,7 @@ def evaluate_prompt(
         status=ev.status,
         analisis_critico=ev.analisis_critico,
         sugerencias_mejora=ev.sugerencias_mejora,
+        preguntas_para_el_usuario=ev.preguntas_para_el_usuario,
         prompt_final_optimizado=ev.prompt_final_optimizado,
     )
 

@@ -66,6 +66,10 @@ class MockPromptEvaluator(PromptEvaluatorPort):
                 "Especificar la estrategia de autenticación y autorización.",
                 "Añadir criterios de aceptación medibles para cada funcionalidad.",
             ],
+            preguntas_para_el_usuario=[
+                "¿Cuál es el nombre real del negocio o marca que debe aparecer en pantalla?",
+                "¿Tienes logo o colores de marca, o el sistema propone unos?",
+            ],
             prompt_final_optimizado=(
                 f"Construye el siguiente sistema con calidad de producción: {snippet}. "
                 f"Incluye arquitectura por capas, validación de entradas, manejo de "
@@ -92,6 +96,10 @@ class MockPromptEvaluator(PromptEvaluatorPort):
                 "Define the tech stack and the data model.",
                 "Specify the authentication and authorization strategy.",
                 "Add measurable acceptance criteria for each feature.",
+            ],
+            preguntas_para_el_usuario=[
+                "What is the real business or brand name that should appear on screen?",
+                "Do you have a logo or brand colors, or should the system propose them?",
             ],
             prompt_final_optimizado=(
                 f"Build the following system with production quality: {snippet}. "

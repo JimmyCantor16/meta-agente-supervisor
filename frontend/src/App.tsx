@@ -26,8 +26,12 @@ export default function App() {
   const [view, setView] = useState("home");
   const [teacherMode, setTeacherMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Texto sembrado por los chips de ejemplo (remonta el PromptInput vía `key`).
+  const [seed, setSeed] = useState("");
 
   const isAdmin = account?.is_admin ?? false;
+  // Sin resultado ni carga: pantalla de bienvenida centrada, estilo chat.
+  const chatMode = !data && !loading;
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800">
@@ -45,17 +49,56 @@ export default function App() {
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
             {view === "home" && (
-              <div className="space-y-8">
-                {/* Hero */}
-                <div>
-                  <p className="text-sm font-medium text-brand-600">{t.hero.greeting}</p>
-                  <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                    {t.hero.title}
-                  </h1>
-                  <p className="mt-2 max-w-2xl text-sm text-slate-500">{t.hero.subtitle}</p>
+              <div className={chatMode ? "flex min-h-[70vh] flex-col justify-center space-y-8" : "space-y-8"}>
+                {/* Hero: centrado estilo chat cuando aún no hay conversación */}
+                {chatMode ? (
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-brand-600">{t.hero.greeting}</p>
+                    <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                      {t.hero.chatTitle}
+                    </h1>
+                    <p className="mx-auto mt-3 max-w-xl text-sm text-slate-500">
+                      {t.hero.chatSubtitle}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm font-medium text-brand-600">{t.hero.greeting}</p>
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                      {t.hero.title}
+                    </h1>
+                    <p className="mt-2 max-w-2xl text-sm text-slate-500">{t.hero.subtitle}</p>
+                  </div>
+                )}
 
-                  {user && account && (
-                    <div className="mt-3 flex flex-wrap gap-2">
+                <div className={chatMode ? "mx-auto w-full max-w-2xl" : ""}>
+                  <PromptInput
+                    key={seed}
+                    initialValue={seed}
+                    onSubmit={evaluate}
+                    loading={loading}
+                    teacherMode={teacherMode}
+                    onTeacherToggle={() => setTeacherMode((v) => !v)}
+                  />
+
+                  {/* Chips de ejemplo, como los accesos rápidos de un chat de IA */}
+                  {chatMode && (
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      {[t.hero.chipCv, t.hero.chipStore, t.hero.chipBooking].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setSeed(chip.replace(/^\S+\s/, ""))}
+                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {chatMode && user && account && (
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
                       {account.paid ? (
                         <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
                           {t.account.planActive(account.plan)}
@@ -73,13 +116,6 @@ export default function App() {
                     </div>
                   )}
                 </div>
-
-                <PromptInput
-                  onSubmit={evaluate}
-                  loading={loading}
-                  teacherMode={teacherMode}
-                  onTeacherToggle={() => setTeacherMode((v) => !v)}
-                />
 
                 {error && (
                   <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
