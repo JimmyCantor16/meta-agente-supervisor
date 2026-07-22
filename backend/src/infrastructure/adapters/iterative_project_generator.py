@@ -48,6 +48,7 @@ from src.infrastructure.adapters.python_syntax_fixes import (
     ocultar_navbar_en_rutas_auth,
     garantizar_contenido_visible,
     arreglar_texto_gradiente_invisible,
+    garantizar_identidad_visual,
     garantizar_manual,
     envolver_con_providers,
     quitar_autoimports,
@@ -201,6 +202,16 @@ Reglas:
   * Python: `requirements.txt` (con TODAS las librerías que importe el código).
   * Node/JS: `package.json`.
   * Si hay un Dockerfile que haga `COPY X`, ESE archivo X debe estar en la lista.
+- IDENTIDAD VISUAL POR DEFECTO (todo proyecto la lleva, sin que la pidan):
+  * Planifica `frontend/logo.svg` (o `frontend/public/logo.svg` con Vite): un
+    isotipo simple — forma geométrica con degradado de la paleta + inicial del
+    proyecto — que junto al nombre forma el imagotipo del navbar.
+  * El `index.html` declara favicon (el mismo SVG) y `<title>` con el nombre
+    real del proyecto. Nada de "Vite App" ni pestañas sin identidad.
+- LANDING / HERO con sistema de scroll (si el proyecto tiene página pública):
+  * Hero a pantalla (o casi) con titular, subtítulo y CTA que hace scroll suave
+    a la primera sección; navegación por anclas y un indicador de "baja para
+    ver más". Las secciones se recorren con scroll fluido, no con saltos secos.
 - Divide el código en módulos coherentes (NO todo en un solo archivo).
 - CRÍTICO — COHERENCIA DE IMPORTS (el error más común, evítalo):
   * Si un archivo importará `paquete.modulo`, ESE `paquete/modulo.py` DEBE estar
@@ -225,6 +236,28 @@ Reglas:
 - Imports correctos y COMPLETOS. No uses funciones/variables/clases que no existan.
 - Coherente con los archivos ya escritos (mismos nombres de módulos, rutas, modelos).
 - Si es código, debe ejecutarse sin errores de import ni de sintaxis.
+
+REGLAS DE OFICIO (siempre, en todos los archivos — no son opcionales):
+- CLEAN CODE + SOLID: cada módulo/clase/función con UNA responsabilidad clara;
+  nombres que se explican solos; funciones cortas; sin duplicar lógica que ya
+  existe en otro archivo del proyecto; depende de abstracciones donde el
+  proyecto ya las tenga (servicios, repositorios), no saltes capas.
+- CERO COMENTARIOS NARRATIVOS: nada de `// función que suma`, `# aquí se crea
+  la variable`, `// fin del if`. Un comentario solo se permite cuando explica un
+  PORQUÉ no evidente (una restricción, un workaround); si el código se entiende
+  solo — que es la meta — no lleva comentario.
+- RESPONSIVE SIEMPRE: todo CSS con enfoque mobile-first; grids/flex con
+  `minmax()` y `clamp()` para tipografías; nada que dependa de un ancho fijo;
+  las tablas anchas con scroll horizontal propio, nunca rompiendo la página.
+- ESCALABLE: constantes de configuración en un solo lugar (variables CSS,
+  config del backend); listas y catálogos renderizados desde datos, nunca
+  hardcodeados uno a uno en el markup; paginación o límites donde una colección
+  pueda crecer.
+- LANDING/HERO con scroll: si escribes una página de aterrizaje, incluye
+  `scroll-behavior: smooth`, navegación por anclas a cada sección y el CTA del
+  hero apuntando a la primera sección de contenido.
+- IDENTIDAD: usa el `logo.svg` del proyecto en el navbar/header y como favicon;
+  el `<title>` lleva el nombre real del proyecto.
 - COHERENCIA DE VERSIONES (error frecuente y fatal):
   * Python: usa imagen base **python:3.12-slim** o superior en el Dockerfile.
     Si usas sintaxis moderna (`X | None`, `list[str]`, `dict[str, int]`), la
@@ -406,6 +439,7 @@ def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -
     contenidos = arreglar_define_suelto(contenidos)
     contenidos = garantizar_contenido_visible(contenidos)
     contenidos = arreglar_texto_gradiente_invisible(contenidos)
+    contenidos = garantizar_identidad_visual(contenidos)
     contenidos = garantizar_manual(contenidos)
     return [GeneratedFile(path=p, content=c) for p, c in contenidos.items()]
 

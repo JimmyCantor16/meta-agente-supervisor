@@ -1787,6 +1787,81 @@ def alinear_semilla_con_modelo(archivos: dict[str, str]) -> dict[str, str]:
     return resultado
 
 
+_LOGO_SVG = """\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="{c1}"/>
+      <stop offset="1" stop-color="{c2}"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#g)"/>
+  <text x="32" y="43" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif"
+        font-size="30" font-weight="800" fill="#ffffff">{inicial}</text>
+</svg>
+"""
+
+_TITULO_GENERICO = re.compile(r"<title>\s*(vite app|document|app|index)?\s*</title>", re.I)
+
+
+def garantizar_identidad_visual(archivos: dict[str, str]) -> dict[str, str]:
+    """Todo proyecto sale con isotipo, favicon y título reales (imagotipo).
+
+    El modelo suele entregar pestañas sin identidad ('Vite App', sin favicon).
+    Aquí se garantiza: un `logo.svg` (isotipo con degradado + inicial del
+    proyecto), el favicon apuntándole, y un `<title>` con nombre real. Si el
+    modelo ya creó su propio logo, no se toca nada.
+    """
+    indexes = [r for r in archivos if r.endswith("index.html")]
+    if not indexes:
+        return archivos
+
+    # Nombre del proyecto: del package.json o del primer <h1>/<title> no genérico.
+    nombre = ""
+    for ruta, cont in archivos.items():
+        if ruta.endswith("package.json"):
+            m = re.search(r'"name"\s*:\s*"([^"]+)"', cont)
+            if m:
+                nombre = m.group(1)
+                break
+    if not nombre:
+        for ruta in indexes:
+            m = re.search(r"<h1[^>]*>([^<]{3,60})</h1>", archivos[ruta])
+            if m:
+                nombre = m.group(1).strip()
+                break
+    nombre = (nombre or "app").replace("-", " ").replace("_", " ").strip()
+    titulo = nombre.title()
+    inicial = next((c for c in titulo if c.isalnum()), "A").upper()
+
+    resultado = dict(archivos)
+
+    ya_hay_logo = any("logo" in r.lower() and r.endswith(".svg") for r in archivos)
+    usa_vite = any(r.endswith("vite.config.js") for r in archivos)
+    ruta_logo = "frontend/public/logo.svg" if usa_vite else "frontend/logo.svg"
+    if not ya_hay_logo:
+        resultado[ruta_logo] = _LOGO_SVG.format(c1="#6366f1", c2="#ec4899", inicial=inicial)
+        logger.info("Identidad visual: creado %s (isotipo '%s').", ruta_logo, inicial)
+
+    href_logo = "/logo.svg" if usa_vite else "logo.svg"
+    for ruta in indexes:
+        cont = resultado[ruta]
+        nuevo = cont
+        if 'rel="icon"' not in nuevo and "rel='icon'" not in nuevo:
+            nuevo = nuevo.replace(
+                "</head>",
+                f'    <link rel="icon" type="image/svg+xml" href="{href_logo}">\n</head>',
+                1,
+            )
+        nuevo = _TITULO_GENERICO.sub(f"<title>{titulo}</title>", nuevo)
+        if "<title>" not in nuevo:
+            nuevo = nuevo.replace("</head>", f"    <title>{titulo}</title>\n</head>", 1)
+        if nuevo != cont:
+            resultado[ruta] = nuevo
+            logger.info("Identidad visual en %s: favicon y título reales.", ruta)
+    return resultado
+
+
 def garantizar_manual(archivos: dict[str, str]) -> dict[str, str]:
     """Garantiza que todo proyecto se entregue con un MANUAL.md.
 

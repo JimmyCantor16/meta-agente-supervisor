@@ -16,6 +16,8 @@ from src.domain.entities import (
     DeveloperPrompt,
     EvaluationStatus,
     FewShotExample,
+    PlantillaPropuesta,
+    PreguntaUsuario,
     ResponseLanguage,
 )
 from src.domain.ports import PromptEvaluatorPort
@@ -67,8 +69,34 @@ class MockPromptEvaluator(PromptEvaluatorPort):
                 "Añadir criterios de aceptación medibles para cada funcionalidad.",
             ],
             preguntas_para_el_usuario=[
-                "¿Cuál es el nombre real del negocio o marca que debe aparecer en pantalla?",
-                "¿Tienes logo o colores de marca, o el sistema propone unos?",
+                PreguntaUsuario(
+                    texto="¿Cuál es el nombre real del negocio o marca que debe aparecer en pantalla?",
+                    opciones=["Uso mi nombre personal", "Aún no tengo nombre: propónme uno"],
+                ),
+                PreguntaUsuario(
+                    texto="¿Qué métodos de pago aceptarás?",
+                    opciones=["Tarjeta", "Nequi", "DaviPlata", "Efectivo contra entrega"],
+                ),
+            ],
+            plantillas=[
+                PlantillaPropuesta(
+                    nombre="Artesanal cálida",
+                    descripcion="Tarjetas grandes, tipografía redondeada y mucho aire.",
+                    estilo="acogedor, hecho a mano",
+                    colores=["#8B4513", "#EFEBE9", "#C2185B", "#FFF8F0"],
+                ),
+                PlantillaPropuesta(
+                    nombre="Oscura premium",
+                    descripcion="Fondo índigo, acentos en gradiente y tarjetas con sombra.",
+                    estilo="moderno, tiempos de IA",
+                    colores=["#0F1220", "#FF6B81", "#FFB347", "#4FE3C1"],
+                ),
+                PlantillaPropuesta(
+                    nombre="Minimal editorial",
+                    descripcion="Blanco dominante, una sola tinta de acento y tipografía serif.",
+                    estilo="limpio, tipográfico",
+                    colores=["#FFFFFF", "#111111", "#2563EB"],
+                ),
             ],
             prompt_final_optimizado=(
                 f"Construye el siguiente sistema con calidad de producción: {snippet}. "
@@ -98,8 +126,34 @@ class MockPromptEvaluator(PromptEvaluatorPort):
                 "Add measurable acceptance criteria for each feature.",
             ],
             preguntas_para_el_usuario=[
-                "What is the real business or brand name that should appear on screen?",
-                "Do you have a logo or brand colors, or should the system propose them?",
+                PreguntaUsuario(
+                    texto="What is the real business or brand name that should appear on screen?",
+                    opciones=["Use my personal name", "No name yet: propose one"],
+                ),
+                PreguntaUsuario(
+                    texto="Which payment methods will you accept?",
+                    opciones=["Card", "Nequi", "DaviPlata", "Cash on delivery"],
+                ),
+            ],
+            plantillas=[
+                PlantillaPropuesta(
+                    nombre="Warm artisan",
+                    descripcion="Big cards, rounded type, plenty of air.",
+                    estilo="cozy, handmade",
+                    colores=["#8B4513", "#EFEBE9", "#C2185B", "#FFF8F0"],
+                ),
+                PlantillaPropuesta(
+                    nombre="Premium dark",
+                    descripcion="Indigo background, gradient accents, shadowed cards.",
+                    estilo="modern, AI-era",
+                    colores=["#0F1220", "#FF6B81", "#FFB347", "#4FE3C1"],
+                ),
+                PlantillaPropuesta(
+                    nombre="Minimal editorial",
+                    descripcion="White-dominant, single accent ink, serif type.",
+                    estilo="clean, typographic",
+                    colores=["#FFFFFF", "#111111", "#2563EB"],
+                ),
             ],
             prompt_final_optimizado=(
                 f"Build the following system with production quality: {snippet}. "

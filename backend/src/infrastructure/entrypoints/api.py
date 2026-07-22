@@ -95,6 +95,23 @@ class EvaluateRequest(BaseModel):
     )
 
 
+class PreguntaDTO(BaseModel):
+    """Pregunta de aterrizaje con opciones marcables + campo libre opcional."""
+
+    texto: str
+    opciones: list[str] = Field(default_factory=list)
+    permite_otro: bool = True
+
+
+class PlantillaDTO(BaseModel):
+    """Plantilla visual propuesta, con su paleta declarada."""
+
+    nombre: str
+    descripcion: str
+    estilo: str = ""
+    colores: list[str] = Field(default_factory=list)
+
+
 class EvaluationResponse(BaseModel):
     """Respuesta de la evaluación. Incluye `id` para poder enviar feedback luego."""
 
@@ -102,9 +119,13 @@ class EvaluationResponse(BaseModel):
     status: EvaluationStatus
     analisis_critico: str
     sugerencias_mejora: list[str]
-    preguntas_para_el_usuario: list[str] = Field(
+    preguntas_para_el_usuario: list[PreguntaDTO] = Field(
         default_factory=list,
         description="Datos que solo el usuario puede aportar antes de generar.",
+    )
+    plantillas: list[PlantillaDTO] = Field(
+        default_factory=list,
+        description="Plantillas visuales para elegir, combinar o sustituir por una referencia propia.",
     )
     prompt_final_optimizado: str
 
@@ -126,6 +147,29 @@ class GenerateRequest(BaseModel):
         description="Prompt de ingeniería (idealmente el prompt_final_optimizado).",
     )
     language: Literal["es", "en"] = Field(default="es")
+    modo_inquieto: bool = Field(
+        default=True,
+        description=(
+            "Con True (defecto) el agente explora más allá de lo pedido: añade "
+            "mejoras que el usuario agradecerá (responsive, accesibilidad, "
+            "detalles). Con False se limita estrictamente a lo solicitado."
+        ),
+    )
+
+
+_INSTRUCCION_INQUIETO = (
+    "\n\n[MODO INQUIETO ACTIVADO] No te limites a lo pedido: sé creativo e "
+    "intuitivo. Añade los detalles que el usuario no pidió pero agradecerá: "
+    "diseño responsive real, accesibilidad, estados vacíos y de error cuidados, "
+    "micro-interacciones sutiles, datos de ejemplo creíbles y estructura "
+    "escalable. Los extras NUNCA pueden romper ni retrasar lo pedido: primero "
+    "lo esencial funcionando, luego el brillo."
+)
+
+_INSTRUCCION_OBEDIENTE = (
+    "\n\n[SIN EXTRAS] El usuario pidió explícitamente ceñirse a lo solicitado: "
+    "no añadas funcionalidades, pantallas ni adornos que no estén en el prompt."
+)
 
 
 class GenerateResponse(BaseModel):
@@ -542,7 +586,15 @@ def evaluate_prompt(
         status=ev.status,
         analisis_critico=ev.analisis_critico,
         sugerencias_mejora=ev.sugerencias_mejora,
-        preguntas_para_el_usuario=ev.preguntas_para_el_usuario,
+        preguntas_para_el_usuario=[
+            PreguntaDTO(texto=p.texto, opciones=p.opciones, permite_otro=p.permite_otro)
+            for p in ev.preguntas_para_el_usuario
+        ],
+        plantillas=[
+            PlantillaDTO(nombre=t.nombre, descripcion=t.descripcion,
+                         estilo=t.estilo, colores=t.colores)
+            for t in ev.plantillas
+        ],
         prompt_final_optimizado=ev.prompt_final_optimizado,
     )
 
@@ -591,8 +643,14 @@ def generate_project(
     except PaymentRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
 
+    # El modo inquieto viaja como parte del prompt: el dominio no necesita
+    # conocer la política, solo el texto final de ingeniería.
+    prompt_final = request.prompt + (
+        _INSTRUCCION_INQUIETO if request.modo_inquieto else _INSTRUCCION_OBEDIENTE
+    )
+
     try:
-        project, output_path = use_case.execute(request.prompt, request.language)
+        project, output_path = use_case.execute(prompt_final, request.language)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except ProjectGenerationError as exc:

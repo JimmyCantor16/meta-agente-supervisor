@@ -4,12 +4,29 @@
 
 export type EvaluationStatus = "aprobado" | "sugerir_ajustes";
 
+// Pregunta de aterrizaje con opciones marcables (checkbox) + campo libre.
+export interface PreguntaUsuario {
+  texto: string;
+  opciones: string[];
+  permite_otro: boolean;
+}
+
+// Plantilla visual propuesta junto al plan, con su paleta declarada.
+export interface PlantillaPropuesta {
+  nombre: string;
+  descripcion: string;
+  estilo: string;
+  colores: string[];
+}
+
 export interface AgentEvaluation {
   status: EvaluationStatus;
   analisis_critico: string;
   sugerencias_mejora: string[];
   /** Preguntas de aterrizaje: datos que solo el usuario puede aportar. */
-  preguntas_para_el_usuario?: string[];
+  preguntas_para_el_usuario?: PreguntaUsuario[];
+  /** Plantillas para elegir, combinar o sustituir por una referencia propia. */
+  plantillas?: PlantillaPropuesta[];
   prompt_final_optimizado: string;
 }
 

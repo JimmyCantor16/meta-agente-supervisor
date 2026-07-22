@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EvaluationStatus(str, Enum):
@@ -55,6 +55,36 @@ class DeveloperPrompt(BaseModel):
         return self.content.strip()
 
 
+class PreguntaUsuario(BaseModel):
+    """Pregunta de aterrizaje con opciones marcables (checkbox) + campo libre.
+
+    El usuario responde marcando opciones; `permite_otro` habilita un campo
+    de texto final por si ninguna opción encaja o quiere añadir algo.
+    """
+
+    texto: str = Field(..., min_length=1)
+    opciones: list[str] = Field(
+        default_factory=list,
+        description="2-6 respuestas probables, marcables (varias a la vez).",
+    )
+    permite_otro: bool = Field(
+        default=True,
+        description="Si el usuario puede escribir una respuesta libre adicional.",
+    )
+
+
+class PlantillaPropuesta(BaseModel):
+    """Una plantilla visual propuesta junto al plan, con su paleta declarada."""
+
+    nombre: str = Field(..., min_length=1)
+    descripcion: str = Field(..., min_length=1)
+    estilo: str = Field(default="", description="Vibe en pocas palabras.")
+    colores: list[str] = Field(
+        default_factory=list,
+        description="3-5 colores hex de la paleta (p. ej. '#0F1220').",
+    )
+
+
 class AgentEvaluation(BaseModel):
     """Resultado estructurado de la evaluación del meta-agente.
 
@@ -75,11 +105,18 @@ class AgentEvaluation(BaseModel):
         default_factory=list,
         description="Lista de mejoras de arquitectura o lógica omitida.",
     )
-    preguntas_para_el_usuario: list[str] = Field(
+    preguntas_para_el_usuario: list[PreguntaUsuario] = Field(
         default_factory=list,
         description=(
             "Preguntas de aterrizaje: datos que SOLO el usuario puede aportar "
             "(nombres reales, enlaces, productos, precios). Vacía si no faltan."
+        ),
+    )
+    plantillas: list[PlantillaPropuesta] = Field(
+        default_factory=list,
+        description=(
+            "3-5 plantillas visuales con su paleta, para que el usuario elija, "
+            "combine varias, o aporte una referencia propia (URL o texto)."
         ),
     )
     prompt_final_optimizado: str = Field(
@@ -87,6 +124,14 @@ class AgentEvaluation(BaseModel):
         min_length=1,
         description="Prompt de grado de ingeniería listo para el agente de código.",
     )
+
+    @field_validator("preguntas_para_el_usuario", mode="before")
+    @classmethod
+    def _tolerar_preguntas_planas(cls, v: object) -> object:
+        """Acepta la forma antigua (lista de strings) convirtiéndola a objetos."""
+        if isinstance(v, list):
+            return [{"texto": p} if isinstance(p, str) else p for p in v]
+        return v
 
     model_config = {
         "use_enum_values": True,  # Serializa el enum como su valor string.

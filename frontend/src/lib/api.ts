@@ -156,7 +156,8 @@ export async function sendFeedback(
  */
 export async function generateProject(
   prompt: string,
-  language: Language
+  language: Language,
+  modoInquieto = true
 ): Promise<GenerateResult> {
   let response: Response;
 
@@ -164,7 +165,7 @@ export async function generateProject(
     response = await fetch(GENERATE_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ prompt, language }),
+      body: JSON.stringify({ prompt, language, modo_inquieto: modoInquieto }),
     });
   } catch {
     throw new ApiError("No se pudo conectar con el servidor para generar el proyecto.");

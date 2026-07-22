@@ -52,20 +52,65 @@ export function DashboardEvaluacion({
 
   // --- Pre-Flight: respuestas del usuario a las preguntas de aterrizaje ---
   const preguntas = evaluation.preguntas_para_el_usuario ?? [];
-  const [respuestas, setRespuestas] = useState<Record<number, string>>({});
-  useEffect(() => setRespuestas({}), [evaluation.id]);
+  const plantillas = evaluation.plantillas ?? [];
+  const [marcadas, setMarcadas] = useState<Record<number, string[]>>({});
+  const [otros, setOtros] = useState<Record<number, string>>({});
+  const [plantillasSel, setPlantillasSel] = useState<number[]>([]);
+  const [referenciaPropia, setReferenciaPropia] = useState("");
+  useEffect(() => {
+    setMarcadas({});
+    setOtros({});
+    setPlantillasSel([]);
+    setReferenciaPropia("");
+  }, [evaluation.id]);
+
+  const toggleOpcion = (i: number, opcion: string) =>
+    setMarcadas((prev) => {
+      const actual = prev[i] ?? [];
+      return {
+        ...prev,
+        [i]: actual.includes(opcion)
+          ? actual.filter((o) => o !== opcion)
+          : [...actual, opcion],
+      };
+    });
+
+  const togglePlantilla = (i: number) =>
+    setPlantillasSel((prev) =>
+      prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]
+    );
 
   // El prompt que se genera lleva las respuestas del usuario incrustadas:
   // datos reales en vez de relleno inventado.
   const contestadas = preguntas
-    .map((q, i) => ({ q, a: (respuestas[i] ?? "").trim() }))
+    .map((q, i) => {
+      const partes = [...(marcadas[i] ?? [])];
+      const otro = (otros[i] ?? "").trim();
+      if (otro) partes.push(otro);
+      return { q: q.texto, a: partes.join("; ") };
+    })
     .filter((par) => par.a.length > 0);
+
+  const bloques: string[] = [];
+  if (contestadas.length > 0) {
+    bloques.push(
+      `${t.preflight.dataHeader}\n${contestadas.map((par) => `- ${par.q}: ${par.a}`).join("\n")}`
+    );
+  }
+  const elegidas = plantillasSel.map((i) => plantillas[i]).filter(Boolean);
+  const referencia = referenciaPropia.trim();
+  if (elegidas.length > 0 || referencia) {
+    const lineas = elegidas.map(
+      (p) => `- ${p.nombre} (${p.estilo}): ${p.descripcion} Paleta: ${p.colores.join(", ")}`
+    );
+    if (elegidas.length > 1) lineas.push(t.plantillas.combineNote);
+    if (referencia) lineas.push(`${t.plantillas.refNote} ${referencia}`);
+    bloques.push(`${t.plantillas.dataHeader}\n${lineas.join("\n")}`);
+  }
   const promptEnriquecido =
-    contestadas.length === 0
+    bloques.length === 0
       ? prompt_final_optimizado
-      : `${prompt_final_optimizado}\n\n${t.preflight.dataHeader}\n${contestadas
-          .map((par) => `- ${par.q}: ${par.a}`)
-          .join("\n")}`;
+      : `${prompt_final_optimizado}\n\n${bloques.join("\n\n")}`;
 
   return (
     <div className="space-y-5">
@@ -114,29 +159,116 @@ export function DashboardEvaluacion({
       {preguntas.length > 0 && (
         <Card title={t.preflight.title} icon={<span>💬</span>}>
           <p className="mb-4 text-sm text-slate-500">{t.preflight.hint}</p>
-          <div className="space-y-4">
+          <div className="space-y-5">
             {preguntas.map((pregunta, i) => (
               <div key={i} className="space-y-2">
                 {/* Burbuja del agente */}
                 <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-brand-100 bg-brand-50 px-4 py-2.5 text-sm text-brand-900">
-                  {pregunta}
+                  {pregunta.texto}
                 </div>
-                {/* Respuesta del usuario */}
-                <input
-                  type="text"
-                  value={respuestas[i] ?? ""}
-                  onChange={(e) =>
-                    setRespuestas((prev) => ({ ...prev, [i]: e.target.value }))
-                  }
-                  placeholder={t.preflight.answerPlaceholder}
-                  className="ml-auto block w-[85%] rounded-2xl rounded-br-sm border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
-                />
+                {/* Respuesta: opciones marcables + campo libre opcional */}
+                <div className="ml-auto w-[85%] space-y-2">
+                  {pregunta.opciones.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {pregunta.opciones.map((opcion) => {
+                        const activa = (marcadas[i] ?? []).includes(opcion);
+                        return (
+                          <label
+                            key={opcion}
+                            className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                              activa
+                                ? "border-brand-400 bg-brand-50 text-brand-800"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-brand-200"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={activa}
+                              onChange={() => toggleOpcion(i, opcion)}
+                              className="h-4 w-4 accent-brand-600"
+                            />
+                            {opcion}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {(pregunta.permite_otro || pregunta.opciones.length === 0) && (
+                    <input
+                      type="text"
+                      value={otros[i] ?? ""}
+                      onChange={(e) => setOtros((prev) => ({ ...prev, [i]: e.target.value }))}
+                      placeholder={
+                        pregunta.opciones.length > 0
+                          ? t.preflight.otherPlaceholder
+                          : t.preflight.answerPlaceholder
+                      }
+                      className="block w-full rounded-2xl rounded-br-sm border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    />
+                  )}
+                </div>
               </div>
             ))}
           </div>
           <p className="mt-4 text-xs font-medium text-slate-400">
             {t.preflight.answeredNote(contestadas.length, preguntas.length)}
           </p>
+        </Card>
+      )}
+
+      {/* Plantillas: elige una, combina varias, o trae tu propia referencia */}
+      {plantillas.length > 0 && (
+        <Card title={t.plantillas.title} icon={<span>🎨</span>}>
+          <p className="mb-4 text-sm text-slate-500">{t.plantillas.hint}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {plantillas.map((p, i) => {
+              const activa = plantillasSel.includes(i);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => togglePlantilla(i)}
+                  aria-pressed={activa}
+                  className={`rounded-2xl border-2 p-4 text-left transition ${
+                    activa
+                      ? "border-brand-500 bg-brand-50 shadow-sm"
+                      : "border-slate-200 bg-white hover:border-brand-200"
+                  }`}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-800">{p.nombre}</span>
+                    {activa && <span aria-hidden>✅</span>}
+                  </div>
+                  <div className="mb-2 flex gap-1.5">
+                    {p.colores.map((c) => (
+                      <span
+                        key={c}
+                        title={c}
+                        className="h-6 w-6 rounded-full border border-slate-200"
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-sm text-slate-500">{p.descripcion}</p>
+                  {p.estilo && (
+                    <p className="mt-1.5 text-xs font-medium uppercase tracking-wide text-brand-600">
+                      {p.estilo}
+                    </p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {plantillasSel.length > 1 && (
+            <p className="mt-3 text-sm font-medium text-brand-700">🧬 {t.plantillas.combining}</p>
+          )}
+          <input
+            type="text"
+            value={referenciaPropia}
+            onChange={(e) => setReferenciaPropia(e.target.value)}
+            placeholder={t.plantillas.refPlaceholder}
+            className="mt-4 block w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          />
         </Card>
       )}
 
@@ -204,6 +336,7 @@ function GenerateProjectSection({
 }) {
   const { t } = useLanguage();
   const { data, loading, error, licenseRequired, generate } = useGenerateProject();
+  const [modoInquieto, setModoInquieto] = useState(true);
 
   useEffect(() => {
     if (data) onAfterGenerate();
@@ -220,9 +353,23 @@ function GenerateProjectSection({
           <GoogleLoginButton />
         </div>
       ) : (
-        <Button onClick={() => generate(prompt)} loading={loading}>
-          {loading ? t.dashboard.generating : t.dashboard.generateButton}
-        </Button>
+        <div className="flex flex-wrap items-center gap-4">
+          <Button onClick={() => generate(prompt, modoInquieto)} loading={loading}>
+            {loading ? t.dashboard.generating : t.dashboard.generateButton}
+          </Button>
+          <label
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"
+            title={t.dashboard.inquietoHint}
+          >
+            <input
+              type="checkbox"
+              checked={modoInquieto}
+              onChange={(e) => setModoInquieto(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+            />
+            ⚡ {t.dashboard.inquietoLabel}
+          </label>
+        </div>
       )}
 
       {/* Bloqueo por límite: panel de pago / pendiente */}
@@ -285,6 +432,30 @@ function GenerateProjectSection({
 
           <AuditSubsection projectName={data.name} />
           {teacherMode && <TeacherSubsection projectName={data.name} />}
+
+          {/* SIEMPRE al final: dónde quedó tu proyecto. Con URL, enlace grande;
+              sin URL, la verdad y qué sigue — nunca silencio. */}
+          {data.url ? (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-center transition hover:bg-emerald-100"
+            >
+              <span className="block text-sm font-semibold text-emerald-700">
+                🔗 {t.dashboard.finalUrlLabel}
+              </span>
+              <span className="mt-1 block font-mono text-base font-bold text-emerald-800 underline">
+                {data.url}
+              </span>
+            </a>
+          ) : (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-5 py-4 text-center">
+              <span className="block text-sm font-semibold text-amber-800">
+                ⚠️ {t.dashboard.noUrl}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </Card>

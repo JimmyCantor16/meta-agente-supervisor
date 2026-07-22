@@ -72,10 +72,21 @@ const es = {
     title: "Antes de construir, cuéntame",
     hint: "Estos datos solo los sabes tú. Lo que respondas se usa tal cual; lo que dejes vacío irá marcado como pendiente en el manual.",
     answerPlaceholder: "Tu respuesta…",
+    otherPlaceholder: "Otro (opcional): escribe aquí si ninguna opción encaja…",
     answeredNote: (n: number, total: number) =>
       `${n} de ${total} respondidas — se incluirán en la generación.`,
     dataHeader:
       "DATOS REALES APORTADOS POR EL USUARIO (úsalos tal cual, no inventes):",
+  },
+  plantillas: {
+    title: "Elige el look de tu sistema",
+    hint: "El agente propone estas plantillas con sus colores. Marca la que te guste, combina varias, o pega abajo la URL de una página que quieras como referencia.",
+    combining: "Combinaré lo mejor de las plantillas que marcaste.",
+    combineNote:
+      "- El usuario marcó VARIAS plantillas: combina lo mejor de cada una en una sola propuesta coherente.",
+    refNote: "- Referencia visual aportada por el usuario (inspírate en ella):",
+    refPlaceholder: "Opcional: URL de una página que te guste, o describe lo que quieres…",
+    dataHeader: "PLANTILLA VISUAL ELEGIDA POR EL USUARIO (respétala):",
   },
   promptInput: {
     placeholder:
@@ -147,6 +158,11 @@ const es = {
     adjustApplied: "✅ Aplicado y verificado",
     adjustReverted: "↩️ Se aplicó pero rompía algo: revertido (tu proyecto quedó como estaba)",
     adjustProposed: "Propuesta lista: revisa el diff. Si te convence, pulsa «Hazlo tú».",
+    inquietoLabel: "Modo inquieto",
+    inquietoHint:
+      "El agente explora más allá de lo pedido y añade detalles que agradecerás (responsive, accesibilidad, datos de ejemplo). Desmárcalo para que se ciña estrictamente a tu prompt.",
+    finalUrlLabel: "Tu proyecto quedó publicado aquí",
+    noUrl: "Esta vez no se pudo entregar una URL: el proyecto quedó generado y el agente te dirá qué falta en la auditoría.",
   },
   gallery: {
     title: "Tus proyectos",
@@ -240,9 +256,20 @@ const en: Translation = {
     title: "Before building, tell me",
     hint: "Only you know these details. Your answers are used as-is; anything left blank will be marked as pending in the manual.",
     answerPlaceholder: "Your answer…",
+    otherPlaceholder: "Other (optional): write here if no option fits…",
     answeredNote: (n: number, total: number) =>
       `${n} of ${total} answered — they will be included in the generation.`,
     dataHeader: "REAL DATA PROVIDED BY THE USER (use as-is, do not invent):",
+  },
+  plantillas: {
+    title: "Choose your system's look",
+    hint: "The agent proposes these templates with their colors. Pick the one you like, combine several, or paste below the URL of a page you want as reference.",
+    combining: "I'll combine the best of the templates you selected.",
+    combineNote:
+      "- The user selected SEVERAL templates: combine the best of each into one coherent proposal.",
+    refNote: "- Visual reference provided by the user (draw inspiration from it):",
+    refPlaceholder: "Optional: URL of a page you like, or describe what you want…",
+    dataHeader: "VISUAL TEMPLATE CHOSEN BY THE USER (respect it):",
   },
   promptInput: {
     placeholder:
@@ -314,6 +341,11 @@ const en: Translation = {
     adjustApplied: "✅ Applied and verified",
     adjustReverted: "↩️ Applied but it broke something: reverted (your project is untouched)",
     adjustProposed: "Proposal ready: review the diff. If you like it, press \"Do it yourself\".",
+    inquietoLabel: "Restless mode",
+    inquietoHint:
+      "The agent explores beyond what you asked and adds details you'll thank it for (responsive, accessibility, sample data). Uncheck it to stick strictly to your prompt.",
+    finalUrlLabel: "Your project is published here",
+    noUrl: "No URL could be delivered this time: the project was generated and the agent will tell you what's missing in the audit.",
   },
   gallery: {
     title: "Your projects",
