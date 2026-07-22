@@ -16,7 +16,9 @@ alumno peor de como estaba.
 from __future__ import annotations
 
 import difflib
+import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from src.domain.entities import (
@@ -111,6 +113,7 @@ class AplicarAjusteUseCase:
         error = self._verifier.verify(str(raiz))
         if error is None:
             logger.info("Ajuste aplicado y verificado en '%s'.", nombre)
+            self._registrar(nombre, peticion, cambios, aplicado=True, revertido=False)
             return base.model_copy(update={
                 "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
                 "aplicado": True, "verificado": True,
@@ -119,6 +122,7 @@ class AplicarAjusteUseCase:
         # Falló: se deshace y se dice la verdad.
         self._revertir(raiz, respaldo)
         logger.warning("Ajuste en '%s' revertido: la verificación falló.", nombre)
+        self._registrar(nombre, peticion, cambios, aplicado=False, revertido=True)
         return base.model_copy(update={
             "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
             "aplicado": False, "verificado": False, "revertido": True,
@@ -127,6 +131,62 @@ class AplicarAjusteUseCase:
                 "así que se revirtió y el proyecto quedó como estaba.\n\n" + error
             ),
         })
+
+    # ------------------------------------------------------------------
+    def _registrar(
+        self,
+        proyecto: str,
+        ajuste: str,
+        cambios: list[CambioArchivo],
+        *,
+        aplicado: bool,
+        revertido: bool,
+    ) -> None:
+        """Bitácora del círculo virtuoso: cada ajuste ejecutado deja huella.
+
+        Si un ajuste se parece a otros ya registrados (mismas palabras clave),
+        se marca como CANDIDATO a arreglo determinista: lo que se pide una y
+        otra vez en clases no debería depender del LLM — debería quedar
+        grabado en el generador para siempre. El registro jamás rompe el
+        ajuste: si no se puede escribir, solo se pierde la huella.
+        """
+        try:
+            bitacora = Path(self._generated_dir).parent / "data" / "bitacora_ajustes.jsonl"
+            bitacora.parent.mkdir(parents=True, exist_ok=True)
+
+            palabras = _palabras_clave(ajuste)
+            parecidos = 0
+            if bitacora.exists():
+                for linea in bitacora.read_text(encoding="utf-8").splitlines():
+                    try:
+                        previa = set(json.loads(linea).get("palabras", []))
+                    except (json.JSONDecodeError, AttributeError):
+                        continue
+                    union = palabras | previa
+                    if union and len(palabras & previa) / len(union) >= 0.4:
+                        parecidos += 1
+
+            candidato = parecidos >= 2
+            registro = {
+                "fecha": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "proyecto": proyecto,
+                "ajuste": ajuste[:300],
+                "palabras": sorted(palabras),
+                "archivos": [c.path for c in cambios],
+                "aplicado": aplicado,
+                "revertido": revertido,
+                "candidato_a_determinista": candidato,
+            }
+            with bitacora.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+
+            if candidato:
+                logger.warning(
+                    "CÍRCULO VIRTUOSO: el ajuste '%s' ya se ha pedido %d veces en "
+                    "distintas clases — es candidato a arreglo determinista del "
+                    "generador (0 tokens, para siempre).", ajuste[:80], parecidos + 1)
+        except OSError:
+            logger.debug("No se pudo escribir la bitácora de ajustes.", exc_info=True)
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -146,6 +206,22 @@ class AplicarAjusteUseCase:
                 destino.unlink(missing_ok=True)
             else:
                 destino.write_text(contenido, encoding="utf-8")
+
+
+_VACIAS = {
+    "que", "quiero", "para", "con", "una", "del", "los", "las", "por", "the",
+    "and", "want", "make", "please", "porfa", "favor", "como", "esta", "este",
+    "más", "mas", "muy", "sea", "ser", "hacer", "poner", "añade", "añadir",
+    "agrega", "agregar", "cambia", "cambiar", "arregla", "arreglar",
+}
+
+
+def _palabras_clave(texto: str) -> set[str]:
+    """Palabras significativas de la petición, para comparar ajustes entre sí."""
+    return {
+        p for p in "".join(c.lower() if c.isalnum() else " " for c in texto).split()
+        if len(p) >= 4 and p not in _VACIAS
+    }
 
 
 def _ruta_segura(raiz: Path, relativa: str) -> Path:
