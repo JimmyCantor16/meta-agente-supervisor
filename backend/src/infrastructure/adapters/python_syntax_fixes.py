@@ -602,6 +602,12 @@ def inyectar_token_axios(archivos: dict[str, str]) -> dict[str, str]:
     llamadas siguientes; las rutas protegidas responden 401 y las pantallas salen
     vacías (o parecen rotas). Se añade UN interceptor en el módulo de API. Solo
     actúa si el proyecto usa axios y aún no tiene un interceptor de request.
+
+    LECCIÓN (tienda de repostería): si el módulo crea una INSTANCIA con
+    `axios.create()`, el interceptor debe registrarse en esa instancia — uno
+    global jamás se ejecuta para las llamadas de la instancia. Y si un llamador
+    puso un header explícito roto ('Bearer undefined' porque olvidó pasar el
+    token), el guardado tiene prioridad.
     """
     resultado = dict(archivos)
     for ruta, contenido in archivos.items():
@@ -611,22 +617,36 @@ def inyectar_token_axios(archivos: dict[str, str]) -> dict[str, str]:
         exporta_api = "/auth/login" in contenido or "API_URL" in contenido or "/api" in contenido
         if not (usa_axios and exporta_api) or "interceptors.request" in contenido:
             continue
-        inter = (
-            "\n// Adjunta el token JWT guardado (si existe) a cada petición.\n"
-            "axios.interceptors.request.use((config) => {\n"
-            "  try {\n"
-            "    const u = JSON.parse(localStorage.getItem('user') || 'null');\n"
-            "    if (u && u.token) config.headers.Authorization = `Bearer ${u.token}`;\n"
-            "  } catch (e) { /* noop */ }\n"
-            "  return config;\n"
-            "});\n"
-        )
-        # Tras la línea del import de axios.
-        m = re.search(r"^\s*import\s+axios\s+from\s+['\"]axios['\"];?\s*$", contenido, re.M)
-        if m:
-            nuevo = contenido[:m.end()] + "\n" + inter + contenido[m.end():]
+
+        def _inter(objetivo: str) -> str:
+            return (
+                "\n// Adjunta el token JWT guardado (si existe) a cada petición.\n"
+                f"{objetivo}.interceptors.request.use((config) => {{\n"
+                "  try {\n"
+                "    const u = JSON.parse(localStorage.getItem('user') || 'null');\n"
+                "    const previo = config.headers.Authorization;\n"
+                "    // Solo se respeta un header explícito si tiene forma real de JWT:\n"
+                "    // 'Bearer undefined' o 'Bearer [object Object]' se corrigen solos.\n"
+                "    const roto = !previo || !/^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(previo);\n"
+                "    if (u && u.token && roto) config.headers.Authorization = `Bearer ${u.token}`;\n"
+                "  } catch (e) { /* noop */ }\n"
+                "  return config;\n"
+                "});\n"
+            )
+
+        m_inst = re.search(r"(?:const|let|var)\s+(\w+)\s*=\s*axios\.create\(", contenido)
+        if m_inst:
+            # En la instancia, justo después de su creación.
+            fin = _fin_de_sentencia(contenido, m_inst.start())
+            nuevo = (contenido[:fin] + "\n" + _inter(m_inst.group(1))
+                     + contenido[fin:])
         else:
-            nuevo = inter + contenido
+            m = re.search(r"^\s*import\s+axios\s+from\s+['\"]axios['\"];?\s*$",
+                          contenido, re.M)
+            if m:
+                nuevo = contenido[:m.end()] + "\n" + _inter("axios") + contenido[m.end():]
+            else:
+                nuevo = _inter("axios") + contenido
         if _js_valido(nuevo):
             resultado[ruta] = nuevo
             logger.info("Arreglo automático en %s: interceptor de token axios.", ruta)
@@ -1427,6 +1447,114 @@ def alinear_contrato_contextos(archivos: dict[str, str]) -> dict[str, str]:
     return resultado
 
 
+_JWT_VERIFY = re.compile(r"(const|let|var)\s+(\w+)\s*=\s*jwt\.verify\(")
+
+
+def alinear_payload_jwt(archivos: dict[str, str]) -> dict[str, str]:
+    """Tolera payloads JWT anidados al leer el id del usuario.
+
+    Desajuste visto en la tienda de repostería: el login firma
+    `jwt.sign({ user: { id } })` pero el middleware lee `decoded.id` →
+    `findByPk(undefined)` → `req.user = null` → 500 en toda ruta protegida.
+    Cada `decoded.id` (o `.userId`) tras un `jwt.verify` se vuelve tolerante
+    a ambas formas: plana y anidada en `user`. Es identidad si ya era plana.
+    """
+    resultado = dict(archivos)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith(".js") or "jwt.verify" not in contenido:
+            continue
+        nuevo = contenido
+        for m in _JWT_VERIFY.finditer(contenido):
+            var = m.group(2)
+            for campo in ("id", "userId"):
+                nuevo = re.sub(
+                    rf"\b{var}\.{campo}\b(?!\s*[=(])",
+                    f"(({var}.user && {var}.user.{campo}) ?? {var}.{campo})",
+                    nuevo)
+        if nuevo != contenido and _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: lectura tolerante del "
+                        "payload JWT (plano o anidado en 'user').", ruta)
+    return resultado
+
+
+_USESTATE_USUARIO = re.compile(
+    r"const\s*\[\s*(user|usuario|currentUser)\s*,\s*(set[A-Z]\w*)\s*\]\s*=\s*useState\(\s*null\s*\)")
+
+
+def persistir_sesion_local(archivos: dict[str, str]) -> dict[str, str]:
+    """La sesión del login sobrevive a recargar la página.
+
+    Patrón letal visto en la tienda de repostería: el AuthContext hace
+    `setUser(res)` tras el login pero NUNCA lo guarda en localStorage. El
+    interceptor de axios (que lee `localStorage.user.token`) no encuentra
+    token, `/profile` devuelve 401 en cada carga y `user` vuelve a null:
+    el checkout muere con "Cannot read properties of null (reading 'id')".
+
+    Arreglo: (1) el estado inicial se hidrata desde localStorage; (2) las
+    llamadas al setter pasan por un wrapper que persiste el usuario (o lo
+    borra al hacer logout). Solo actúa en contextos de autenticación.
+    """
+    resultado = dict(archivos)
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".jsx") or "createContext" not in cont:
+            continue
+        # Solo contextos de AUTENTICACIÓN: definen un login y guardan un usuario.
+        if not re.search(r"\b(login|signIn|iniciarSesion)\w*", cont):
+            continue
+        if "_setUsuarioPersistente" in cont or "localStorage.setItem('user'" in cont:
+            continue
+        m = _USESTATE_USUARIO.search(cont)
+        if m is None:
+            continue
+        var, setter = m.group(1), m.group(2)
+
+        # 1) Toda llamada al setter persiste (la declaración no es una llamada).
+        nuevo = re.sub(rf"\b{setter}\s*\(", "_setUsuarioPersistente(", cont)
+
+        # 2) Estado inicial hidratado desde localStorage.
+        init = (f"const [{var}, {setter}] = useState(() => {{ "
+                f"try {{ return JSON.parse(window.localStorage.getItem('user')) || null; }} "
+                f"catch (e) {{ return null; }} }})")
+        m2 = _USESTATE_USUARIO.search(nuevo)
+        if m2 is None:
+            continue
+        nuevo = nuevo[:m2.start()] + init + nuevo[m2.end():]
+
+        # 3) El wrapper, justo después de la línea del useState.
+        fin_linea = nuevo.find("\n", m2.start() + len(init))
+        if fin_linea == -1:
+            continue
+        wrapper = (
+            "\n  // [inyectado] La sesión se guarda para sobrevivir a la recarga.\n"
+            f"  const _setUsuarioPersistente = (u) => {{\n"
+            f"    try {{\n"
+            f"      if (u && typeof u === 'object' && !Array.isArray(u) && Object.keys(u).length > 0) {{\n"
+            f"        const _prev = JSON.parse(window.localStorage.getItem('user')) || {{}};\n"
+            f"        if (!u.token && _prev.token) u = {{ ...u, token: _prev.token }};\n"
+            f"        window.localStorage.setItem('user', JSON.stringify(u));\n"
+            f"      }} else {{ window.localStorage.removeItem('user'); }}\n"
+            f"    }} catch (e) {{ /* sin almacenamiento */ }}\n"
+            f"    {setter}(u);\n"
+            f"  }};\n")
+        nuevo = nuevo[:fin_linea + 1] + wrapper + nuevo[fin_linea + 1:]
+
+        # 4) Si el Provider expone el setter crudo (value={{ ..., setUser }}),
+        #    los consumidores lo llamarían SIN persistir: se redirige al wrapper.
+        mval = re.search(r"value=\{\{[^}]*\}\}", nuevo)
+        if mval is not None:
+            val = mval.group(0)
+            val2 = re.sub(rf"\b{setter}\s*([,}}])",
+                          rf"{setter}: _setUsuarioPersistente\1", val)
+            val2 = re.sub(rf":\s*{setter}\b", ": _setUsuarioPersistente", val2)
+            nuevo = nuevo[:mval.start()] + val2 + nuevo[mval.end():]
+
+        resultado[ruta] = nuevo
+        logger.info("Arreglo automático en %s: la sesión de '%s' persiste en "
+                    "localStorage (sobrevive a la recarga).", ruta, var)
+    return resultado
+
+
 def desempaquetar_respuestas_api(archivos: dict[str, str]) -> dict[str, str]:
     """Tolera el DOBLE desempaquetado de las respuestas de la API.
 
@@ -1434,7 +1562,12 @@ def desempaquetar_respuestas_api(archivos: dict[str, str]) -> dict[str, str]:
     hacer `res.data` al guardar en el estado: `setProducts(res.data)` deja el
     estado en `undefined` y el primer `.map()` tumba la página EN BLANCO.
     Se sustituye cada `setX(res.data)` por una forma que acepta ambas
-    convenciones (el array directo o el objeto envuelto) y cae a `[]`.
+    convenciones (el dato directo o el envuelto en `.data`).
+
+    LECCIÓN (flujo de compra de la repostería): el fallback NO puede ser `[]`
+    a secas — un login que devuelve un OBJETO usuario quedaba convertido en
+    array vacío y la sesión nunca se persistía. Si la respuesta no es un
+    array ni trae `.data`, se conserva TAL CUAL.
     """
     patron = re.compile(r"\b(set[A-Z]\w*)\(\s*(\w+)\.data\s*\)")
     resultado = dict(archivos)
@@ -1442,7 +1575,8 @@ def desempaquetar_respuestas_api(archivos: dict[str, str]) -> dict[str, str]:
         if not ruta.endswith((".jsx", ".js")):
             continue
         nuevo = patron.sub(
-            r"\1(Array.isArray(\2) ? \2 : ((\2 && \2.data) || []))", contenido)
+            r"\1(Array.isArray(\2) ? \2 : ((\2 && \2.data !== undefined) ? \2.data : (\2 || [])))",
+            contenido)
         if nuevo != contenido and _js_valido(nuevo):
             resultado[ruta] = nuevo
             logger.info("Arreglo automático en %s: respuesta de API tolerante al "

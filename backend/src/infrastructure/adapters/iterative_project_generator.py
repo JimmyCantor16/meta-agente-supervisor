@@ -39,6 +39,8 @@ from src.infrastructure.adapters.python_syntax_fixes import (
     enganchar_seed,
     alinear_semilla_con_modelo,
     alinear_contrato_auth,
+    alinear_payload_jwt,
+    persistir_sesion_local,
     alinear_contrato_contextos,
     desempaquetar_respuestas_api,
     inyectar_login_premium,
@@ -383,6 +385,8 @@ def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -
     contenidos = enganchar_seed(contenidos)
     contenidos = alinear_semilla_con_modelo(contenidos)
     contenidos = alinear_contrato_auth(contenidos)
+    contenidos = alinear_payload_jwt(contenidos)
+    contenidos = persistir_sesion_local(contenidos)
     contenidos = alinear_contrato_contextos(contenidos)
     contenidos = desempaquetar_respuestas_api(contenidos)
     contenidos = inyectar_token_axios(contenidos)
