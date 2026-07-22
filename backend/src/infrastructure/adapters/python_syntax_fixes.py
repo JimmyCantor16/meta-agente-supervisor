@@ -474,12 +474,22 @@ _METODOS_ORM = frozenset({
 
 
 def _es_modulo_orm(contenido: str) -> bool:
-    """¿El módulo exporta una instancia/modelo de Sequelize? (no se debe stubbear)."""
+    """¿El módulo exporta una instancia de ORM o de un cliente de BD nativo?
+
+    Estos módulos NUNCA se stubbean: sus métodos (`run`, `get`, `all`,
+    `findOne`…) los trae la librería, no el archivo. Lección de
+    'multiplicando-aventuras': un stub adjuntado sobre `new sqlite3.Database`
+    PISÓ los métodos reales y todo callback de BD murió en silencio (login
+    colgado para siempre).
+    """
     return bool(
         re.search(r"\bsequelize\s*\.\s*define\s*\(", contenido)
         or re.search(r"\bnew\s+Sequelize\s*\(", contenido)
         or re.search(r"\bDataTypes\b", contenido)
         or re.search(r"=>\s*\{[^}]*sequelize\.define", contenido, re.S)  # fábrica (sequelize) => {...}
+        or re.search(r"\bnew\s+sqlite3\.Database\s*\(", contenido)
+        or re.search(r"require\(\s*['\"]better-sqlite3['\"]\s*\)", contenido)
+        or re.search(r"\bnew\s+Database\s*\(", contenido)
     )
 
 
@@ -561,9 +571,13 @@ def crear_stubs_metodos_modulo(archivos: dict[str, str]) -> dict[str, str]:
                 nuevo = defs.lstrip("\n") + "\n" + nuevo2
             else:
                 # `module.exports` apunta a un modelo/router/instancia. NO se
-                # reemplaza: se ADJUNTA cada método como propiedad (sin clobber).
-                attach = "".join(f"\nif (module.exports) module.exports.{m} = {m};"
-                                 for m in sorted(metodos))
+                # reemplaza: se ADJUNTA cada método como propiedad, y SOLO si no
+                # existe ya — una instancia (sqlite3.Database) trae los suyos y
+                # pisarlos mata la aplicación en silencio.
+                attach = "".join(
+                    f"\nif (module.exports && module.exports.{m} === undefined) "
+                    f"module.exports.{m} = {m};"
+                    for m in sorted(metodos))
                 nuevo = (defs.lstrip("\n") + "\n" + contenido.rstrip() + attach + "\n")
         if _js_valido(nuevo):
             resultado[ruta] = nuevo
@@ -1784,6 +1798,215 @@ def alinear_semilla_con_modelo(archivos: dict[str, str]) -> dict[str, str]:
             resultado[ruta] = nuevo
             logger.info("Arreglo automático en %s: semilla alineada con el "
                         "modelo (%s).", ruta, "; ".join(notas))
+    return resultado
+
+
+def tolerar_audio_faltante(archivos: dict[str, str]) -> dict[str, str]:
+    """`audio.play()` sin el mp3 presente no debe ensuciar la consola.
+
+    Los proyectos generados declaran efectos (`new Audio('/assets/x.mp3')`)
+    cuyo archivo no existe: `play()` rechaza con "no supported source" y el
+    error aparece en consola. Se le añade un `.catch` silencioso: el juego
+    sigue perfecto, con o sin audio.
+    """
+    patron = re.compile(r"\b(\w+)\.play\(\)\s*;")
+    resultado = dict(archivos)
+    for ruta, cont in archivos.items():
+        if not ruta.endswith((".js", ".jsx")) or "new Audio" not in cont:
+            continue
+        nuevo = patron.sub(r"\1.play().catch(() => {});", cont)
+        if nuevo != cont:
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: audio tolerante a archivos "
+                        "faltantes.", ruta)
+    return resultado
+
+
+def blindar_find_en_props(archivos: dict[str, str]) -> dict[str, str]:
+    """`prop.find(...)` no puede asumir que la prop es un array.
+
+    Visto en 'multiplicando-aventuras': `progress.find(...)` explotaba cuando
+    el estado llegaba como objeto (respuesta envuelta) o undefined. Cada
+    `x.find(`, `x.map(`, `x.filter(` o `x.reduce(` sobre un identificador en
+    minúscula se blinda con `(Array.isArray(x) ? x : [])`. Es identidad cuando
+    ya era un array.
+    """
+    patron = re.compile(r"(?<![\w.)\]])([a-z]\w*)\.(find|map|filter|reduce)\(")
+    resultado = dict(archivos)
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".jsx"):
+            continue
+
+        def _rep(m: re.Match) -> str:
+            var = m.group(1)
+            if var in ("this", "window", "document", "console", "localStorage",
+                       "sessionStorage", "res", "response"):
+                return m.group(0)
+            return f"(Array.isArray({var}) ? {var} : []).{m.group(2)}("
+
+        nuevo = patron.sub(_rep, cont)
+        if nuevo != cont:
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: métodos de array blindados "
+                        "contra props no-array.", ruta)
+    return resultado
+
+
+_URL_CSS = re.compile(r"background(?:-image)?\s*:\s*url\(\s*['\"]?([^'\")]+)['\"]?\s*\)[^;]*;")
+
+_DEGRADADOS_ALEGRES = (
+    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+    "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+)
+
+
+def reemplazar_fondos_inexistentes(archivos: dict[str, str]) -> dict[str, str]:
+    """Un fondo CSS que apunta a una imagen inexistente se vuelve degradado.
+
+    Patrón visto en 'multiplicando-aventuras': el hero declaraba
+    `background-image: url('/assets/images/hero.jpg')` pero esa imagen no
+    existe en el proyecto → el texto blanco del hero quedaba sobre el fondo
+    claro de la página, ilegible. Si el archivo referenciado no está en el
+    proyecto, el fondo pasa a un degradado digno; el texto blanco vuelve a
+    leerse.
+    """
+    rutas = {r.lower() for r in archivos}
+
+    def _existe(url: str) -> bool:
+        limpio = url.split("?")[0].split("#")[0].lstrip("./").lstrip("/").lower()
+        if not limpio or limpio.startswith(("http", "data:")):
+            return True  # externo o embebido: no es asunto nuestro
+        return any(r.endswith(limpio) for r in rutas)
+
+    resultado = dict(archivos)
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".css"):
+            continue
+        i = 0
+        cambios = 0
+
+        def _rep(m: re.Match) -> str:
+            nonlocal i, cambios
+            if _existe(m.group(1)):
+                return m.group(0)
+            grad = _DEGRADADOS_ALEGRES[i % len(_DEGRADADOS_ALEGRES)]
+            i += 1
+            cambios += 1
+            return f"background: {grad};"
+
+        nuevo = _URL_CSS.sub(_rep, cont)
+        if cambios:
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: %d fondo(s) con imagen "
+                        "inexistente sustituido(s) por degradado.", ruta, cambios)
+    return resultado
+
+
+def importar_componentes_jsx_faltantes(archivos: dict[str, str]) -> dict[str, str]:
+    """Añade el import de componentes JSX usados pero nunca importados.
+
+    Patrón visto en 'multiplicando-aventuras': cinco pantallas montaban
+    `<EmptyState …/>` sin importarlo → `ReferenceError: EmptyState is not
+    defined` y la ruta entera en blanco. Si el componente existe como archivo
+    hermano en el proyecto, el import se puede deducir sin inventar nada.
+    """
+    import posixpath
+
+    definidos: dict[str, str] = {}  # nombre -> ruta sin extensión
+    for ruta, cont in archivos.items():
+        if ruta.endswith(".jsx") and re.search(
+                rf"export default {re.escape(ruta.rsplit('/', 1)[-1][:-4])}\b", cont):
+            nombre = ruta.rsplit("/", 1)[-1][:-4]
+            definidos[nombre] = ruta[:-4]
+
+    resultado = dict(archivos)
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".jsx"):
+            continue
+        usados = set(re.findall(r"<([A-Z]\w+)[\s/>]", cont))
+        faltan = [n for n in usados
+                  if n in definidos
+                  and definidos[n] != ruta[:-4]
+                  and not re.search(rf"\bimport\s+{n}\b", cont)]
+        if not faltan:
+            continue
+        carpeta = posixpath.dirname(ruta)
+        lineas_import = []
+        for n in sorted(faltan):
+            rel = posixpath.relpath(definidos[n], carpeta or ".")
+            if not rel.startswith("."):
+                rel = "./" + rel
+            lineas_import.append(f"import {n} from '{rel}';")
+        m = None
+        for m in re.finditer(r"^import\b[^\n]*;?\s*$", cont, re.M):
+            pass
+        if m is not None:
+            nuevo = cont[:m.end()] + "\n" + "\n".join(lineas_import) + cont[m.end():]
+        else:
+            nuevo = "\n".join(lineas_import) + "\n" + cont
+        resultado[ruta] = nuevo
+        logger.info("Arreglo automático en %s: imports JSX añadidos (%s).",
+                    ruta, ", ".join(sorted(faltan)))
+    return resultado
+
+
+_RETURN_OBJETO = re.compile(r"return\s*\{")
+
+
+def neutralizar_componentes_que_devuelven_objetos(archivos: dict[str, str]) -> dict[str, str]:
+    """Un 'componente' que devuelve un objeto no puede renderizarse como JSX.
+
+    Patrón visto en 'multiplicando-aventuras': el modelo escribe un hook
+    (devuelve `{ handleX, handleY }`) pero lo nombra como componente y lo monta
+    `<MicroInteractions />` → React error #31 y la app ENTERA en blanco.
+
+    Si un componente de un .jsx se usa como JSX en otro archivo y su return es
+    un objeto literal (sin JSX dentro), ese return pasa a `null` conservando el
+    objeto en una variable: la app renderiza, y los handlers siguen definidos
+    por si una clase posterior los conecta de verdad.
+    """
+    # nombre de componente -> ruta donde se define
+    definidos: dict[str, str] = {}
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".jsx"):
+            continue
+        m = re.search(r"const\s+(\w+)\s*=\s*\(", cont)
+        if m and f"export default {m.group(1)}" in cont:
+            definidos[m.group(1)] = ruta
+
+    # cuáles se montan como JSX en algún otro archivo
+    montados: set[str] = set()
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".jsx"):
+            continue
+        for nombre, origen in definidos.items():
+            if ruta != origen and re.search(rf"<{nombre}[\s/>]", cont):
+                montados.add(nombre)
+
+    resultado = dict(archivos)
+    for nombre in montados:
+        ruta = definidos[nombre]
+        cont = resultado[ruta]
+        m = _RETURN_OBJETO.search(cont)
+        if m is None:
+            continue
+        abre = cont.index("{", m.start())
+        cierra = _cierre(cont, abre)
+        if cierra is None:
+            continue
+        cuerpo = cont[abre:cierra + 1]
+        if "<" in cuerpo:  # devuelve JSX: es un componente de verdad
+            continue
+        # Transformación puramente local con llaves balanceadas (_cierre):
+        # no hay forma de romper la sintaxis, y JSX no pasa por node --check.
+        nuevo = (cont[:m.start()]
+                 + f"const _handlers = {cuerpo}; void _handlers; return null"
+                 + cont[cierra + 1:])
+        resultado[ruta] = nuevo
+        logger.info("Arreglo automático en %s: '%s' devolvía un objeto y se "
+                    "montaba como JSX (React #31) — ahora devuelve null.",
+                    ruta, nombre)
     return resultado
 
 

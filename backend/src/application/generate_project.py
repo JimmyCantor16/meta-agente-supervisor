@@ -166,13 +166,36 @@ class GenerateProjectUseCase:
         return project, output_path
 
     def _launch(self, project: GeneratedProject, output_path: str) -> None:
-        """Arranca el proyecto verificado y guarda su URL para entregarla."""
+        """Arranca el proyecto verificado y guarda su URL para entregarla.
+
+        GATE DE RENDER: antes de entregar la URL, un navegador real comprueba
+        que la página SE VE y no revienta en JavaScript. El usuario final no
+        sabe programar: una URL en blanco es peor que no entregar URL.
+        """
         if self._runner is None:
             return
         try:
             self.last_url = self._runner.start(output_path, project.slug())
-            if self.last_url:
-                logger.info("Proyecto disponible en %s", self.last_url)
+            if not self.last_url:
+                return
+            from src.infrastructure.adapters.validacion_navegador import validar_render
+
+            fallo_render = validar_render(self.last_url)
+            if fallo_render is None:
+                logger.info("Proyecto disponible en %s (render validado).", self.last_url)
+                return
+            logger.warning(
+                "URL RETENIDA para '%s': el navegador demostró que la página "
+                "no sirve al usuario final.\n%s",
+                project.slug(), fallo_render,
+            )
+            self._runner.stop(project.slug())
+            self.frontend_error = (
+                "El proyecto compila y arranca, pero el navegador detectó que "
+                "la página no se muestra correctamente, así que la URL no se "
+                "entrega todavía:\n" + fallo_render
+            )
+            self.last_url = None
         except Exception as exc:  # noqa: BLE001 - arrancar es "best effort"
             logger.warning("No se pudo arrancar el proyecto: %s", exc)
             self.last_url = None

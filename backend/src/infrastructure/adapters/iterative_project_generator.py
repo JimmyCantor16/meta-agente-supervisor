@@ -50,6 +50,11 @@ from src.infrastructure.adapters.python_syntax_fixes import (
     arreglar_texto_gradiente_invisible,
     garantizar_identidad_visual,
     garantizar_manual,
+    blindar_find_en_props,
+    importar_componentes_jsx_faltantes,
+    neutralizar_componentes_que_devuelven_objetos,
+    reemplazar_fondos_inexistentes,
+    tolerar_audio_faltante,
     envolver_con_providers,
     quitar_autoimports,
     quitar_imports_a_backend,
@@ -439,6 +444,11 @@ def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -
     contenidos = arreglar_define_suelto(contenidos)
     contenidos = garantizar_contenido_visible(contenidos)
     contenidos = arreglar_texto_gradiente_invisible(contenidos)
+    contenidos = importar_componentes_jsx_faltantes(contenidos)
+    contenidos = neutralizar_componentes_que_devuelven_objetos(contenidos)
+    contenidos = reemplazar_fondos_inexistentes(contenidos)
+    contenidos = tolerar_audio_faltante(contenidos)
+    contenidos = blindar_find_en_props(contenidos)
     contenidos = garantizar_identidad_visual(contenidos)
     contenidos = garantizar_manual(contenidos)
     return [GeneratedFile(path=p, content=c) for p, c in contenidos.items()]

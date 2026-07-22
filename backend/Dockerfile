@@ -14,6 +14,15 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Chromium headless: el GATE DE RENDER. Antes de entregar la URL de un proyecto
+# generado, un navegador real comprueba que la página SE VE y no revienta en
+# JavaScript (React #31, imports rotos...). Un chequeo HTTP jamás ve eso, y el
+# usuario final no sabe depurar una página en blanco. Pesa, pero es la
+# diferencia entre entregar software y entregar un enlace roto.
+RUN pip install --no-cache-dir playwright \
+    && playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copia el código (ver .dockerignore para lo excluido).
 COPY . .
 
