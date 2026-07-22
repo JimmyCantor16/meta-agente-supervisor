@@ -5,10 +5,18 @@ import { Card } from "../../../components/Card";
 import { GoogleLoginButton } from "../../auth/GoogleLoginButton";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import type { AccountStatus } from "../../auth/types";
+import { useAdjustModule } from "../hooks/useAdjustModule";
 import { useAuditProject } from "../hooks/useAuditProject";
 import { useExplainProject } from "../hooks/useExplainProject";
 import { useGenerateProject } from "../hooks/useGenerateProject";
-import type { AuditSuggestion, EvaluationResult } from "../types";
+import { useImproveProject } from "../hooks/useImproveProject";
+import type {
+  AuditSuggestion,
+  CambioArchivo,
+  EvaluationResult,
+  MejoraResult,
+  NivelAutonomia,
+} from "../types";
 
 interface DashboardEvaluacionProps {
   evaluation: EvaluationResult;
@@ -314,6 +322,7 @@ function PaymentPanel({
 function AuditSubsection({ projectName }: { projectName: string }) {
   const { t } = useLanguage();
   const { data, loading, error, audit } = useAuditProject();
+  const improve = useImproveProject();
 
   return (
     <div className="mt-2 border-t border-slate-200 pt-4">
@@ -346,8 +355,60 @@ function AuditSubsection({ projectName }: { projectName: string }) {
               </li>
             ))}
           </ul>
+
+          {/* La respuesta a "¿y quién las implementa?": el propio agente,
+              verificando cada cambio y revirtiendo lo que rompa. */}
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+            <p className="mb-2 text-sm text-emerald-800">{t.dashboard.improveHint}</p>
+            <Button onClick={() => improve.improve(projectName)} loading={improve.loading}>
+              {improve.loading ? t.dashboard.improving : t.dashboard.improveButton}
+            </Button>
+            {improve.error && <p className="mt-2 text-red-600">⚠ {improve.error}</p>}
+            {improve.data && !improve.loading && <MejoraResumen data={improve.data} />}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MejoraResumen({ data }: { data: MejoraResult }) {
+  const { t } = useLanguage();
+  const vacio =
+    data.aplicadas.length === 0 && data.revertidas.length === 0 && data.sin_cambios.length === 0;
+  return (
+    <div className="mt-3 space-y-2 text-sm">
+      <p className="italic text-slate-600">
+        <span className="font-semibold not-italic text-emerald-800">
+          {t.dashboard.improveDiagnosis}:
+        </span>{" "}
+        {data.diagnostico}
+      </p>
+      {vacio && <p className="text-slate-500">{t.dashboard.improveNothing}</p>}
+      {data.aplicadas.length > 0 && (
+        <ResultadoLista titulo={t.dashboard.improveApplied} items={data.aplicadas} icon="✅" />
+      )}
+      {data.revertidas.length > 0 && (
+        <ResultadoLista titulo={t.dashboard.improveReverted} items={data.revertidas} icon="↩️" />
+      )}
+      {data.sin_cambios.length > 0 && (
+        <ResultadoLista titulo={t.dashboard.improveNoChanges} items={data.sin_cambios} icon="⏭" />
+      )}
+    </div>
+  );
+}
+
+function ResultadoLista({ titulo, items, icon }: { titulo: string; items: string[]; icon: string }) {
+  return (
+    <div>
+      <p className="font-semibold text-slate-700">{titulo}</p>
+      <ul className="mt-1 space-y-1 text-slate-600">
+        {items.map((it, i) => (
+          <li key={i}>
+            {icon} {it}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -372,8 +433,123 @@ function TeacherSubsection({ projectName }: { projectName: string }) {
           <TeachingList title={t.dashboard.teachingNext} items={data.next_steps} icon="🎯" />
         </div>
       )}
+
+      <AdjustPanel projectName={projectName} />
     </div>
   );
+}
+
+/** Panel del ajuste de clase: el alumno pide un cambio y elige la autonomía. */
+function AdjustPanel({ projectName }: { projectName: string }) {
+  const { t } = useLanguage();
+  const [ajuste, setAjuste] = useState("");
+  const { data, loading, activeNivel, error, adjust } = useAdjustModule();
+
+  const lanzar = (nivel: NivelAutonomia) => {
+    if (ajuste.trim().length === 0 || loading) return;
+    void adjust(projectName, ajuste.trim(), nivel);
+  };
+
+  const botones: Array<{ nivel: NivelAutonomia; label: string }> = [
+    { nivel: "explicar", label: t.dashboard.adjustExplain },
+    { nivel: "proponer", label: t.dashboard.adjustPropose },
+    { nivel: "ejecutar", label: t.dashboard.adjustExecute },
+  ];
+
+  return (
+    <div className="mt-4 rounded-xl border border-brand-100 bg-white p-4">
+      <p className="text-sm font-bold text-slate-700">🛠 {t.dashboard.adjustTitle}</p>
+      <p className="mt-1 text-sm text-slate-500">{t.dashboard.adjustHint}</p>
+
+      <textarea
+        value={ajuste}
+        onChange={(e) => setAjuste(e.target.value)}
+        placeholder={t.dashboard.adjustPlaceholder}
+        rows={2}
+        className="mt-3 w-full resize-y rounded-lg border border-slate-200 p-2.5 text-sm text-slate-700 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+      />
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        {botones.map(({ nivel, label }) => (
+          <Button
+            key={nivel}
+            variant={nivel === "ejecutar" ? "primary" : "ghost"}
+            onClick={() => lanzar(nivel)}
+            loading={loading && activeNivel === nivel}
+            disabled={ajuste.trim().length === 0 || loading}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      {loading && <p className="mt-2 text-sm text-slate-500">{t.dashboard.adjustWorking}</p>}
+      {error && <p className="mt-2 text-red-600">⚠ {error}</p>}
+
+      {data && !loading && (
+        <div className="mt-4 space-y-3 text-sm">
+          <p className="whitespace-pre-wrap text-slate-700">{data.explicacion}</p>
+          {data.concepto && (
+            <p className="text-slate-600">
+              <span className="font-semibold text-brand-700">📚 {t.dashboard.adjustConcept}:</span>{" "}
+              {data.concepto}
+            </p>
+          )}
+
+          {data.nivel === "ejecutar" &&
+            (data.revertido ? (
+              <p className="rounded-lg bg-amber-50 p-2.5 font-medium text-amber-800">
+                {t.dashboard.adjustReverted}
+              </p>
+            ) : data.aplicado && data.verificado ? (
+              <p className="rounded-lg bg-emerald-50 p-2.5 font-medium text-emerald-800">
+                {t.dashboard.adjustApplied}
+              </p>
+            ) : null)}
+          {data.nivel === "proponer" && data.cambios.length > 0 && (
+            <p className="rounded-lg bg-sky-50 p-2.5 text-sky-800">{t.dashboard.adjustProposed}</p>
+          )}
+          {data.detalle && <p className="text-xs italic text-slate-400">{data.detalle}</p>}
+
+          {data.cambios.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-700">
+                🗂 {t.dashboard.adjustChanges}
+              </p>
+              <div className="space-y-2">
+                {data.cambios.map((c: CambioArchivo) => (
+                  <details key={c.path} className="rounded-lg border border-slate-200 bg-slate-50">
+                    <summary className="cursor-pointer px-3 py-2 font-mono text-xs text-slate-600">
+                      {c.path}
+                      {c.es_nuevo && (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                          {t.dashboard.adjustNewFile}
+                        </span>
+                      )}
+                    </summary>
+                    <pre className="max-h-72 overflow-auto border-t border-slate-200 bg-slate-900 p-3 text-xs leading-relaxed">
+                      {(c.diff || c.contenido_nuevo).split("\n").map((linea, i) => (
+                        <div key={i} className={diffTone(linea)}>
+                          {linea || " "}
+                        </div>
+                      ))}
+                    </pre>
+                  </details>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Colorea cada línea del diff unificado como en un visor de cambios. */
+function diffTone(linea: string): string {
+  if (linea.startsWith("+") && !linea.startsWith("+++")) return "text-emerald-400";
+  if (linea.startsWith("-") && !linea.startsWith("---")) return "text-red-400";
+  if (linea.startsWith("@@")) return "text-sky-400";
+  return "text-slate-300";
 }
 
 function TeachingList({

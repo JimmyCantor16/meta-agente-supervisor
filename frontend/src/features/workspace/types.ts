@@ -58,6 +58,42 @@ export interface TeachingResult {
   next_steps: string[];
 }
 
+// Cuánta autonomía se le da a la IA en un ajuste de clase.
+export type NivelAutonomia = "explicar" | "proponer" | "ejecutar";
+
+// Un archivo tocado por un ajuste, con su diff para revisarlo.
+export interface CambioArchivo {
+  path: string;
+  diff: string;
+  es_nuevo: boolean;
+  contenido_nuevo: string;
+}
+
+// Resultado de un ajuste de clase (explicar / proponer / ejecutar).
+export interface AjusteResult {
+  proyecto: string;
+  ajuste: string;
+  nivel: string;
+  explicacion: string;
+  concepto: string;
+  cambios: CambioArchivo[];
+  aplicado: boolean;
+  verificado: boolean;
+  revertido: boolean;
+  detalle: string;
+}
+
+// Resultado de la pasada de auto-mejora (audita y aplica verificando).
+export interface MejoraResult {
+  proyecto: string;
+  diagnostico: string;
+  sugerencias_totales: number;
+  intentadas: number;
+  aplicadas: string[];
+  revertidas: string[];
+  sin_cambios: string[];
+}
+
 // Resumen de un proyecto en la galería.
 export interface ProjectSummary {
   name: string;

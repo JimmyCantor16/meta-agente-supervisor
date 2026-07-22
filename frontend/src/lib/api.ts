@@ -4,9 +4,12 @@
 
 import type { AccountStatus, AuthConfig, AuthUser } from "../features/auth/types";
 import type {
+  AjusteResult,
   AuditResult,
   EvaluationResult,
   GenerateResult,
+  MejoraResult,
+  NivelAutonomia,
   ProjectSummary,
   TeachingResult,
   UsageStatus,
@@ -24,6 +27,8 @@ const FEEDBACK_ENDPOINT = `${API_BASE}/api/v1/agent/feedback`;
 const GENERATE_ENDPOINT = `${API_BASE}/api/v1/agent/generate`;
 const AUDIT_ENDPOINT = `${API_BASE}/api/v1/agent/audit`;
 const EXPLAIN_ENDPOINT = `${API_BASE}/api/v1/agent/explain`;
+const ADJUST_ENDPOINT = `${API_BASE}/api/v1/agent/lecciones/ajuste`;
+const IMPROVE_ENDPOINT = `${API_BASE}/api/v1/agent/lecciones/mejorar`;
 const PROJECTS_ENDPOINT = `${API_BASE}/api/v1/agent/projects`;
 const USAGE_ENDPOINT = `${API_BASE}/api/v1/agent/usage`;
 const LICENSE_ENDPOINT = `${API_BASE}/api/v1/agent/license`;
@@ -238,6 +243,59 @@ export async function explainProject(
     throw new ApiError(detail, response.status);
   }
   return (await response.json()) as TeachingResult;
+}
+
+/**
+ * Pide un ajuste de clase sobre un proyecto, con el nivel de autonomía elegido:
+ * 'explicar' (solo teoría), 'proponer' (muestra el diff) o 'ejecutar'
+ * (aplica, verifica y revierte si algo se rompe).
+ */
+export async function adjustModule(
+  projectName: string,
+  ajuste: string,
+  nivel: NivelAutonomia,
+  language: Language
+): Promise<AjusteResult> {
+  let response: Response;
+  try {
+    response = await fetch(ADJUST_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ project_name: projectName, ajuste, nivel, language }),
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor para ajustar el módulo.");
+  }
+  if (!response.ok) {
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, `Error ${response.status}`), response.status);
+  }
+  return (await response.json()) as AjusteResult;
+}
+
+/**
+ * Lanza la pasada de auto-mejora: el agente audita el proyecto y aplica las
+ * sugerencias más prioritarias, verificando cada una (o revirtiéndola).
+ */
+export async function improveProject(
+  projectName: string,
+  language: Language
+): Promise<MejoraResult> {
+  let response: Response;
+  try {
+    response = await fetch(IMPROVE_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ project_name: projectName, language }),
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor para mejorar el proyecto.");
+  }
+  if (!response.ok) {
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, `Error ${response.status}`), response.status);
+  }
+  return (await response.json()) as MejoraResult;
 }
 
 /**
