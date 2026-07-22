@@ -33,9 +33,13 @@ from src.infrastructure.adapters.python_syntax_fixes import (
     crear_stubs_simbolos_js,
     crear_stubs_metodos_modulo,
     garantizar_jwt_secret,
+    blindar_sdks_externos,
+    tolerar_use_con_objeto,
     inyectar_token_axios,
     enganchar_seed,
     alinear_contrato_auth,
+    alinear_contrato_contextos,
+    desempaquetar_respuestas_api,
     inyectar_login_premium,
     inyectar_estilos_base,
     ocultar_navbar_en_rutas_auth,
@@ -373,8 +377,12 @@ def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -
     contenidos = garantizar_listen_incondicional(contenidos)
     contenidos = crear_stubs_metodos_modulo(contenidos)
     contenidos = garantizar_jwt_secret(contenidos)
+    contenidos = blindar_sdks_externos(contenidos)
+    contenidos = tolerar_use_con_objeto(contenidos)
     contenidos = enganchar_seed(contenidos)
     contenidos = alinear_contrato_auth(contenidos)
+    contenidos = alinear_contrato_contextos(contenidos)
+    contenidos = desempaquetar_respuestas_api(contenidos)
     contenidos = inyectar_token_axios(contenidos)
     contenidos = quitar_autoimports(contenidos)
     contenidos = quitar_imports_a_backend(contenidos)

@@ -641,14 +641,22 @@ def enganchar_seed(archivos: dict[str, str]) -> dict[str, str]:
     hay con qué iniciar sesión. Se detecta la semilla y el `.then()` de
     `initialize()`/`sync()` en el entry y se cuela la llamada dentro.
     """
-    # 1) localizar el archivo semilla (exporta una función y crea usuarios/datos)
+    # 1) localizar el archivo semilla: en el NOMBRE o en la CARPETA (el modelo
+    #    también escribe `seeders/index.js`), que cree usuarios/datos.
     seed_mod = None
+    auto_ejecuta = False
     for ruta, cont in archivos.items():
-        base = ruta.rsplit("/", 1)[-1].lower()
-        if ruta.endswith(".js") and "seed" in base and re.search(r"module\.exports\s*=", cont):
-            if re.search(r"\.(create|bulkCreate|findOrCreate)\s*\(", cont):
-                seed_mod = ruta
-                break
+        if not ruta.endswith(".js") or "seed" not in ruta.lower():
+            continue
+        if not re.search(r"\.(create|bulkCreate|findOrCreate)\s*\(", cont):
+            continue
+        exporta = bool(re.search(r"module\.exports\s*=", cont))
+        # ¿se ejecuta a sí misma al final? (`seedDatabase();` suelto)
+        se_llama = bool(re.search(r"^\s*\w*[sS]eed\w*\s*\(\s*\)\s*;?\s*$", cont, re.M))
+        if exporta or se_llama:
+            seed_mod = ruta
+            auto_ejecuta = se_llama and not exporta
+            break
     if seed_mod is None:
         return archivos
 
@@ -666,18 +674,30 @@ def enganchar_seed(archivos: dict[str, str]) -> dict[str, str]:
             continue  # ya enganchado
         carpeta = ruta.rsplit("/", 1)[0]
         rel = _ruta_relativa_import(carpeta, seed_base)
-        req_line = f"const seedDatabase = require('{rel}');\n"
-        # insertar require tras el primer require del archivo
-        mr = re.search(r"^(const .*=\s*require\([^)]*\);\s*)$", contenido, re.M)
-        cuerpo = contenido if mr is None else contenido[:mr.end()] + "\n" + req_line + contenido[mr.end():]
-        if mr is None:
-            cuerpo = req_line + contenido
-        # hacer el callback async y colar el await seed dentro del then
-        m2 = re.search(r"(\.(initialize|sync)\s*\([^)]*\)\s*\.then\s*\(\s*)(async\s*)?(\(\s*\)\s*=>\s*\{)", cuerpo)
-        if m2 is None:
-            continue
-        inserta = m2.group(1) + "async " + m2.group(4) + "\n    await seedDatabase();"
-        cuerpo = cuerpo[:m2.start()] + inserta + cuerpo[m2.end():]
+        if auto_ejecuta:
+            # La semilla corre sola al ser requerida: basta requerirla DENTRO
+            # del then (con la BD ya lista), protegida para no tumbar nada.
+            m2 = re.search(r"(\.(initialize|sync)\s*\([^)]*\)\s*\.then\s*\(\s*(?:async\s*)?\(\s*\)\s*=>\s*\{)",
+                           contenido)
+            if m2 is None:
+                continue
+            inserta = (m2.group(1) +
+                       f"\n    try {{ require('{rel}'); }} "
+                       f"catch (e) {{ console.warn('semilla:', e.message); }}")
+            cuerpo = contenido[:m2.start()] + inserta + contenido[m2.end():]
+        else:
+            req_line = f"const seedDatabase = require('{rel}');\n"
+            # insertar require tras el primer require del archivo
+            mr = re.search(r"^(const .*=\s*require\([^)]*\);\s*)$", contenido, re.M)
+            cuerpo = contenido if mr is None else contenido[:mr.end()] + "\n" + req_line + contenido[mr.end():]
+            if mr is None:
+                cuerpo = req_line + contenido
+            # hacer el callback async y colar el await seed dentro del then
+            m2 = re.search(r"(\.(initialize|sync)\s*\([^)]*\)\s*\.then\s*\(\s*)(async\s*)?(\(\s*\)\s*=>\s*\{)", cuerpo)
+            if m2 is None:
+                continue
+            inserta = m2.group(1) + "async " + m2.group(4) + "\n    await seedDatabase();"
+            cuerpo = cuerpo[:m2.start()] + inserta + cuerpo[m2.end():]
         if _js_valido(cuerpo):
             resultado[ruta] = cuerpo
             logger.info("Arreglo automático en %s: se engancha la semilla (%s).", ruta, seed_mod)
@@ -1207,6 +1227,226 @@ def arreglar_texto_gradiente_invisible(archivos: dict[str, str]) -> dict[str, st
             resultado[ruta] = nuevo
             logger.info("Arreglo automático en %s: texto-gradiente invisible sobre "
                         "el mismo gradiente, pasado a color sólido.", ruta)
+    return resultado
+
+
+# SDKs que EXIGEN credenciales al instanciarse: sin variables de entorno,
+# lanzan y tumban el proceso entero al cargar el módulo.
+_SDKS_CON_CREDENCIALES = ("twilio", "stripe", "mercadopago", "@sendgrid",
+                          "nodemailer", "paypal")
+
+_CABECERA_SDK_SEGURO = """\
+// [inyectado] Un SDK externo sin credenciales NO puede tumbar el arranque:
+// si falta configuración, se degrada a un doble simulado que responde a
+// cualquier llamada. La función real se activa sola al configurar el .env.
+const _sdkStub = new Proxy(function () {}, {
+  get: (t, p) => (p === 'then' ? undefined : _sdkStub),
+  apply: () => _sdkStub,
+  construct: () => _sdkStub,
+});
+const _sdkSeguro = (init, nombre) => {
+  try { const v = init(); return v == null ? _sdkStub : v; }
+  catch (e) {
+    console.warn(`[aviso] ${nombre || 'SDK externo'} sin credenciales; se simula:`, e.message);
+    return _sdkStub;
+  }
+};
+"""
+
+
+def _fin_de_sentencia(texto: str, inicio: int) -> int:
+    """Índice tras el `;` que cierra la sentencia, respetando paréntesis/llaves."""
+    nivel = 0
+    en_cadena: str | None = None
+    i = inicio
+    while i < len(texto):
+        c = texto[i]
+        if en_cadena:
+            if c == "\\":
+                i += 2
+                continue
+            if c == en_cadena:
+                en_cadena = None
+        elif c in "'\"`":
+            en_cadena = c
+        elif c in "([{":
+            nivel += 1
+        elif c in ")]}":
+            nivel -= 1
+        elif c == ";" and nivel <= 0:
+            return i + 1
+        elif c == "\n" and nivel <= 0:
+            # sentencia sin `;` (ASI): termina en el salto de línea
+            return i
+        i += 1
+    return len(texto)
+
+
+def blindar_sdks_externos(archivos: dict[str, str]) -> dict[str, str]:
+    """Impide que un SDK externo sin credenciales tumbe el servidor al arrancar.
+
+    Patrón letal del modelo (visto con Twilio en la tienda de repostería):
+
+        const client = twilio(process.env.SID, process.env.TOKEN);  // module-level
+
+    Sin variables de entorno, el constructor LANZA al hacer `require` del módulo
+    y el proceso entero muere: "Error: username is required". El LLM reparador
+    no lo arregla (reescribe lo mismo). Aquí se envuelve la instanciación en
+    `_sdkSeguro`: si falla, devuelve un doble (Proxy recursivo) que absorbe
+    cualquier cadena de llamadas, y la app arranca. La función real se activa
+    sola cuando el usuario configura sus credenciales.
+    """
+    patron_asig = re.compile(r"(?:const|let|var)\s+\w+\s*=\s*")
+    resultado = dict(archivos)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith(".js") or "_sdkSeguro" in contenido:
+            continue
+        if not any(s in contenido for s in _SDKS_CON_CREDENCIALES):
+            continue
+        nuevo = contenido
+        cambios = 0
+        # de atrás hacia adelante para no invalidar los índices al reemplazar
+        for m in list(patron_asig.finditer(contenido))[::-1]:
+            fin = _fin_de_sentencia(contenido, m.end())
+            rhs = contenido[m.end():fin].rstrip().rstrip(";")
+            if not any(s in rhs for s in _SDKS_CON_CREDENCIALES):
+                continue
+            if "require(" in rhs and "(" not in rhs.split("require", 1)[0] and rhs.count("(") == 1:
+                continue  # es solo `require('twilio')` sin instanciar: inofensivo
+            sdk = next(s for s in _SDKS_CON_CREDENCIALES if s in rhs)
+            envuelto = f"_sdkSeguro(() => {rhs}, '{sdk}');"
+            nuevo = nuevo[:m.end()] + envuelto + nuevo[fin:]
+            cambios += 1
+        if not cambios:
+            continue
+        nuevo = _CABECERA_SDK_SEGURO + nuevo
+        if _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: %d SDK(s) externo(s) blindado(s) "
+                        "(el arranque ya no depende de credenciales).", ruta, cambios)
+    return resultado
+
+
+def tolerar_use_con_objeto(archivos: dict[str, str]) -> dict[str, str]:
+    """Hace que `app.use(modulo)` funcione aunque el módulo exporte un objeto.
+
+    Desajuste típico entre archivos generados por llamadas separadas:
+    `middleware/errorMiddleware.js` exporta `{ errorHandler, notFound }` y
+    `server.js` hace `app.use(errorMiddleware)` con el objeto entero. Express
+    revienta al arrancar: "app.use() requires a middleware function". Se
+    sustituye por una forma que registra la función si lo es, o todas las
+    funciones del objeto si no:
+
+        app.use(...(typeof X === 'function' ? [X]
+                    : Object.values(X).filter((f) => typeof f === 'function')))
+    """
+    resultado = dict(archivos)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith(".js") or "app.use(" not in contenido:
+            continue
+        # variables que vienen de un require LOCAL (./ o ../): solo esas se tocan
+        locales = {m.group(1) for m in re.finditer(
+            r"(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*['\"]\.\.?/", contenido)}
+        if not locales:
+            continue
+        nuevo = contenido
+        for var in locales:
+            patron = re.compile(rf"app\.use\(\s*{re.escape(var)}\s*\)")
+            # Del objeto solo se registran los MANEJADORES DE ERROR (arity 4).
+            # Un catch-all tipo `notFound` registrado aquí taparía todo lo que
+            # se monte después (p. ej. el bloque que sirve el frontend).
+            seguro = (f"app.use(...(typeof {var} === 'function' ? [{var}] "
+                      f": Object.values({var}).filter((f) => typeof f === 'function' "
+                      f"&& f.length === 4)))")
+            nuevo = patron.sub(seguro, nuevo)
+        if nuevo != contenido and _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: app.use() tolerante a módulos "
+                        "que exportan un objeto de middlewares.", ruta)
+    return resultado
+
+
+def alinear_contrato_contextos(archivos: dict[str, str]) -> dict[str, str]:
+    """Añade alias en los Providers para las claves que piden los consumidores.
+
+    Generalización del arreglo del contrato de auth: el Provider expone
+    `value={{ cart, ... }}` pero un componente destructura `cartItems` del
+    mismo contexto → `undefined`, y al primer `.reduce()`/`.map()` React se cae
+    con la página en blanco. Si la clave pedida y una expuesta son variantes
+    obvias (una es prefijo de la otra, p. ej. `cart` ↔ `cartItems`), se añade
+    el alias `cartItems: cart` al value. Solo actúa con candidato ÚNICO.
+    """
+    # contexto -> claves expuestas en su value={{...}}
+    proveedores: dict[str, tuple[str, set[str]]] = {}  # nombre ctx -> (ruta, claves)
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".jsx") or "createContext" not in cont:
+            continue
+        mctx = re.search(r"const\s+(\w+)\s*=\s*createContext", cont)
+        mval = re.search(r"value=\{\{([^}]*)\}\}", cont)
+        if not mctx or not mval:
+            continue
+        claves = {p.split(":")[0].strip() for p in mval.group(1).split(",") if p.strip()}
+        proveedores[mctx.group(1)] = (ruta, claves)
+    if not proveedores:
+        return archivos
+
+    # qué piden los consumidores de cada contexto
+    pedidas: dict[str, set[str]] = {}
+    for ruta, cont in archivos.items():
+        if not ruta.endswith((".jsx", ".js")):
+            continue
+        for m in re.finditer(r"const\s*\{([^}]*)\}\s*=\s*useContext\(\s*(\w+)\s*\)", cont):
+            nombres = {n.strip() for n in m.group(1).split(",") if n.strip() and " as " not in n}
+            pedidas.setdefault(m.group(2), set()).update(nombres)
+
+    resultado = dict(archivos)
+    for ctx, faltantes in pedidas.items():
+        if ctx not in proveedores:
+            continue
+        ruta, expuestas = proveedores[ctx]
+        alias = {}
+        for pedida in faltantes - expuestas:
+            cands = [e for e in expuestas
+                     if len(e) >= 3 and (pedida.lower().startswith(e.lower())
+                                         or e.lower().startswith(pedida.lower()))]
+            if len(cands) == 1:
+                alias[pedida] = cands[0]
+        if not alias:
+            continue
+        cont = resultado[ruta]
+        mval = re.search(r"value=\{\{([^}]*)\}\}", cont)
+        if mval is None:
+            continue
+        nuevo_val = ("value={{" + mval.group(1).rstrip() + ", "
+                     + ", ".join(f"{k}: {v}" for k, v in alias.items()) + "}}")
+        nuevo = cont[:mval.start()] + nuevo_val + cont[mval.end():]
+        if _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: alias de contexto %s (%s).",
+                        ruta, ctx, ", ".join(f"{k}→{v}" for k, v in alias.items()))
+    return resultado
+
+
+def desempaquetar_respuestas_api(archivos: dict[str, str]) -> dict[str, str]:
+    """Tolera el DOBLE desempaquetado de las respuestas de la API.
+
+    El helper de API ya devuelve `response.data`, pero el componente vuelve a
+    hacer `res.data` al guardar en el estado: `setProducts(res.data)` deja el
+    estado en `undefined` y el primer `.map()` tumba la página EN BLANCO.
+    Se sustituye cada `setX(res.data)` por una forma que acepta ambas
+    convenciones (el array directo o el objeto envuelto) y cae a `[]`.
+    """
+    patron = re.compile(r"\b(set[A-Z]\w*)\(\s*(\w+)\.data\s*\)")
+    resultado = dict(archivos)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith((".jsx", ".js")):
+            continue
+        nuevo = patron.sub(
+            r"\1(Array.isArray(\2) ? \2 : ((\2 && \2.data) || []))", contenido)
+        if nuevo != contenido and _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: respuesta de API tolerante al "
+                        "doble desempaquetado.", ruta)
     return resultado
 
 
