@@ -1450,6 +1450,209 @@ def desempaquetar_respuestas_api(archivos: dict[str, str]) -> dict[str, str]:
     return resultado
 
 
+_DEFINE_MODELO = re.compile(r"""\.\s*define\(\s*(['"])(\w+)\1\s*,\s*\{""")
+_ENUM_VALORES = re.compile(r"DataTypes\.ENUM\(([^)]*)\)")
+_TIPO_CAMPO = re.compile(r"DataTypes\.(\w+)")
+
+
+def _campos_objeto(cuerpo: str) -> list[tuple[str, str]]:
+    """Pares (clave, definición) del nivel superior de un objeto literal JS."""
+    campos: list[tuple[str, str]] = []
+    nivel = 0
+    comilla: str | None = None
+    inicio_def = None
+    clave = None
+    i = 0
+    while i < len(cuerpo):
+        c = cuerpo[i]
+        if comilla:
+            if c == "\\":
+                i += 2
+                continue
+            if c == comilla:
+                comilla = None
+        elif c in "'\"`":
+            comilla = c
+        elif c in "([{":
+            nivel += 1
+        elif c in ")]}":
+            nivel -= 1
+        elif nivel == 0:
+            if clave is None:
+                m = re.match(r"(\w+)\s*:", cuerpo[i:])
+                if m:
+                    clave = m.group(1)
+                    inicio_def = i + m.end()
+                    i += m.end()
+                    continue
+            elif c == ",":
+                campos.append((clave, cuerpo[inicio_def:i]))
+                clave = None
+        i += 1
+    if clave is not None:
+        campos.append((clave, cuerpo[inicio_def:]))
+    return campos
+
+
+def _objetos_de_registro(texto: str, inicio: int, fin: int) -> list[tuple[int, int]]:
+    """Spans de los objetos `{...}` de registro dentro de un create/bulkCreate.
+
+    Son las llaves NO anidadas en otra llave (pueden ir dentro de `[...]`).
+    """
+    spans: list[tuple[int, int]] = []
+    pila: list[str] = []
+    comilla: str | None = None
+    i = inicio
+    while i < fin:
+        c = texto[i]
+        if comilla:
+            if c == "\\":
+                i += 2
+                continue
+            if c == comilla:
+                comilla = None
+        elif c in "'\"`":
+            comilla = c
+        elif c == "{":
+            if "{" not in pila:
+                cierra = _cierre(texto, i)
+                if cierra is None or cierra > fin:
+                    return spans
+                spans.append((i, cierra))
+                i = cierra + 1
+                continue
+            pila.append(c)
+        elif c in "([":
+            pila.append(c)
+        elif c in ")]}":
+            if pila:
+                pila.pop()
+        i += 1
+    return spans
+
+
+def _valor_enum_cercano(valor: str, valores: tuple[str, ...]) -> str:
+    """El valor permitido más parecido; si no hay uno claro, el primero."""
+    v = valor.lower()
+    cands = [x for x in valores
+             if x.lower().startswith(v[:4]) or v.startswith(x.lower()[:4])]
+    return cands[0] if len(cands) == 1 else valores[0]
+
+
+def _placeholder_por_tipo(info: dict) -> str:
+    if info.get("enum"):
+        return f"'{info['enum'][0]}'"
+    tipo = info.get("tipo", "")
+    if tipo in ("INTEGER", "BIGINT", "FLOAT", "DOUBLE", "DECIMAL", "REAL"):
+        return "0"
+    if tipo == "BOOLEAN":
+        return "false"
+    if tipo in ("DATE", "DATEONLY"):
+        return "new Date()"
+    if tipo in ("JSON", "JSONB"):
+        return "{}"
+    if tipo == "ARRAY":
+        return "[]"
+    return "'pendiente'"
+
+
+def alinear_semilla_con_modelo(archivos: dict[str, str]) -> dict[str, str]:
+    """Alinea los datos de semilla con las restricciones del modelo Sequelize.
+
+    Dos desajustes vistos en producción (tienda de repostería) que matan el
+    seed en silencio y dejan el catálogo VACÍO con la app "funcionando":
+
+    1. Valor fuera del ENUM: la semilla trae `role: 'user'` pero el modelo
+       declara `ENUM('customer', 'admin')` → violación de constraint.
+       Se sustituye por el valor permitido más parecido (o el primero).
+    2. Campo NOT NULL ausente: el modelo exige `address` sin defaultValue y
+       la semilla no lo trae → INSERT rechazado. Se inserta un placeholder
+       acorde al tipo en cada objeto de `Model.create/bulkCreate`.
+
+    Solo toca archivos de semilla ('seed' en la ruta) y valida con node.
+    """
+    modelos: dict[str, dict[str, dict]] = {}
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".js") or ".define(" not in cont:
+            continue
+        for m in _DEFINE_MODELO.finditer(cont):
+            abre = cont.index("{", m.start())
+            cierra = _cierre(cont, abre)
+            if cierra is None:
+                continue
+            campos: dict[str, dict] = {}
+            for nombre, deftxt in _campos_objeto(cont[abre + 1:cierra]):
+                info: dict = {}
+                menum = _ENUM_VALORES.search(deftxt)
+                if menum:
+                    info["enum"] = re.findall(r"['\"]([^'\"]+)['\"]", menum.group(1))
+                mtipo = _TIPO_CAMPO.search(deftxt)
+                info["tipo"] = mtipo.group(1) if mtipo else ""
+                info["requerido"] = bool(
+                    re.search(r"allowNull\s*:\s*false", deftxt)
+                    and "defaultValue" not in deftxt
+                    and "autoIncrement" not in deftxt
+                    and "primaryKey" not in deftxt)
+                campos[nombre] = info
+            modelos[m.group(2).lower()] = campos
+    if not modelos:
+        return archivos
+
+    # campo -> valores ENUM permitidos (se descarta si dos modelos discrepan)
+    enum_de: dict[str, tuple[str, ...] | None] = {}
+    for campos in modelos.values():
+        for c, info in campos.items():
+            if info.get("enum"):
+                v = tuple(info["enum"])
+                enum_de[c] = None if enum_de.get(c, v) != v else v
+    enums = {c: v for c, v in enum_de.items() if v}
+
+    resultado = dict(archivos)
+    for ruta, cont in archivos.items():
+        if "seed" not in ruta.lower() or not ruta.endswith(".js"):
+            continue
+        nuevo = cont
+        notas: list[str] = []
+
+        for campo, valores in enums.items():
+            patron = re.compile(rf"\b({campo})\s*:\s*(['\"])([^'\"]*)\2")
+
+            def _rep(m: re.Match) -> str:
+                if m.group(3) in valores:
+                    return m.group(0)
+                elegido = _valor_enum_cercano(m.group(3), valores)
+                notas.append(f"{m.group(1)}: '{m.group(3)}'→'{elegido}'")
+                return f"{m.group(1)}: {m.group(2)}{elegido}{m.group(2)}"
+
+            nuevo = patron.sub(_rep, nuevo)
+
+        for m in list(re.finditer(r"\b(\w+)\.(?:bulkCreate|create)\s*\(", nuevo))[::-1]:
+            nombre = m.group(1).lower()
+            campos = modelos.get(nombre) or modelos.get(nombre.rstrip("s"))
+            if not campos:
+                continue
+            fin_llamada = _cierre(nuevo, m.end() - 1)
+            if fin_llamada is None:
+                continue
+            requeridos = {c: i for c, i in campos.items() if i["requerido"]}
+            if not requeridos:
+                continue
+            for abre, cierra in _objetos_de_registro(nuevo, m.end(), fin_llamada)[::-1]:
+                presentes = {c for c, _ in _campos_objeto(nuevo[abre + 1:cierra])}
+                faltan = [(c, i) for c, i in requeridos.items() if c not in presentes]
+                if not faltan:
+                    continue
+                extra = ", ".join(f"{c}: {_placeholder_por_tipo(i)}" for c, i in faltan)
+                nuevo = nuevo[:abre + 1] + " " + extra + "," + nuevo[abre + 1:]
+                notas.extend(f"+{c} (NOT NULL sin valor)" for c, _ in faltan)
+
+        if notas and nuevo != cont and _js_valido(nuevo):
+            resultado[ruta] = nuevo
+            logger.info("Arreglo automático en %s: semilla alineada con el "
+                        "modelo (%s).", ruta, "; ".join(notas))
+    return resultado
+
+
 def garantizar_manual(archivos: dict[str, str]) -> dict[str, str]:
     """Garantiza que todo proyecto se entregue con un MANUAL.md.
 

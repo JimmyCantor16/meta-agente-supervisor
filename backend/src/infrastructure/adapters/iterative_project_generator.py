@@ -37,6 +37,7 @@ from src.infrastructure.adapters.python_syntax_fixes import (
     tolerar_use_con_objeto,
     inyectar_token_axios,
     enganchar_seed,
+    alinear_semilla_con_modelo,
     alinear_contrato_auth,
     alinear_contrato_contextos,
     desempaquetar_respuestas_api,
@@ -380,6 +381,7 @@ def _normalizar_proyecto(files: list[GeneratedFile], motor: str | None = None) -
     contenidos = blindar_sdks_externos(contenidos)
     contenidos = tolerar_use_con_objeto(contenidos)
     contenidos = enganchar_seed(contenidos)
+    contenidos = alinear_semilla_con_modelo(contenidos)
     contenidos = alinear_contrato_auth(contenidos)
     contenidos = alinear_contrato_contextos(contenidos)
     contenidos = desempaquetar_respuestas_api(contenidos)
