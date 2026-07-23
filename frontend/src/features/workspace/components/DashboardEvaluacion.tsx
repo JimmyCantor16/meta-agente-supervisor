@@ -5,6 +5,7 @@ import { Card } from "../../../components/Card";
 import { GoogleLoginButton } from "../../auth/GoogleLoginButton";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import type { AccountStatus } from "../../auth/types";
+import { progressSocketUrl } from "../../../lib/api";
 import { useAdjustModule } from "../hooks/useAdjustModule";
 import { useAuditProject } from "../hooks/useAuditProject";
 import { useExplainProject } from "../hooks/useExplainProject";
@@ -337,11 +338,34 @@ function GenerateProjectSection({
   const { t } = useLanguage();
   const { data, loading, error, licenseRequired, generate } = useGenerateProject();
   const [modoInquieto, setModoInquieto] = useState(true);
+  // Consola en vivo: mientras se genera, un WebSocket narra cada paso.
+  const [progreso, setProgreso] = useState<string[]>([]);
 
   useEffect(() => {
     if (data) onAfterGenerate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  useEffect(() => {
+    if (!loading) return;
+    setProgreso([]);
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(progressSocketUrl());
+      socket.onmessage = (ev) =>
+        setProgreso((prev) => [...prev.slice(-60), String(ev.data)]);
+    } catch {
+      // sin socket también se puede vivir: queda el spinner de siempre
+    }
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    const caja = document.getElementById("consola-progreso");
+    if (caja) caja.scrollTop = caja.scrollHeight;
+  }, [progreso]);
 
   return (
     <Card title={t.dashboard.generatedTitle} icon={<span>🏗️</span>}>
@@ -369,6 +393,21 @@ function GenerateProjectSection({
             />
             ⚡ {t.dashboard.inquietoLabel}
           </label>
+        </div>
+      )}
+
+      {/* Consola en vivo: el sistema narra su construcción por WebSocket */}
+      {loading && progreso.length > 0 && (
+        <div
+          id="consola-progreso"
+          className="mt-4 max-h-56 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-4 font-mono text-xs leading-relaxed text-emerald-300"
+          aria-live="polite"
+        >
+          {progreso.map((linea, i) => (
+            <div key={i} className={i === progreso.length - 1 ? "text-emerald-100" : ""}>
+              {linea}
+            </div>
+          ))}
         </div>
       )}
 

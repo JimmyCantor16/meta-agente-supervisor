@@ -7,6 +7,7 @@ import { DashboardEvaluacion } from "./features/workspace/components/DashboardEv
 import { PlansView } from "./features/workspace/components/PlansView";
 import { ProjectGallery } from "./features/workspace/components/ProjectGallery";
 import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspace";
+import { PublishGuide } from "./features/workspace/components/PublishGuide";
 import { PromptInput } from "./features/workspace/components/PromptInput";
 import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
@@ -181,6 +182,8 @@ export default function App() {
                   onOpen={abrirProyecto}
                 />
               ))}
+
+            {view === "publish" && <PublishGuide projects={projects} />}
 
             {view === "plans" && (
               <PlansView

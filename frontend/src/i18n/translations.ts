@@ -13,9 +13,57 @@ const es = {
     home: "Inicio",
     projects: "Proyectos",
     learn: "Aprender",
+    publish: "Publicar",
     plans: "Planes",
     help: "Ayuda",
     admin: "Admin",
+  },
+  publish: {
+    title: "De tu computador al mundo",
+    intro:
+      "Tu profesor te guía en tres clases: primero corres tu sistema en TU computador (sin Docker ni magia), luego lo guardas en TU GitHub, y al final lo publicas GRATIS en internet con TU cuenta. Al terminar, la URL es tuya de verdad.",
+    forProject: "Guía para el proyecto:",
+    projectsPath: "%LOCALAPPDATA%\\MetaAgente\\generated",
+    step1Tab: "Clase 1: En tu compu",
+    step2Tab: "Clase 2: Tu GitHub",
+    step3Tab: "Clase 3: Al mundo",
+    step1Title: "Corre tu sistema en localhost (sin Docker)",
+    step1Why:
+      "Concepto de la clase: tu sistema son solo dos cosas — un programa que atiende (backend) y las pantallas que sirve (frontend). Node.js es el motor que lo ejecuta. Si corre en tu compu, corre en cualquier parte.",
+    step1a: "Instala Node.js LTS desde nodejs.org (siguiente, siguiente, listo). Verifica abriendo una terminal (tecla Windows → escribe «cmd») y pegando:",
+    step1aNote: "Si responde con un número de versión (v20 o más), estás listo.",
+    step1b: (p: string) => `Entra a la carpeta del backend de «${p}» (copia y pega en la terminal):`,
+    step1c: "Instala las piezas que tu sistema necesita (solo la primera vez):",
+    step1cNote: "npm es el mercado de piezas de Node: lee la lista de tu proyecto y las descarga.",
+    step1d: "¡Enciéndelo!",
+    step1dNote: "Déjalo abierto: esa ventana ES tu servidor.",
+    step1Done:
+      "Abre http://localhost:3000 en tu navegador: tu sistema corriendo en TU máquina, sin Docker. Para apagarlo: Ctrl+C en la terminal.",
+    step2Title: "Guarda tu código en TU GitHub",
+    step2Why:
+      "Concepto de la clase: GitHub es la caja fuerte y el historial de tu proyecto. Cada «commit» es una foto con nombre de cómo está tu código hoy: si mañana algo se daña, vuelves a la foto de ayer.",
+    step2a: "Crea tu cuenta gratis (si no la tienes):",
+    step2b: "Crea un repositorio nuevo (el cajón para este proyecto):",
+    step2bNote: (p: string) =>
+      `Nómbralo «${p}», déjalo Público, y NO marques ninguna casilla de inicializar. Crea y deja esa página abierta.`,
+    step2c: "En la terminal, entra a tu proyecto y toma la primera foto:",
+    step2cNote:
+      "Si es tu primera vez, git te pedirá presentarte: git config --global user.name \"Tu Nombre\" y user.email \"tu@correo.com\". Git viene con Windows si instalaste GitHub Desktop o git-scm.com.",
+    step2d: "Conecta tu cajón de GitHub y sube (cambia TU-USUARIO por el tuyo):",
+    step2dNote: "GitHub te pedirá iniciar sesión la primera vez. Es normal.",
+    step2Done: "Recarga la página de tu repositorio: ¡tu código ya vive en TU GitHub!",
+    step3Title: "Publícalo GRATIS en internet (Render)",
+    step3Why:
+      "Concepto de la clase: Render es un computador en la nube que corre tu proyecto por ti, gratis, conectado a tu GitHub: cada vez que subas cambios, se actualiza solo.",
+    step3a: "Crea tu cuenta gratis entrando con tu GitHub:",
+    step3b: "Pulsa «New +» → «Web Service» y elige el repositorio de tu proyecto.",
+    step3c: "Rellena así (es lo único técnico, cópialo tal cual):",
+    step3cFree: "Instance type: Free (suficiente para empezar).",
+    step3d: "Pulsa «Deploy Web Service» y espera 2-4 minutos mientras construye.",
+    step3Done:
+      "Render te da una URL tipo https://tu-proyecto.onrender.com — esa es TU sistema, en TU cuenta, visible desde cualquier lugar del mundo. Compártela.",
+    step3Note:
+      "Nota honesta del profesor: en el plan gratis, Render duerme tu app tras 15 min sin visitas; la primera visita siguiente tarda ~1 min en despertarla. Es el precio de lo gratis, y para mostrar tu MVP sobra.",
   },
   plans: {
     title: "Planes",
@@ -206,9 +254,57 @@ const en: Translation = {
     home: "Home",
     projects: "Projects",
     learn: "Learn",
+    publish: "Publish",
     plans: "Plans",
     help: "Help",
     admin: "Admin",
+  },
+  publish: {
+    title: "From your computer to the world",
+    intro:
+      "Your teacher guides you through three classes: first you run your system on YOUR computer (no Docker, no magic), then you save it to YOUR GitHub, and finally you publish it for FREE with YOUR account. When you finish, the URL is truly yours.",
+    forProject: "Guide for project:",
+    projectsPath: "%LOCALAPPDATA%\\MetaAgente\\generated",
+    step1Tab: "Class 1: Your PC",
+    step2Tab: "Class 2: Your GitHub",
+    step3Tab: "Class 3: The world",
+    step1Title: "Run your system on localhost (no Docker)",
+    step1Why:
+      "Class concept: your system is just two things — a program that serves (backend) and the screens it delivers (frontend). Node.js is the engine that runs it. If it runs on your PC, it runs anywhere.",
+    step1a: "Install Node.js LTS from nodejs.org (next, next, done). Verify by opening a terminal (Windows key → type «cmd») and pasting:",
+    step1aNote: "If it answers with a version number (v20 or higher), you're ready.",
+    step1b: (p: string) => `Enter the backend folder of «${p}» (copy and paste into the terminal):`,
+    step1c: "Install the pieces your system needs (first time only):",
+    step1cNote: "npm is Node's parts market: it reads your project's list and downloads them.",
+    step1d: "Turn it on!",
+    step1dNote: "Leave it open: that window IS your server.",
+    step1Done:
+      "Open http://localhost:3000 in your browser: your system running on YOUR machine, no Docker. To stop it: Ctrl+C in the terminal.",
+    step2Title: "Save your code to YOUR GitHub",
+    step2Why:
+      "Class concept: GitHub is your project's safe and history. Each «commit» is a named photo of your code today: if something breaks tomorrow, you go back to yesterday's photo.",
+    step2a: "Create your free account (if you don't have one):",
+    step2b: "Create a new repository (the drawer for this project):",
+    step2bNote: (p: string) =>
+      `Name it «${p}», keep it Public, and do NOT check any initialize box. Create it and keep that page open.`,
+    step2c: "In the terminal, enter your project and take the first photo:",
+    step2cNote:
+      "First time with git? It will ask you to introduce yourself: git config --global user.name \"Your Name\" and user.email \"you@mail.com\". Get git from github desktop or git-scm.com.",
+    step2d: "Connect your GitHub drawer and push (replace YOUR-USER with yours):",
+    step2dNote: "GitHub will ask you to sign in the first time. That's normal.",
+    step2Done: "Reload your repository page: your code now lives in YOUR GitHub!",
+    step3Title: "Publish it for FREE on the internet (Render)",
+    step3Why:
+      "Class concept: Render is a cloud computer that runs your project for you, free, connected to your GitHub: every time you push changes, it updates itself.",
+    step3a: "Create your free account signing in with GitHub:",
+    step3b: "Press «New +» → «Web Service» and pick your project's repository.",
+    step3c: "Fill it like this (the only technical bit, copy as-is):",
+    step3cFree: "Instance type: Free (plenty to start).",
+    step3d: "Press «Deploy Web Service» and wait 2-4 minutes while it builds.",
+    step3Done:
+      "Render gives you a URL like https://your-project.onrender.com — that's YOUR system, on YOUR account, visible anywhere in the world. Share it.",
+    step3Note:
+      "Teacher's honest note: on the free plan Render sleeps your app after 15 min without visits; the next first visit takes ~1 min to wake it. That's the price of free, and it's plenty to show your MVP.",
   },
   plans: {
     title: "Plans",

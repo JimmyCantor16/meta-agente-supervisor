@@ -1034,6 +1034,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_router)
 
+    # Progreso de generación EN VIVO (WebSocket): el usuario ve construirse
+    # su sistema paso a paso en vez de mirar un spinner mudo.
+    from src.infrastructure.entrypoints.progreso import router_ws
+
+    app.include_router(router_ws)
+
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:
         """Endpoint de salud para readiness/liveness checks."""

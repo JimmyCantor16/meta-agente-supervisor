@@ -48,6 +48,19 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * URL del WebSocket de progreso en vivo. Deriva del mismo origen que la API:
+ * con proxy (Vite/Nginx) usa el host de la página; en escritorio apunta al
+ * puerto del backend embebido.
+ */
+export function progressSocketUrl(): string {
+  if (API_BASE) {
+    return API_BASE.replace(/^http/, "ws") + "/api/v1/ws/progreso";
+  }
+  const esquema = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${esquema}://${window.location.host}/api/v1/ws/progreso`;
+}
+
 /** Cabecera de autenticación con el token de Google guardado (si hay sesión). */
 function authHeaders(): Record<string, string> {
   const credential = window.localStorage.getItem("auth.credential");

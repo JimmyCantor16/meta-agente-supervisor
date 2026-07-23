@@ -25,6 +25,7 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
     { key: "home", label: t.nav.home, icon: "🏠" },
     { key: "projects", label: t.nav.projects, icon: "📁" },
     { key: "learn", label: t.nav.learn, icon: "🎓" },
+    { key: "publish", label: t.nav.publish, icon: "🚀" },
     { key: "plans", label: t.nav.plans, icon: "💎" },
     { key: "help", label: t.nav.help, icon: "❓" },
     ...(showAdmin ? [{ key: "admin", label: t.nav.admin, icon: "🛡️" }] : []),

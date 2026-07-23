@@ -78,10 +78,13 @@ Push-Location $backend
     --collect-all pydantic `
     --collect-all openai `
     --collect-all google.auth `
+    --collect-all websockets `
     --hidden-import "uvicorn.logging" `
     --hidden-import "uvicorn.protocols.http.auto" `
     --hidden-import "uvicorn.protocols.websockets.auto" `
     --hidden-import "uvicorn.lifespan.on" `
+    --add-data "bases;bases" `
+    --add-data "skills;skills" `
     --noconfirm `
     desktop_server.py
 Pop-Location
