@@ -104,6 +104,11 @@ const es = {
     login: "Iniciar sesión",
     logout: "Salir",
   },
+  auth: {
+    bridgeButton: "Entrar con Google (se abre tu navegador)",
+    bridgeWaiting: "Esperando tu login en el navegador…",
+    bridgeHint: "Completa el inicio de sesión en la ventana de tu navegador y vuelve aquí: la app te reconocerá sola.",
+  },
   hero: {
     greeting: "Hola 👋 Soy tu Meta-Agente",
     title: "Convierte tu idea en un sistema real",
@@ -344,6 +349,11 @@ const en: Translation = {
     desktop: "Desktop",
     login: "Sign in",
     logout: "Sign out",
+  },
+  auth: {
+    bridgeButton: "Sign in with Google (opens your browser)",
+    bridgeWaiting: "Waiting for your login in the browser…",
+    bridgeHint: "Complete the sign-in in your browser window and come back: the app will recognize you automatically.",
   },
   hero: {
     greeting: "Hi 👋 I'm your Meta-Agent",

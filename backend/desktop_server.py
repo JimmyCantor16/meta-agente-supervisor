@@ -92,6 +92,10 @@ def configure_environment() -> Path:
 
     # Rutas de escritura: nunca junto al ejecutable.
     os.environ.setdefault("DB_PATH", str(data_dir / "evaluations.db"))
+    # Habilita el puente de login por navegador (Google bloquea WebViews) y
+    # publica el puerto para que el puente sepa a dónde volver.
+    os.environ["MODO_ESCRITORIO"] = "1"
+    os.environ["METAAGENTE_PUERTO"] = str(DESKTOP_PORT)
     os.environ.setdefault("GENERATED_DIR", str(data_dir / "generated"))
 
     # En escritorio el frontend se sirve desde el propio Tauri, cuyo origen no
