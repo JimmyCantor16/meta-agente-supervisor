@@ -19,6 +19,8 @@ import os
 import re
 import subprocess
 import tempfile
+from functools import lru_cache
+from pathlib import Path
 
 from src.config import Settings
 from src.domain.entities import GeneratedFile, GeneratedProject
@@ -119,6 +121,34 @@ _FROM_IMPORT_RE = re.compile(
     r"^\s*from\s+(\.*)([\w.]*)\s+import\s+([^\n#]+)",
     re.MULTILINE,
 )
+
+
+# --- Skills: documentación destilada que se inyecta según el tipo de archivo.
+# El modelo no diseña desde cero: rellena una doctrina que ya es buena. Vive en
+# archivos .md editables (backend/skills/) para que mejorar el gusto del agente
+# sea editar texto, no tocar código.
+_SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
+_EXTENSIONES_UI = (".css", ".jsx", ".html", ".vue", ".tsx")
+
+
+@lru_cache(maxsize=8)
+def _skill(nombre: str) -> str:
+    """Contenido de una skill (cacheado); vacío si no existe — nunca rompe."""
+    try:
+        texto = (_SKILLS_DIR / nombre).read_text(encoding="utf-8")
+        return texto[:6000]  # techo defensivo para el presupuesto de tokens
+    except OSError:
+        logger.warning("Skill '%s' no encontrada en %s.", nombre, _SKILLS_DIR)
+        return ""
+
+
+def _system_para(path: str) -> str:
+    """El system prompt del escritor, con la skill que aplique al archivo."""
+    if path.endswith(_EXTENSIONES_UI):
+        skill = _skill("diseno_interfaces.md")
+        if skill:
+            return _WRITER_SYS + "\n\n" + skill
+    return _WRITER_SYS
 
 
 _PLANNER_SYS = """\
@@ -853,7 +883,7 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
             f"Escribe AHORA el contenido completo de: {spec['path']}\n"
             f"Propósito: {spec.get('purpose', '')}"
         )
-        data = self._chat(_WRITER_SYS, user)
+        data = self._chat(_system_para(spec["path"]), user)
         content = data.get("content")
         if content is None:
             raise ProjectGenerationError(f"No se generó contenido para {spec['path']}.")
@@ -1133,7 +1163,7 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
             f"Escribe su contenido COMPLETO definiendo EXACTAMENTE esos símbolos, "
             f"con esos nombres, para que el proyecto se ejecute."
         )
-        data = self._chat(_WRITER_SYS, user)
+        data = self._chat(_system_para(target), user)
         return data.get("content") or ""
 
     @staticmethod

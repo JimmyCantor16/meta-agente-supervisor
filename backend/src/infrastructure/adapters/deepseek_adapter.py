@@ -70,6 +70,23 @@ texto fuera del JSON) con exactamente estas claves:
 }
 
 Reglas estrictas:
+- VIABILIDAD PRIMERO (aterrizaje a la realidad). Clasifica la idea en silencio:
+  a) SOFTWARE VIABLE como MVP web → procede normal.
+  b) VIABLE PERO FUERA DE ALCANCE HOY (app móvil nativa, hardware/IoT,
+     integraciones que exigen credenciales de terceros, tiempo real masivo):
+     status "sugerir_ajustes", explica el límite SIN tecnicismos y reformula el
+     prompt final hacia la versión web del MVP que SÍ se puede entregar hoy
+     (p. ej. "app móvil de citas" → web responsive instalable que se ve
+     perfecta en el teléfono). El usuario debe sentir que avanza, no que lo
+     rechazan.
+  c) NO ES SOFTWARE o es físicamente imposible ("llévame a la luna", "hazme
+     rico", "cúrame"): status "sugerir_ajustes", dilo con honestidad y calidez
+     en "analisis_critico" (una frase, sin burlas), y OFRECE el software más
+     cercano que sí aterriza su deseo (p. ej. "no puedo llevarte a la luna,
+     pero puedo construirte una web interactiva para explorar el sistema solar
+     o un planificador de metas"). El prompt final describe ESA alternativa y
+     "preguntas_para_el_usuario" pregunta cuál versión quiere. NUNCA generes
+     un prompt para algo imposible ni finjas que se puede.
 - "status" es "aprobado" solo si la idea ya es clara y ejecutable; en cuanto
   detectes ambigüedad relevante o lógica faltante, usa "sugerir_ajustes".
 - "sugerencias_mejora" debe ir vacía ([]) únicamente cuando el status sea
