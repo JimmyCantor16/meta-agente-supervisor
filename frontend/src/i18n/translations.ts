@@ -152,6 +152,8 @@ const es = {
     adjustPropose: "👀 Ver el cambio",
     adjustExecute: "🤖 Hazlo tú",
     adjustWorking: "El profesor está trabajando…",
+    adjustWorkingExec:
+      "Aplicando y VERIFICANDO tu proyecto ejecutándolo de verdad ☕ — si toca código puede tardar 1-3 minutos (documentación es al instante). No cierres la pestaña.",
     adjustConcept: "Concepto de la clase",
     adjustChanges: "Archivos del cambio",
     adjustNewFile: "nuevo",
@@ -342,6 +344,8 @@ const en: Translation = {
     adjustPropose: "👀 Show the change",
     adjustExecute: "🤖 Do it yourself",
     adjustWorking: "The teacher is working…",
+    adjustWorkingExec:
+      "Applying and VERIFYING your project by actually running it ☕ — code changes can take 1-3 minutes (docs are instant). Don't close the tab.",
     adjustConcept: "Class concept",
     adjustChanges: "Changed files",
     adjustNewFile: "new",

@@ -143,6 +143,11 @@ class AplicarAjusteUseCase:
 
         La usan tanto el EJECUTAR directo como la aplicación EXACTA de una
         propuesta aprobada: misma seguridad en ambos caminos.
+
+        VERIFICACIÓN PROPORCIONAL: cambiar el título de un README no puede
+        costar 4 minutos de npm install. Si el ajuste solo toca documentación
+        (nada ejecutable), se aplica directo — no hay nada que pueda romperse
+        ejecutando.
         """
         raiz = Path(self._generated_dir) / nombre
         if not raiz.is_dir():
@@ -150,6 +155,18 @@ class AplicarAjusteUseCase:
 
         respaldo = {c.path: anteriores.get(c.path) for c in cambios}
         self._escribir(raiz, cambios)
+
+        if all(_es_solo_documentacion(c.path) for c in cambios):
+            logger.info("Ajuste solo-documentación en '%s': aplicado sin "
+                        "verificación por ejecución (no hay nada que ejecutar).",
+                        nombre)
+            self._registrar(nombre, base.ajuste, cambios, aplicado=True, revertido=False)
+            return base.model_copy(update={
+                "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
+                "aplicado": True, "verificado": True,
+                "detalle": "Solo cambió documentación: se aplicó al instante "
+                           "(no había código que verificar ejecutando).",
+            })
 
         error = self._verifier.verify(str(raiz))
         if error is None:
@@ -301,6 +318,16 @@ class AplicarAjusteUseCase:
                 destino.unlink(missing_ok=True)
             else:
                 destino.write_text(contenido, encoding="utf-8")
+
+
+_EXT_DOCUMENTACION = (".md", ".txt", ".rst", ".license")
+_NOMBRES_DOCUMENTACION = ("license", "readme", "changelog", ".gitignore", ".env.example")
+
+
+def _es_solo_documentacion(path: str) -> bool:
+    """True si el archivo no participa en la ejecución del proyecto."""
+    bajo = path.lower()
+    return bajo.endswith(_EXT_DOCUMENTACION) or bajo.rsplit("/", 1)[-1] in _NOMBRES_DOCUMENTACION
 
 
 _VACIAS = {

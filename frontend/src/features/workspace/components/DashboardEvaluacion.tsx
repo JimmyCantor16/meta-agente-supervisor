@@ -666,7 +666,11 @@ function AdjustPanel({ projectName }: { projectName: string }) {
           </Button>
         ))}
       </div>
-      {loading && <p className="mt-2 text-sm text-slate-500">{t.dashboard.adjustWorking}</p>}
+      {loading && (
+        <p className="mt-2 text-sm text-slate-500">
+          {activeNivel === "ejecutar" ? t.dashboard.adjustWorkingExec : t.dashboard.adjustWorking}
+        </p>
+      )}
       {error && <p className="mt-2 text-red-600">⚠ {error}</p>}
 
       {data && !loading && (
