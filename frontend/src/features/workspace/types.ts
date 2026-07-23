@@ -98,6 +98,8 @@ export interface AjusteResult {
   verificado: boolean;
   revertido: boolean;
   detalle: string;
+  /** Id de la propuesta guardada: al ejecutar con él se aplica EXACTAMENTE lo revisado. */
+  propuesta_id?: string | null;
 }
 
 // Resultado de la pasada de auto-mejora (audita y aplica verificando).

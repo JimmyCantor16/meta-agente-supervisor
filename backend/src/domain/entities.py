@@ -323,6 +323,14 @@ class ResultadoAjuste(BaseModel):
     aplicado: bool = Field(default=False, description="Se escribió en disco.")
     verificado: bool = Field(default=False, description="La verificación por ejecución pasó.")
     revertido: bool = Field(default=False, description="Se deshizo por fallar la verificación.")
+    propuesta_id: str | None = Field(
+        default=None,
+        description=(
+            "Identificador de la propuesta guardada (nivel PROPONER). Al "
+            "ejecutar con este id se aplica EXACTAMENTE lo que el alumno "
+            "revisó, byte a byte — nunca una regeneración."
+        ),
+    )
     detalle: str = Field(default="", description="Error/traceback real si algo falló.")
 
     model_config = {"extra": "ignore"}

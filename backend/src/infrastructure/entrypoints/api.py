@@ -247,6 +247,14 @@ class AjusteRequest(BaseModel):
                     "para que el alumno lo apruebe; 'ejecutar' lo aplica y lo verifica.",
     )
     language: Literal["es", "en"] = Field(default="es")
+    propuesta_id: str | None = Field(
+        default=None,
+        max_length=32,
+        description=(
+            "Con nivel 'ejecutar': aplica EXACTAMENTE la propuesta guardada "
+            "con este id (la que el alumno revisó), sin regenerar nada."
+        ),
+    )
 
 
 class CambioDTO(BaseModel):
@@ -271,6 +279,7 @@ class AjusteResponse(BaseModel):
     verificado: bool
     revertido: bool
     detalle: str
+    propuesta_id: str | None = None
 
 
 class ProjectSummary(BaseModel):
@@ -804,6 +813,7 @@ def ajustar_modulo(
             request.ajuste,
             NivelAutonomia(request.nivel),
             request.language,
+            propuesta_id=request.propuesta_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -832,6 +842,7 @@ def ajustar_modulo(
         verificado=resultado.verificado,
         revertido=resultado.revertido,
         detalle=resultado.detalle,
+        propuesta_id=resultado.propuesta_id,
     )
 
 

@@ -16,6 +16,7 @@ alumno peor de como estaba.
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import logging
 from datetime import datetime, timezone
@@ -59,18 +60,38 @@ class AplicarAjusteUseCase:
         ajuste: str,
         nivel: NivelAutonomia = NivelAutonomia.PROPONER,
         language: str = "es",
+        propuesta_id: str | None = None,
     ) -> ResultadoAjuste:
-        """Ejecuta el ajuste con el nivel de autonomía pedido."""
+        """Ejecuta el ajuste con el nivel de autonomía pedido.
+
+        Con `propuesta_id` (nivel EJECUTAR), se aplica EXACTAMENTE la
+        propuesta que el alumno revisó — sin volver a llamar a la IA. Lo
+        aprobado es lo aplicado, byte a byte.
+        """
         nombre = (project_name or "").strip()
         peticion = (ajuste or "").strip()
         if not nombre:
             raise ValueError("El nombre del proyecto no puede estar vacío.")
-        if not peticion:
+        if not peticion and not propuesta_id:
             raise ValueError("Hay que indicar qué se quiere ajustar.")
 
         archivos = self._reader.read(nombre)
         if not archivos:
             raise AuditError(f"El proyecto '{nombre}' no existe o está vacío.")
+
+        # --- Aplicación EXACTA de una propuesta ya revisada ---
+        if propuesta_id and nivel is NivelAutonomia.EJECUTAR:
+            guardada = self._cargar_propuesta(propuesta_id, nombre)
+            base = ResultadoAjuste(
+                proyecto=nombre, ajuste=guardada["ajuste"], nivel=nivel,
+                propuesta_id=propuesta_id,
+            )
+            cambios = [CambioArchivo(**c) for c in guardada["cambios"]]
+            return self._aplicar(
+                base, nombre, cambios,
+                guardada.get("explicacion", ""), guardada.get("concepto", ""),
+                {f.path: f.content for f in archivos},
+            )
 
         base = ResultadoAjuste(proyecto=nombre, ajuste=peticion, nivel=nivel)
 
@@ -96,13 +117,33 @@ class AplicarAjusteUseCase:
                 "detalle": "El ajuste no requirió cambios de código.",
             })
 
-        # Nivel 2: se muestra y se detiene. El alumno decide.
+        # Nivel 2: se muestra, SE GUARDA y se detiene. El alumno decide; si
+        # aprueba, se aplicará exactamente esto (no una regeneración).
         if nivel is NivelAutonomia.PROPONER:
+            pid = self._guardar_propuesta(nombre, peticion, cambios, explicacion, concepto)
             return base.model_copy(update={
                 "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
+                "propuesta_id": pid,
             })
 
         # ---------------- Nivel 3: aplicar y COMPROBAR ----------------
+        return self._aplicar(base, nombre, cambios, explicacion, concepto, anteriores)
+
+    # ------------------------------------------------------------------
+    def _aplicar(
+        self,
+        base: ResultadoAjuste,
+        nombre: str,
+        cambios: list[CambioArchivo],
+        explicacion: str,
+        concepto: str,
+        anteriores: dict[str, str],
+    ) -> ResultadoAjuste:
+        """Aplica cambios con respaldo→verificación→rollback (ruta única).
+
+        La usan tanto el EJECUTAR directo como la aplicación EXACTA de una
+        propuesta aprobada: misma seguridad en ambos caminos.
+        """
         raiz = Path(self._generated_dir) / nombre
         if not raiz.is_dir():
             raise AuditError(f"No se encontró la carpeta del proyecto '{nombre}'.")
@@ -113,7 +154,7 @@ class AplicarAjusteUseCase:
         error = self._verifier.verify(str(raiz))
         if error is None:
             logger.info("Ajuste aplicado y verificado en '%s'.", nombre)
-            self._registrar(nombre, peticion, cambios, aplicado=True, revertido=False)
+            self._registrar(nombre, base.ajuste, cambios, aplicado=True, revertido=False)
             return base.model_copy(update={
                 "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
                 "aplicado": True, "verificado": True,
@@ -122,7 +163,7 @@ class AplicarAjusteUseCase:
         # Falló: se deshace y se dice la verdad.
         self._revertir(raiz, respaldo)
         logger.warning("Ajuste en '%s' revertido: la verificación falló.", nombre)
-        self._registrar(nombre, peticion, cambios, aplicado=False, revertido=True)
+        self._registrar(nombre, base.ajuste, cambios, aplicado=False, revertido=True)
         return base.model_copy(update={
             "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
             "aplicado": False, "verificado": False, "revertido": True,
@@ -131,6 +172,60 @@ class AplicarAjusteUseCase:
                 "así que se revirtió y el proyecto quedó como estaba.\n\n" + error
             ),
         })
+
+    # ------------------------------------------------------------------
+    # Almacén de propuestas: lo que el alumno revisa queda guardado en disco
+    # y se aplica byte a byte. Sobrevive a reinicios y no depende de la IA.
+    def _dir_propuestas(self) -> Path:
+        return Path(self._generated_dir).parent / "data" / "propuestas"
+
+    def _guardar_propuesta(
+        self,
+        proyecto: str,
+        ajuste: str,
+        cambios: list[CambioArchivo],
+        explicacion: str,
+        concepto: str,
+    ) -> str:
+        """Persiste la propuesta y devuelve su id (huella del contenido)."""
+        huella = hashlib.sha256()
+        huella.update(proyecto.encode())
+        for c in sorted(cambios, key=lambda x: x.path):
+            huella.update(c.path.encode())
+            huella.update(c.contenido_nuevo.encode())
+        pid = huella.hexdigest()[:16]
+
+        carpeta = self._dir_propuestas()
+        carpeta.mkdir(parents=True, exist_ok=True)
+        registro = {
+            "id": pid,
+            "proyecto": proyecto,
+            "ajuste": ajuste,
+            "explicacion": explicacion,
+            "concepto": concepto,
+            "fecha": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "cambios": [c.model_dump() for c in cambios],
+        }
+        (carpeta / f"{pid}.json").write_text(
+            json.dumps(registro, ensure_ascii=False), encoding="utf-8"
+        )
+        logger.info("Propuesta %s guardada para '%s' (%d archivo(s)).",
+                    pid, proyecto, len(cambios))
+        return pid
+
+    def _cargar_propuesta(self, propuesta_id: str, proyecto: str) -> dict:
+        """Recupera una propuesta guardada; falla claro si no existe o no encaja."""
+        pid = "".join(c for c in propuesta_id if c.isalnum())[:32]
+        ruta = self._dir_propuestas() / f"{pid}.json"
+        if not ruta.is_file():
+            raise AuditError(
+                "Esa propuesta ya no existe (quizá el servidor se reinició hace "
+                "mucho o expiró). Pide el cambio de nuevo con «Ver el cambio»."
+            )
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+        if datos.get("proyecto") != proyecto:
+            raise AuditError("Esa propuesta pertenece a otro proyecto.")
+        return datos
 
     # ------------------------------------------------------------------
     def _registrar(

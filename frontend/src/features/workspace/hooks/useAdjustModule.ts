@@ -9,7 +9,12 @@ interface UseAdjustModuleResult {
   /** Nivel en curso mientras carga (para marcar el botón pulsado). */
   activeNivel: NivelAutonomia | null;
   error: string | null;
-  adjust: (projectName: string, ajuste: string, nivel: NivelAutonomia) => Promise<void>;
+  adjust: (
+    projectName: string,
+    ajuste: string,
+    nivel: NivelAutonomia,
+    propuestaId?: string | null
+  ) => Promise<void>;
   reset: () => void;
 }
 
@@ -22,12 +27,17 @@ export function useAdjustModule(): UseAdjustModuleResult {
   const [error, setError] = useState<string | null>(null);
 
   const adjust = useCallback(
-    async (projectName: string, ajuste: string, nivel: NivelAutonomia) => {
+    async (
+      projectName: string,
+      ajuste: string,
+      nivel: NivelAutonomia,
+      propuestaId?: string | null
+    ) => {
       setLoading(true);
       setActiveNivel(nivel);
       setError(null);
       try {
-        setData(await adjustModule(projectName, ajuste, nivel, lang));
+        setData(await adjustModule(projectName, ajuste, nivel, lang, propuestaId));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Ocurrió un error inesperado.");
       } finally {

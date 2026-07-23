@@ -158,6 +158,8 @@ const es = {
     adjustApplied: "✅ Aplicado y verificado",
     adjustReverted: "↩️ Se aplicó pero rompía algo: revertido (tu proyecto quedó como estaba)",
     adjustProposed: "Propuesta lista: revisa el diff. Si te convence, pulsa «Hazlo tú».",
+    adjustExactNote:
+      "Contrato de aplicación exacta: se aplicará EXACTAMENTE este cambio que estás viendo, byte a byte — no una regeneración.",
     inquietoLabel: "Modo inquieto",
     inquietoHint:
       "El agente explora más allá de lo pedido y añade detalles que agradecerás (responsive, accesibilidad, datos de ejemplo). Desmárcalo para que se ciña estrictamente a tu prompt.",
@@ -341,6 +343,8 @@ const en: Translation = {
     adjustApplied: "✅ Applied and verified",
     adjustReverted: "↩️ Applied but it broke something: reverted (your project is untouched)",
     adjustProposed: "Proposal ready: review the diff. If you like it, press \"Do it yourself\".",
+    adjustExactNote:
+      "Exact-application contract: EXACTLY this change you are reviewing will be applied, byte by byte — not a regeneration.",
     inquietoLabel: "Restless mode",
     inquietoHint:
       "The agent explores beyond what you asked and adds details you'll thank it for (responsive, accessibility, sample data). Uncheck it to stick strictly to your prompt.",

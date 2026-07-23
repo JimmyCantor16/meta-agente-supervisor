@@ -255,14 +255,21 @@ export async function adjustModule(
   projectName: string,
   ajuste: string,
   nivel: NivelAutonomia,
-  language: Language
+  language: Language,
+  propuestaId?: string | null
 ): Promise<AjusteResult> {
   let response: Response;
   try {
     response = await fetch(ADJUST_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ project_name: projectName, ajuste, nivel, language }),
+      body: JSON.stringify({
+        project_name: projectName,
+        ajuste,
+        nivel,
+        language,
+        propuesta_id: propuestaId ?? null,
+      }),
     });
   } catch {
     throw new ApiError("No se pudo conectar con el servidor para ajustar el módulo.");

@@ -616,9 +616,22 @@ function AdjustPanel({ projectName }: { projectName: string }) {
   const [ajuste, setAjuste] = useState("");
   const { data, loading, activeNivel, error, adjust } = useAdjustModule();
 
+  // Si hay una propuesta revisada para ESTE mismo ajuste, "Hazlo tú" la
+  // aplica byte a byte (contrato de aplicación exacta): lo aprobado es lo
+  // aplicado, sin volver a llamar a la IA.
+  const propuestaVigente =
+    data && data.nivel === "proponer" && data.propuesta_id && data.ajuste === ajuste.trim()
+      ? data.propuesta_id
+      : null;
+
   const lanzar = (nivel: NivelAutonomia) => {
     if (ajuste.trim().length === 0 || loading) return;
-    void adjust(projectName, ajuste.trim(), nivel);
+    void adjust(
+      projectName,
+      ajuste.trim(),
+      nivel,
+      nivel === "ejecutar" ? propuestaVigente : null
+    );
   };
 
   const botones: Array<{ nivel: NivelAutonomia; label: string }> = [
@@ -677,7 +690,14 @@ function AdjustPanel({ projectName }: { projectName: string }) {
               </p>
             ) : null)}
           {data.nivel === "proponer" && data.cambios.length > 0 && (
-            <p className="rounded-lg bg-sky-50 p-2.5 text-sky-800">{t.dashboard.adjustProposed}</p>
+            <p className="rounded-lg bg-sky-50 p-2.5 text-sky-800">
+              {t.dashboard.adjustProposed}
+              {data.propuesta_id && (
+                <span className="mt-1 block text-xs text-sky-600">
+                  🔏 {t.dashboard.adjustExactNote}
+                </span>
+              )}
+            </p>
           )}
           {data.detalle && <p className="text-xs italic text-slate-400">{data.detalle}</p>}
 
