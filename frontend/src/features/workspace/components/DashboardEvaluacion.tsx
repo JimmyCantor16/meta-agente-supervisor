@@ -490,7 +490,7 @@ function PaymentPanel({
   );
 }
 
-function AuditSubsection({ projectName }: { projectName: string }) {
+export function AuditSubsection({ projectName }: { projectName: string }) {
   const { t } = useLanguage();
   const { data, loading, error, audit } = useAuditProject();
   const improve = useImproveProject();
@@ -584,7 +584,7 @@ function ResultadoLista({ titulo, items, icon }: { titulo: string; items: string
   );
 }
 
-function TeacherSubsection({ projectName }: { projectName: string }) {
+export function TeacherSubsection({ projectName }: { projectName: string }) {
   const { t } = useLanguage();
   const { data, loading, error, explain } = useExplainProject();
 

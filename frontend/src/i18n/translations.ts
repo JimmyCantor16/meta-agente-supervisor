@@ -170,6 +170,11 @@ const es = {
     title: "Tus proyectos",
     empty: "Aún no has generado ningún proyecto. ¡Escribe una idea arriba!",
     files: "archivos",
+    open: "Abrir",
+  },
+  project: {
+    back: "Volver a proyectos",
+    hint: "Este es el taller de tu proyecto: audítalo para recibir sugerencias, aplícalas verificadas, o pide un ajuste en clase con el profesor.",
   },
   usage: {
     freeLeft: (n: number) => `Te quedan ${n} generaciones gratis`,
@@ -355,6 +360,11 @@ const en: Translation = {
     title: "Your projects",
     empty: "You haven't generated any project yet. Type an idea above!",
     files: "files",
+    open: "Open",
+  },
+  project: {
+    back: "Back to projects",
+    hint: "This is your project's workshop: audit it for suggestions, apply them verified, or ask the teacher for an adjustment in class.",
   },
   usage: {
     freeLeft: (n: number) => `${n} free generations left`,

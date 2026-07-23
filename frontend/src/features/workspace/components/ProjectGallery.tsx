@@ -4,6 +4,8 @@ import type { ProjectSummary } from "../types";
 interface ProjectGalleryProps {
   projects: ProjectSummary[];
   loading: boolean;
+  /** Abre el taller del proyecto (auditar + clases del profesor). */
+  onOpen?: (name: string) => void;
 }
 
 // Degradados decorativos para las tarjetas (rotan por índice).
@@ -19,7 +21,7 @@ const GRADIENTS = [
 /**
  * Galería de proyectos generados, en tarjetas visuales (estilo Skywork).
  */
-export function ProjectGallery({ projects, loading }: ProjectGalleryProps) {
+export function ProjectGallery({ projects, loading, onOpen }: ProjectGalleryProps) {
   const { t } = useLanguage();
 
   return (
@@ -37,22 +39,37 @@ export function ProjectGallery({ projects, loading }: ProjectGalleryProps) {
           {projects.map((p, i) => (
             <article
               key={p.name}
-              className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+              onClick={() => onOpen?.(p.name)}
+              role={onOpen ? "button" : undefined}
+              tabIndex={onOpen ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (onOpen && (e.key === "Enter" || e.key === " ")) onOpen(p.name);
+              }}
+              className={`group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md ${
+                onOpen ? "cursor-pointer hover:border-brand-300" : ""
+              }`}
             >
               <div
                 className={`flex h-28 items-center justify-center bg-gradient-to-br ${
                   GRADIENTS[i % GRADIENTS.length]
                 }`}
               >
-                <span className="text-3xl text-white/90">📦</span>
+                <span className="text-3xl text-white/90 transition group-hover:scale-110">📦</span>
               </div>
               <div className="p-4">
                 <p className="truncate font-semibold text-slate-800" title={p.name}>
                   {p.name}
                 </p>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {p.files} {t.gallery.files}
-                </p>
+                <div className="mt-0.5 flex items-center justify-between">
+                  <p className="text-xs text-slate-400">
+                    {p.files} {t.gallery.files}
+                  </p>
+                  {onOpen && (
+                    <span className="text-xs font-semibold text-brand-600 opacity-0 transition group-hover:opacity-100">
+                      {t.gallery.open} →
+                    </span>
+                  )}
+                </div>
               </div>
             </article>
           ))}

@@ -6,6 +6,7 @@ import { AdminView } from "./features/workspace/components/AdminView";
 import { DashboardEvaluacion } from "./features/workspace/components/DashboardEvaluacion";
 import { PlansView } from "./features/workspace/components/PlansView";
 import { ProjectGallery } from "./features/workspace/components/ProjectGallery";
+import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspace";
 import { PromptInput } from "./features/workspace/components/PromptInput";
 import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
@@ -24,7 +25,14 @@ export default function App() {
   const { account, refresh: refreshAccount, upgrade } = useAccount();
 
   const [view, setView] = useState("home");
+  // Proyecto abierto desde la galería (taller: auditar + clases del profesor).
+  const [openProject, setOpenProject] = useState<string | null>(null);
   const [teacherMode, setTeacherMode] = useState(false);
+
+  const abrirProyecto = (name: string) => {
+    setOpenProject(name);
+    setView("projects");
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Texto sembrado por los chips de ejemplo (remonta el PromptInput vía `key`).
   const [seed, setSeed] = useState("");
@@ -152,13 +160,27 @@ export default function App() {
                   />
                 )}
 
-                <ProjectGallery projects={projects.slice(0, 3)} loading={loadingProjects} />
+                <ProjectGallery
+                  projects={projects.slice(0, 3)}
+                  loading={loadingProjects}
+                  onOpen={abrirProyecto}
+                />
               </div>
             )}
 
-            {view === "projects" && (
-              <ProjectGallery projects={projects} loading={loadingProjects} />
-            )}
+            {view === "projects" &&
+              (openProject ? (
+                <ProjectWorkspace
+                  projectName={openProject}
+                  onBack={() => setOpenProject(null)}
+                />
+              ) : (
+                <ProjectGallery
+                  projects={projects}
+                  loading={loadingProjects}
+                  onOpen={abrirProyecto}
+                />
+              ))}
 
             {view === "plans" && (
               <PlansView
