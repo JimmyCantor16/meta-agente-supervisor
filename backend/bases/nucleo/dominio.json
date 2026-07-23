@@ -1,0 +1,27 @@
+{
+  "nombre": "Sistema Base",
+  "slug": "sistema-base",
+  "descripcion": "Sistema de gestión generado por Meta-Agente.",
+  "arquetipo": "gestion",
+  "tema": "calido",
+  "moneda": "$",
+  "modulos": { "tienda": null, "reservas": null, "quiz": null, "blog": false },
+  "usuarios": [
+    { "email": "admin@example.com", "password": "admin123", "nombre": "Admin", "rol": "admin" },
+    { "email": "user@example.com", "password": "user123", "nombre": "Usuario", "rol": "usuario" }
+  ],
+  "entidades": [
+    {
+      "nombre": "item",
+      "plural": "items",
+      "etiqueta": "Item",
+      "etiquetaPlural": "Items",
+      "icono": "📦",
+      "publico": false,
+      "campos": [
+        { "nombre": "nombre", "etiqueta": "Nombre", "tipo": "texto", "requerido": true, "enLista": true }
+      ],
+      "semillas": []
+    }
+  ]
+}

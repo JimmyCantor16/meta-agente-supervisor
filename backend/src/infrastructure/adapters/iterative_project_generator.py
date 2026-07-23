@@ -735,6 +735,27 @@ class IterativeProjectGenerator(ProjectGeneratorPort):
         self._llm = MultiModelLLM(role="code")
 
     def generate(self, prompt: str, language: str = "es") -> GeneratedProject:
+        # --- RUTA DE SISTEMAS BASE (la vía preferida) ---
+        # Si la idea calza en un arquetipo, el LLM solo escribe el manifiesto
+        # de dominio y se instancia una base dorada verificada: piso de calidad
+        # alto, tokens mínimos y cero ruleta. Lo que no calce sigue por la
+        # generación libre de siempre.
+        from src.infrastructure.adapters.instanciador_bases import (
+            decidir_arquetipo,
+            instanciar,
+        )
+
+        manifiesto = decidir_arquetipo(MultiModelLLM(role="prompt"), prompt, language)
+        if manifiesto is not None:
+            logger.info(
+                "Idea clasificada como arquetipo '%s' -> instanciando Sistema "
+                "Base '%s' (%d entidad(es)).",
+                manifiesto["arquetipo"], manifiesto["slug"],
+                len(manifiesto.get("entidades", [])),
+            )
+            return instanciar(manifiesto)
+
+        logger.info("Sin arquetipo claro: generación libre.")
         # El motor de BD que pidió el usuario se recuerda para imponerlo: si el
         # modelo se desvía a otro (p. ej. SQLite cuando se pidió PostgreSQL), se
         # corrige, porque degradar el motor es entregar algo distinto.
