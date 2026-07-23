@@ -83,10 +83,14 @@ Push-Location $backend
     --hidden-import "uvicorn.protocols.http.auto" `
     --hidden-import "uvicorn.protocols.websockets.auto" `
     --hidden-import "uvicorn.lifespan.on" `
-    --add-data "bases;bases" `
-    --add-data "skills;skills" `
+    --add-data "$backend\bases;bases" `
+    --add-data "$backend\skills;skills" `
     --noconfirm `
     desktop_server.py
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    throw "PyInstaller fallo (exit $LASTEXITCODE): NO se empaqueta un backend viejo."
+}
 Pop-Location
 
 if (-not (Test-Path $binaries)) { New-Item -ItemType Directory -Path $binaries | Out-Null }
