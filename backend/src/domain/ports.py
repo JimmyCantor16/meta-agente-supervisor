@@ -13,6 +13,7 @@ from src.domain.entities import (
     AgentEvaluation,
     AuditReport,
     CambioArchivo,
+    CasoGeneracion,
     Clase,
     DeveloperPrompt,
     DiagnosticoMVP,
@@ -433,6 +434,30 @@ class ProfesorChatPort(ABC):
 
         Returns (aprobado, mensaje_del_profesor).
         """
+        raise NotImplementedError
+
+
+class CasoRepositoryPort(ABC):
+    """Banco de casos: la memoria que hace al agente mejor con cada proyecto.
+
+    Guarda qué se pidió, qué salió y qué se aprendió; y ante una idea nueva
+    recupera los casos más parecidos para reinyectar lo que funcionó y evitar
+    lo que falló. Es también el dataset de fallos del agente-profesor.
+    """
+
+    @abstractmethod
+    def guardar(self, caso: CasoGeneracion) -> None:
+        """Persiste un caso de generación."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def similares(self, idea: str, limit: int = 3) -> list[CasoGeneracion]:
+        """Casos anteriores más parecidos a la idea (más similar primero)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def todos(self, limit: int = 500) -> list[CasoGeneracion]:
+        """Todos los casos (recientes primero) — para inspección/dataset."""
         raise NotImplementedError
 
 

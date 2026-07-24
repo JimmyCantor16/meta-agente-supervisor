@@ -39,6 +39,7 @@ from src.domain.ports import (
     AuditError,
     CodeAuditorPort,
     CodeTeacherPort,
+    CasoRepositoryPort,
     CursoRepositoryPort,
     DiagnosticadorMVPPort,
     EvaluationRepositoryPort,
@@ -69,6 +70,7 @@ from src.infrastructure.adapters.mock_adapter import MockPromptEvaluator
 from src.infrastructure.adapters.mock_ajustador import MockAjustadorModulo
 from src.infrastructure.adapters.mock_curso import MockGeneradorSyllabus, MockProfesorChat
 from src.infrastructure.adapters.mock_diagnostico_mvp import MockDiagnosticadorMVP
+from src.infrastructure.adapters.sqlite_caso_repository import SqliteCasoRepository
 from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository
 from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
@@ -427,14 +429,25 @@ def get_project_runner() -> ProjectRunnerPort:
     return MultiStackProjectRunner(get_settings().generated_public_host)
 
 
+@lru_cache
+def get_caso_repository() -> CasoRepositoryPort:
+    """Banco de casos: la memoria que aprende de cada idea y cada fallo.
+
+    Vive donde ocurre la generación con URL (local/escritorio), por eso usa el
+    mismo SQLite que el resto de datos locales.
+    """
+    return SqliteCasoRepository(get_settings().db_path)
+
+
 def get_generate_use_case(
     generator: ProjectGeneratorPort = Depends(get_project_generator),
     writer: ProjectWriterPort = Depends(get_project_writer),
     verifier: ProjectVerifierPort = Depends(get_project_verifier),
     runner: ProjectRunnerPort = Depends(get_project_runner),
+    caso_repo: CasoRepositoryPort = Depends(get_caso_repository),
 ) -> GenerateProjectUseCase:
-    """Construye el caso de uso de generación (auto-verificación + arranque)."""
-    return GenerateProjectUseCase(generator, writer, verifier, runner)
+    """Construye el caso de uso de generación (auto-verificación + arranque + memoria)."""
+    return GenerateProjectUseCase(generator, writer, verifier, runner, caso_repo)
 
 
 @lru_cache
@@ -1363,6 +1376,40 @@ def admin_pending(
 ) -> list[AccountStatusResponse]:
     """Lista los usuarios pendientes de aprobación de pago (solo super-admin)."""
     return [AccountStatusResponse(**s) for s in account.list_pending()]
+
+
+class CasoResponse(BaseModel):
+    idea: str
+    arquetipo: str
+    slug: str
+    estado_mvp: str
+    tuvo_url: bool
+    relanzado: bool
+    exito: bool
+    problemas: list[str]
+    num_archivos: int
+    created_at: str
+
+
+@router.get("/admin/casos", response_model=list[CasoResponse], tags=["admin"])
+def admin_casos(
+    _admin: UserAccount = Depends(require_admin),
+    repo: CasoRepositoryPort = Depends(get_caso_repository),
+) -> list[CasoResponse]:
+    """Banco de casos = memoria del agente + log de fallos (solo super-admin).
+
+    Deja ver qué ideas funcionaron, cuáles salieron 'vacías' (solo JSON) y
+    cuáles hubo que relanzar — el dataset con el que el agente-profesor mejora.
+    """
+    return [
+        CasoResponse(
+            idea=c.idea, arquetipo=c.arquetipo, slug=c.slug,
+            estado_mvp=c.estado_mvp.value if hasattr(c.estado_mvp, "value") else c.estado_mvp,
+            tuvo_url=c.tuvo_url, relanzado=c.relanzado, exito=c.exito,
+            problemas=c.problemas, num_archivos=c.num_archivos, created_at=c.created_at,
+        )
+        for c in repo.todos()
+    ]
 
 
 @router.post("/admin/approve", response_model=AccountStatusResponse, tags=["admin"])

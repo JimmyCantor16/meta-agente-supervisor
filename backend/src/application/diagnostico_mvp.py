@@ -31,6 +31,19 @@ _MARCAS_UI = (".html", ".jsx", ".tsx", ".vue", ".svelte")
 _MARCAS_API = ("server.js", "app.py", "main.py", "index.js", "api.py")
 
 
+def senales_visibilidad(files: list[GeneratedFile]) -> tuple[bool, bool]:
+    """(tiene_frontend, tiene_api) — hechos objetivos, sin LLM.
+
+    Es la señal que distingue un MVP que SE VE de un JSON sin nada (caso Azure).
+    Se comparte entre el diagnóstico del profesor y el gate de la generación
+    para que ambos midan lo mismo.
+    """
+    rutas = [f.path.lower() for f in files]
+    tiene_frontend = any(r.endswith(_MARCAS_UI) for r in rutas)
+    tiene_api = any(any(r.endswith(m) for m in _MARCAS_API) for r in rutas)
+    return tiene_frontend, tiene_api
+
+
 class DiagnosticarMVPUseCase:
     """Retoma un proyecto entregado y juzga si de verdad le sirve al usuario."""
 
@@ -126,9 +139,7 @@ class DiagnosticarMVPUseCase:
     # ------------------------------------------------------------------
     def _medir(self, archivos: list[GeneratedFile], url: str) -> dict:
         """Hechos objetivos del MVP — sin LLM, para no gastar cupo ni mentir."""
-        rutas = [f.path.lower() for f in archivos]
-        tiene_frontend = any(r.endswith(_MARCAS_UI) for r in rutas)
-        tiene_api = any(any(r.endswith(m) for m in _MARCAS_API) for r in rutas)
+        tiene_frontend, tiene_api = senales_visibilidad(archivos)
 
         # ¿Los .html tienen cuerpo real o son cascarones?
         html_con_cuerpo = False

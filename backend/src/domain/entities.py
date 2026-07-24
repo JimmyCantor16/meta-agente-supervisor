@@ -476,3 +476,42 @@ class DiagnosticoMVP(BaseModel):
         description="Qué conviene hacer ahora (relanzar, reparar, o empezar la Clase 1).",
     )
     url: str = Field(default="", description="URL evaluada, si la hubo.")
+
+
+class CasoGeneracion(BaseModel):
+    """Un caso del BANCO DE CASOS: qué se pidió, qué salió y qué se aprendió.
+
+    Es la memoria que hace al agente mejor con cada proyecto. Ante una idea
+    nueva, el sistema recupera casos parecidos y reinyecta lo que funcionó y lo
+    que falló, para no tropezar dos veces con la misma piedra. Y cada fracaso
+    honesto que se corrige queda aquí como dataset del agente-profesor.
+    """
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    idea: str = Field(..., description="El prompt/idea que originó el proyecto.")
+    arquetipo: str = Field(default="", description="Arquetipo elegido (o vacío si libre).")
+    slug: str = Field(default="", description="Slug del proyecto generado.")
+    estado_mvp: EstadoMVP = Field(
+        default=EstadoMVP.PARCIAL,
+        description="Veredicto de visibilidad del MVP resultante.",
+    )
+    tuvo_url: bool = Field(default=False, description="Si se entregó una URL viva.")
+    relanzado: bool = Field(
+        default=False,
+        description="Si el gate de visibilidad tuvo que relanzar la generación.",
+    )
+    problemas: list[str] = Field(
+        default_factory=list,
+        description="Fallos detectados (para no repetirlos en ideas similares).",
+    )
+    lecciones: list[str] = Field(
+        default_factory=list,
+        description="Qué se ajustó y funcionó (para reforzarlo en ideas similares).",
+    )
+    num_archivos: int = Field(default=0)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @property
+    def exito(self) -> bool:
+        """Éxito real = el MVP se ve y además se entregó una URL viva."""
+        return self.estado_mvp == EstadoMVP.FUNCIONA and self.tuvo_url
