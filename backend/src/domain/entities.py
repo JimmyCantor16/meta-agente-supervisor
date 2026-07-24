@@ -400,6 +400,15 @@ class MensajeChat(BaseModel):
     texto: str = Field(..., min_length=1)
 
 
+class NivelAlumno(str, Enum):
+    """Nivel del alumno en programación/sistemas, para calibrar al profesor."""
+
+    DESCONOCIDO = "desconocido"
+    BAJO = "bajo"      # nunca ha programado; habla de la idea, no del código
+    MEDIO = "medio"    # se defiende; ha tocado algo de código o herramientas
+    ALTO = "alto"      # entiende de sistemas; quiere el "cómo", no el "qué"
+
+
 class ProgresoCurso(BaseModel):
     """Dónde va el alumno en su curso: la clase actual y las ya superadas."""
 
@@ -410,6 +419,10 @@ class ProgresoCurso(BaseModel):
     completadas: list[int] = Field(default_factory=list)
     total_clases: int = Field(default=0)
     graduado: bool = Field(default=False)
+    nivel: NivelAlumno = Field(
+        default=NivelAlumno.DESCONOCIDO,
+        description="Nivel estimado del alumno; el profesor lo mide conversando.",
+    )
 
 
 class ResultadoVerificacion(BaseModel):
@@ -419,3 +432,47 @@ class ResultadoVerificacion(BaseModel):
     mensaje: str = Field(..., description="Qué pasó, en tono de profesor.")
     avanzo: bool = Field(default=False, description="Si se pasó a la siguiente clase.")
     graduado: bool = Field(default=False)
+
+
+class EstadoMVP(str, Enum):
+    """Veredicto honesto de si el MVP entregado sirve para un usuario final.
+
+    Nace del caso Azure: el sistema dijo "terminado" y entregó un JSON sin nada
+    que ver. Un usuario no técnico ante eso cierra el navegador y se va. El
+    profesor NO puede empezar a enseñar sobre un MVP que en realidad no funciona:
+    primero diagnostica con honestidad, y si está roto, lo dice y ofrece
+    relanzarlo antes de la Clase 1.
+    """
+
+    FUNCIONA = "funciona"    # se ve y se usa: hay algo real que mostrar
+    PARCIAL = "parcial"      # arranca pero le falta para que un usuario lo disfrute
+    VACIO = "vacio"          # no hay nada que ver (solo JSON/API, página en blanco)
+
+
+class DiagnosticoMVP(BaseModel):
+    """El estado REAL del MVP entregado, en palabras que el usuario entiende.
+
+    Es lo que el profesor mira antes de enseñar: ¿esto que le entregamos de
+    verdad le sirve a alguien que no sabe programar? Si no, lo dice sin adornos
+    y propone el siguiente paso (repararlo/relanzarlo) en vez de fingir éxito.
+    """
+
+    estado: EstadoMVP
+    puede_verse: bool = Field(
+        default=False,
+        description="Si un usuario final vería una interfaz usable (no un JSON).",
+    )
+    veredicto: str = Field(..., description="Una frase honesta del estado, en cristiano.")
+    lo_que_ve_el_usuario: str = Field(
+        default="",
+        description="Qué encontraría un usuario no técnico al abrir la URL.",
+    )
+    problemas: list[str] = Field(
+        default_factory=list,
+        description="Lo que impide que se disfrute (vacío si funciona).",
+    )
+    siguiente_paso: str = Field(
+        default="",
+        description="Qué conviene hacer ahora (relanzar, reparar, o empezar la Clase 1).",
+    )
+    url: str = Field(default="", description="URL evaluada, si la hubo.")

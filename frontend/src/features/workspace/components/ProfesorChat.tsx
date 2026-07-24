@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
-import { ApiError, abrirClase, chatProfesor, iniciarCurso, verificarClase } from "../../../lib/api";
-import type { ClaseCurso, CursoResult, MensajeChat } from "../types";
+import {
+  ApiError,
+  abrirClase,
+  chatProfesor,
+  diagnosticarMVP,
+  iniciarCurso,
+  verificarClase,
+} from "../../../lib/api";
+import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat } from "../types";
 
 /**
  * El módulo profesor como CURSO INTERACTIVO por chat.
@@ -22,6 +29,7 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostico, setDiagnostico] = useState<DiagnosticoMVP | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
 
   // Inicia (o recupera) el curso al montar.
@@ -41,6 +49,24 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
         if (vivo) setError(err instanceof ApiError ? err.message : "No se pudo abrir el curso.");
       } finally {
         if (vivo) setCargando(false);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName]);
+
+  // El profesor RETOMA el proyecto y diagnostica, honesto, si el MVP sirve.
+  // No bloquea el curso: corre en paralelo y aparece como aviso arriba.
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const d = await diagnosticarMVP(projectName, "", lang);
+        if (vivo) setDiagnostico(d);
+      } catch {
+        // Si el diagnóstico falla no rompe el curso; simplemente no se muestra.
       }
     })();
     return () => {
@@ -139,6 +165,9 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
         </div>
       </div>
 
+      {/* Diagnóstico honesto del MVP: ¿esto que entregamos SE VE y SIRVE? */}
+      {diagnostico && <DiagnosticoBanner d={diagnostico} />}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
         {/* Panel de clases */}
         <aside className="space-y-1.5">
@@ -224,6 +253,44 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
             </button>
           </div>
         </section>
+      </div>
+    </div>
+  );
+}
+
+/** El veredicto honesto del profesor sobre el MVP entregado. */
+function DiagnosticoBanner({ d }: { d: DiagnosticoMVP }) {
+  const { t } = useLanguage();
+  const g = t.curso;
+  const estilo = {
+    funciona: { borde: "border-emerald-200", fondo: "bg-emerald-50", texto: "text-emerald-800", icono: "✅", titulo: g.diagFunciona },
+    parcial: { borde: "border-amber-200", fondo: "bg-amber-50", texto: "text-amber-800", icono: "⚠️", titulo: g.diagParcial },
+    vacio: { borde: "border-red-200", fondo: "bg-red-50", texto: "text-red-800", icono: "🛑", titulo: g.diagVacio },
+  }[d.estado];
+
+  return (
+    <div className={`rounded-2xl border ${estilo.borde} ${estilo.fondo} p-4`}>
+      <div className="flex items-start gap-3">
+        <span className="text-xl">{estilo.icono}</span>
+        <div className="flex-1">
+          <p className={`text-sm font-bold ${estilo.texto}`}>
+            {g.diagTitulo}: {estilo.titulo}
+          </p>
+          <p className={`mt-1 text-sm ${estilo.texto}`}>{d.veredicto}</p>
+          {d.lo_que_ve_el_usuario && (
+            <p className="mt-1 text-xs text-slate-500">👤 {g.diagVeUsuario}: {d.lo_que_ve_el_usuario}</p>
+          )}
+          {d.problemas.length > 0 && (
+            <ul className={`mt-2 list-disc space-y-0.5 pl-5 text-xs ${estilo.texto}`}>
+              {d.problemas.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          )}
+          {d.siguiente_paso && (
+            <p className={`mt-2 text-sm font-semibold ${estilo.texto}`}>👉 {d.siguiente_paso}</p>
+          )}
+        </div>
       </div>
     </div>
   );

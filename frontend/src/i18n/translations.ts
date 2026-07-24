@@ -259,6 +259,11 @@ const es = {
     tuRespuesta: "Escribe tu respuesta con tus palabras…",
     pegaUrl: "Pega la URL pública donde publicaste tu proyecto:",
     pegaRepo: "Pega el enlace de tu repositorio de GitHub:",
+    diagTitulo: "Estado real de tu sistema",
+    diagFunciona: "se ve y se puede usar",
+    diagParcial: "arranca, pero le falta",
+    diagVacio: "todavía no hay nada que ver",
+    diagVeUsuario: "Un usuario vería",
   },
   usage: {
     freeLeft: (n: number) => `Te quedan ${n} generaciones gratis`,
@@ -533,6 +538,11 @@ const en: Translation = {
     tuRespuesta: "Write your answer in your own words…",
     pegaUrl: "Paste the public URL where you published your project:",
     pegaRepo: "Paste your GitHub repository link:",
+    diagTitulo: "Your system's real status",
+    diagFunciona: "it shows and can be used",
+    diagParcial: "it starts, but it's missing something",
+    diagVacio: "there's nothing to see yet",
+    diagVeUsuario: "A user would see",
   },
   usage: {
     freeLeft: (n: number) => `${n} free generations left`,

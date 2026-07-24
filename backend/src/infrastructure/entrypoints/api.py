@@ -31,6 +31,7 @@ from src.application.curso_profesor import (
     GenerarCursoUseCase,
     VerificarClaseUseCase,
 )
+from src.application.diagnostico_mvp import DiagnosticarMVPUseCase
 from src.config import Settings, get_settings
 from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount
 from src.domain.ports import (
@@ -39,6 +40,7 @@ from src.domain.ports import (
     CodeAuditorPort,
     CodeTeacherPort,
     CursoRepositoryPort,
+    DiagnosticadorMVPPort,
     EvaluationRepositoryPort,
     GeneradorSyllabusPort,
     LicenseRequiredError,
@@ -60,11 +62,13 @@ from src.infrastructure.adapters.iterative_project_generator import IterativePro
 from src.infrastructure.adapters.llm_ajustador import LLMAjustadorModulo
 from src.infrastructure.adapters.llm_code_auditor import LLMCodeAuditor
 from src.infrastructure.adapters.llm_code_teacher import LLMCodeTeacher
+from src.infrastructure.adapters.llm_diagnostico_mvp import LLMDiagnosticadorMVP
 from src.infrastructure.adapters.llm_generador_syllabus import LLMGeneradorSyllabus
 from src.infrastructure.adapters.llm_profesor_chat import LLMProfesorChat
 from src.infrastructure.adapters.mock_adapter import MockPromptEvaluator
 from src.infrastructure.adapters.mock_ajustador import MockAjustadorModulo
 from src.infrastructure.adapters.mock_curso import MockGeneradorSyllabus, MockProfesorChat
+from src.infrastructure.adapters.mock_diagnostico_mvp import MockDiagnosticadorMVP
 from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository
 from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
@@ -537,6 +541,20 @@ def get_verificar_clase_use_case(
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> VerificarClaseUseCase:
     return VerificarClaseUseCase(reader, chat, repo)
+
+
+@lru_cache
+def get_diagnosticador_mvp() -> DiagnosticadorMVPPort:
+    if get_settings().use_mock_llm:
+        return MockDiagnosticadorMVP()
+    return LLMDiagnosticadorMVP()
+
+
+def get_diagnosticar_mvp_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    diagnosticador: DiagnosticadorMVPPort = Depends(get_diagnosticador_mvp),
+) -> DiagnosticarMVPUseCase:
+    return DiagnosticarMVPUseCase(reader, diagnosticador)
 
 
 def get_explain_use_case(
@@ -1221,6 +1239,49 @@ def verificar_clase(
         account.record_lesson(user)
     return VerificarClaseResponse(
         superada=r.superada, mensaje=r.mensaje, avanzo=r.avanzo, graduado=r.graduado
+    )
+
+
+class DiagnosticoRequest(BaseModel):
+    project_name: str = Field(..., min_length=1)
+    url: str = Field(default="", max_length=500)
+    language: Literal["es", "en"] = "es"
+
+
+class DiagnosticoResponse(BaseModel):
+    estado: str
+    puede_verse: bool
+    veredicto: str
+    lo_que_ve_el_usuario: str
+    problemas: list[str]
+    siguiente_paso: str
+    url: str
+
+
+@router.post(
+    "/curso/diagnostico",
+    response_model=DiagnosticoResponse,
+    summary="El profesor retoma el proyecto y diagnostica si el MVP sirve de verdad.",
+)
+def diagnosticar_mvp(
+    request: DiagnosticoRequest,
+    use_case: DiagnosticarMVPUseCase = Depends(get_diagnosticar_mvp_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> DiagnosticoResponse:
+    """Antes de enseñar, la verdad: ¿esto que entregamos le sirve a un humano?"""
+    try:
+        d = use_case.execute(request.project_name, request.url, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditError as exc:
+        msg = str(exc)
+        code = 404 if "no existe" in msg.lower() else 502
+        raise HTTPException(status_code=code, detail=msg) from exc
+    return DiagnosticoResponse(
+        estado=d.estado.value if hasattr(d.estado, "value") else d.estado,
+        puede_verse=d.puede_verse, veredicto=d.veredicto,
+        lo_que_ve_el_usuario=d.lo_que_ve_el_usuario, problemas=d.problemas,
+        siguiente_paso=d.siguiente_paso, url=d.url,
     )
 
 

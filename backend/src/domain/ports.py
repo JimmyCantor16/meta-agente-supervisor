@@ -15,6 +15,7 @@ from src.domain.entities import (
     CambioArchivo,
     Clase,
     DeveloperPrompt,
+    DiagnosticoMVP,
     EvaluationRecord,
     FewShotExample,
     GeneratedFile,
@@ -431,6 +432,34 @@ class ProfesorChatPort(ABC):
         """Juzga si la reflexión del alumno demuestra que entendió.
 
         Returns (aprobado, mensaje_del_profesor).
+        """
+        raise NotImplementedError
+
+
+class DiagnosticadorMVPPort(ABC):
+    """Contrato del agente que juzga si el MVP entregado SIRVE de verdad.
+
+    Recibe el código real del proyecto más señales objetivas (¿hay una interfaz?
+    ¿el navegador la renderiza o se ve en blanco? ¿es solo un JSON de API?) y
+    emite un veredicto honesto pensado para un usuario que no sabe programar.
+    """
+
+    @abstractmethod
+    def diagnosticar(
+        self,
+        proyecto: str,
+        files: list[GeneratedFile],
+        senales: dict,
+        language: str = "es",
+    ) -> DiagnosticoMVP:
+        """Evalúa el MVP y devuelve su estado real. Raises AuditError si falla.
+
+        Args:
+            proyecto: Nombre del proyecto.
+            files: Archivos del proyecto (para ver si hay UI o solo API).
+            senales: Hechos objetivos ya medidos (tiene_frontend, render_error,
+                url, solo_api...). El adaptador NO vuelve a medir: interpreta.
+            language: Idioma del veredicto.
         """
         raise NotImplementedError
 

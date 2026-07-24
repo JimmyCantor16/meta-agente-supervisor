@@ -166,6 +166,18 @@ export interface VerificacionClase {
   graduado: boolean;
 }
 
+export type EstadoMVP = "funciona" | "parcial" | "vacio";
+
+export interface DiagnosticoMVP {
+  estado: EstadoMVP;
+  puede_verse: boolean;
+  veredicto: string;
+  lo_que_ve_el_usuario: string;
+  problemas: string[];
+  siguiente_paso: string;
+  url: string;
+}
+
 // Resumen de un proyecto en la galería.
 export interface ProjectSummary {
   name: string;

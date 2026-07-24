@@ -468,6 +468,7 @@ export async function activateLicense(key: string): Promise<UsageStatus> {
 // ===== Curso interactivo del profesor =====
 import type {
   CursoResult,
+  DiagnosticoMVP,
   MensajeChat,
   VerificacionClase,
 } from "../features/workspace/types";
@@ -521,6 +522,19 @@ export function chatProfesor(
     curso_id: cursoId,
     numero_clase: numeroClase,
     mensaje,
+    language,
+  });
+}
+
+/** El profesor retoma el proyecto y diagnostica si el MVP sirve de verdad. */
+export function diagnosticarMVP(
+  projectName: string,
+  url: string,
+  language: Language
+): Promise<DiagnosticoMVP> {
+  return cursoPost<DiagnosticoMVP>("diagnostico", {
+    project_name: projectName,
+    url,
     language,
   });
 }
