@@ -470,6 +470,9 @@ import type {
   CursoResult,
   DiagnosticoMVP,
   MensajeChat,
+  MetaProceso,
+  NivelResult,
+  RelanzarResult,
   VerificacionClase,
 } from "../features/workspace/types";
 
@@ -537,6 +540,60 @@ export function diagnosticarMVP(
     url,
     language,
   });
+}
+
+/** El profesor mide el nivel del alumno (bajo/medio/alto) para adaptar el curso. */
+export function estimarNivel(
+  cursoId: string,
+  respuesta: string,
+  language: Language
+): Promise<NivelResult> {
+  return cursoPost<NivelResult>("nivel", { curso_id: cursoId, respuesta, language });
+}
+
+/** Repara y RELANZA un MVP que no sirve, recordando su idea original. */
+export function relanzarMVP(
+  projectName: string,
+  language: Language
+): Promise<RelanzarResult> {
+  return cursoPost<RelanzarResult>("relanzar", { project_name: projectName, language });
+}
+
+async function cursoGet<T>(ruta: string): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(`${CURSO_BASE}/${ruta}`, { headers: { ...authHeaders() } });
+  } catch {
+    throw new ApiError("No se pudo conectar con el profesor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as T;
+}
+
+/** Traza el mapa de hitos honesto de una meta de proceso (ej: monetizar un canal). */
+export function iniciarMeta(
+  objetivo: string,
+  contexto: string,
+  language: Language
+): Promise<MetaProceso> {
+  return cursoPost<MetaProceso>("meta/iniciar", { objetivo, contexto, language });
+}
+
+/** Las metas de proceso del alumno, para retomarlas sesión a sesión. */
+export function listarMetas(): Promise<MetaProceso[]> {
+  return cursoGet<MetaProceso[]>("metas");
+}
+
+/** Marca (o desmarca) un hito de una meta como logrado. */
+export function marcarHito(
+  metaId: string,
+  indice: number,
+  hecho: boolean
+): Promise<MetaProceso> {
+  return cursoPost<MetaProceso>("meta/hito", { meta_id: metaId, indice, hecho });
 }
 
 /** El profesor revisa la tarea y decide si el alumno superó la clase. */

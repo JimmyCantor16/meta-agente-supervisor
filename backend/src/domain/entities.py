@@ -515,3 +515,43 @@ class CasoGeneracion(BaseModel):
     def exito(self) -> bool:
         """Éxito real = el MVP se ve y además se entregó una URL viva."""
         return self.estado_mvp == EstadoMVP.FUNCIONA and self.tuvo_url
+
+
+class DependeDe(str, Enum):
+    """De quién depende un hito: por eso una meta es un PROCESO, no un clic."""
+
+    ALUMNO = "alumno"          # depende de que la persona haga el trabajo
+    PLATAFORMA = "plataforma"  # depende de un tercero (YouTube, un banco, Google)
+    TIEMPO = "tiempo"          # depende de que pase tiempo (audiencia, revisión)
+    SISTEMA = "sistema"        # lo construimos aquí (una web, un sistema)
+
+
+class Hito(BaseModel):
+    """Un paso concreto del camino hacia una meta de proceso."""
+
+    titulo: str = Field(..., min_length=1)
+    descripcion: str = Field(default="", description="Qué hay que lograr, en cristiano.")
+    depende_de: DependeDe = Field(default=DependeDe.ALUMNO)
+    hecho: bool = Field(default=False)
+
+
+class MetaProceso(BaseModel):
+    """Una meta que NO es solo código: un camino de hitos multi-sesión.
+
+    Nace del caso 'quiero monetizar mi canal de YouTube': hablarle a la IA no
+    hace aparecer el dinero; hay pasos del mundo real, con tiempos que no
+    dependen de nosotros. El profesor convierte el sueño en un mapa honesto y
+    acompaña sesión a sesión, retomando donde se quedaron.
+    """
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:20])
+    usuario_sub: str
+    objetivo: str = Field(..., description="La meta en palabras del alumno.")
+    resumen: str = Field(default="", description="La verdad honesta del alcance.")
+    hitos: list[Hito] = Field(default_factory=list)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @property
+    def progreso(self) -> tuple[int, int]:
+        """(hitos hechos, total)."""
+        return sum(1 for h in self.hitos if h.hecho), len(self.hitos)

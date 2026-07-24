@@ -5,7 +5,9 @@ import {
   abrirClase,
   chatProfesor,
   diagnosticarMVP,
+  estimarNivel,
   iniciarCurso,
+  relanzarMVP,
   verificarClase,
 } from "../../../lib/api";
 import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat } from "../types";
@@ -166,7 +168,23 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
       </div>
 
       {/* Diagnóstico honesto del MVP: ¿esto que entregamos SE VE y SIRVE? */}
-      {diagnostico && <DiagnosticoBanner d={diagnostico} />}
+      {diagnostico && (
+        <DiagnosticoBanner
+          d={diagnostico}
+          projectName={projectName}
+          onRelanzado={(nuevo) => setDiagnostico(nuevo)}
+        />
+      )}
+
+      {/* Nivelación: el profesor mide el nivel para adaptar el curso. */}
+      {curso.progreso.nivel === "desconocido" && (
+        <NivelacionPanel
+          cursoId={curso.progreso.curso_id}
+          onNivel={(nivel) =>
+            setCurso((c) => (c ? { ...c, progreso: { ...c.progreso, nivel } } : c))
+          }
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
         {/* Panel de clases */}
@@ -258,15 +276,39 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
   );
 }
 
-/** El veredicto honesto del profesor sobre el MVP entregado. */
-function DiagnosticoBanner({ d }: { d: DiagnosticoMVP }) {
-  const { t } = useLanguage();
+/** El veredicto honesto del profesor sobre el MVP entregado, con opción de relanzar. */
+function DiagnosticoBanner({
+  d,
+  projectName,
+  onRelanzado,
+}: {
+  d: DiagnosticoMVP;
+  projectName: string;
+  onRelanzado: (nuevo: DiagnosticoMVP) => void;
+}) {
+  const { t, lang } = useLanguage();
   const g = t.curso;
+  const [relanzando, setRelanzando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
   const estilo = {
     funciona: { borde: "border-emerald-200", fondo: "bg-emerald-50", texto: "text-emerald-800", icono: "✅", titulo: g.diagFunciona },
     parcial: { borde: "border-amber-200", fondo: "bg-amber-50", texto: "text-amber-800", icono: "⚠️", titulo: g.diagParcial },
     vacio: { borde: "border-red-200", fondo: "bg-red-50", texto: "text-red-800", icono: "🛑", titulo: g.diagVacio },
   }[d.estado];
+
+  const relanzar = async () => {
+    setRelanzando(true);
+    setAviso(null);
+    try {
+      const r = await relanzarMVP(projectName, lang);
+      onRelanzado(r.diagnostico);
+      setAviso(r.url ? `${g.relanzarListo} ${r.url}` : g.relanzarListoSinUrl);
+    } catch (err) {
+      setAviso(err instanceof ApiError ? err.message : g.relanzarError);
+    } finally {
+      setRelanzando(false);
+    }
+  };
 
   return (
     <div className={`rounded-2xl border ${estilo.borde} ${estilo.fondo} p-4`}>
@@ -290,7 +332,95 @@ function DiagnosticoBanner({ d }: { d: DiagnosticoMVP }) {
           {d.siguiente_paso && (
             <p className={`mt-2 text-sm font-semibold ${estilo.texto}`}>👉 {d.siguiente_paso}</p>
           )}
+          {d.estado !== "funciona" && (
+            <button
+              onClick={() => void relanzar()}
+              disabled={relanzando}
+              className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-900 disabled:opacity-50"
+            >
+              {relanzando ? g.relanzando2 : "🔁 " + g.relanzar}
+            </button>
+          )}
+          {aviso && <p className="mt-2 whitespace-pre-wrap text-xs font-medium text-slate-600">{aviso}</p>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Fase 1: el profesor mide el nivel del alumno para adaptar el curso. */
+function NivelacionPanel({
+  cursoId,
+  onNivel,
+}: {
+  cursoId: string;
+  onNivel: (nivel: "bajo" | "medio" | "alto") => void;
+}) {
+  const { t, lang } = useLanguage();
+  const g = t.curso;
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const enviar = async (respuesta: string) => {
+    if (enviando || !respuesta.trim()) return;
+    setEnviando(true);
+    try {
+      const r = await estimarNivel(cursoId, respuesta, lang);
+      setMsg(r.mensaje);
+      setTimeout(() => onNivel(r.nivel as "bajo" | "medio" | "alto"), 1600);
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : "No pude registrar tu nivel.");
+      setEnviando(false);
+    }
+  };
+
+  if (msg) {
+    return (
+      <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm text-brand-800">
+        👨‍🏫 {msg}
+      </div>
+    );
+  }
+
+  const rapidas: [string, string][] = [
+    [g.nivelNunca, g.nivelNuncaFrase],
+    [g.nivelAlgo, g.nivelAlgoFrase],
+    [g.nivelBastante, g.nivelBastanteFrase],
+  ];
+
+  return (
+    <div className="rounded-2xl border border-brand-200 bg-white p-4 shadow-sm">
+      <p className="text-sm font-bold text-slate-700">👋 {g.nivelTitulo}</p>
+      <p className="mt-1 text-sm text-slate-500">{g.nivelIntro}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {rapidas.map(([label, frase]) => (
+          <button
+            key={label}
+            onClick={() => void enviar(frase)}
+            disabled={enviando}
+            className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:border-brand-300 disabled:opacity-50"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void enviar(texto)}
+          placeholder={g.nivelPlaceholder}
+          disabled={enviando}
+          className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-brand-300 focus:bg-white focus:outline-none"
+        />
+        <button
+          onClick={() => void enviar(texto)}
+          disabled={enviando || !texto.trim()}
+          className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-700 disabled:opacity-50"
+        >
+          {enviando ? "…" : g.enviar}
+        </button>
       </div>
     </div>
   );

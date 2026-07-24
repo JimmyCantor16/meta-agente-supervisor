@@ -40,9 +40,17 @@ class SqliteCursoRepository(CursoRepositoryPort):
                     clase_actual  INTEGER NOT NULL DEFAULT 1,
                     completadas   TEXT NOT NULL DEFAULT '[]',
                     total_clases  INTEGER NOT NULL DEFAULT 0,
-                    graduado      INTEGER NOT NULL DEFAULT 0
+                    graduado      INTEGER NOT NULL DEFAULT 0,
+                    nivel         TEXT NOT NULL DEFAULT 'desconocido'
                 )
             """)
+            # Migración para bases existentes: añade 'nivel' si falta (idempotente).
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(curso_progreso)")}
+            if "nivel" not in cols:
+                conn.execute(
+                    "ALTER TABLE curso_progreso ADD COLUMN nivel TEXT NOT NULL "
+                    "DEFAULT 'desconocido'"
+                )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS curso_chat (
                     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,11 +93,12 @@ class SqliteCursoRepository(CursoRepositoryPort):
         with self._connect() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO curso_progreso "
-                "(curso_id, usuario_sub, proyecto, clase_actual, completadas, total_clases, graduado) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(curso_id, usuario_sub, proyecto, clase_actual, completadas, total_clases, graduado, nivel) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (progreso.curso_id, progreso.usuario_sub, progreso.proyecto,
                  progreso.clase_actual, json.dumps(progreso.completadas),
-                 progreso.total_clases, 1 if progreso.graduado else 0),
+                 progreso.total_clases, 1 if progreso.graduado else 0,
+                 progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel),
             )
 
     def cargar_progreso(self, curso_id) -> ProgresoCurso | None:
@@ -99,12 +108,7 @@ class SqliteCursoRepository(CursoRepositoryPort):
             ).fetchone()
         if not row:
             return None
-        return ProgresoCurso(
-            curso_id=row["curso_id"], usuario_sub=row["usuario_sub"],
-            proyecto=row["proyecto"], clase_actual=row["clase_actual"],
-            completadas=json.loads(row["completadas"] or "[]"),
-            total_clases=row["total_clases"], graduado=bool(row["graduado"]),
-        )
+        return self._row_to_progreso(row)
 
     def curso_de(self, usuario_sub, proyecto) -> str | None:
         with self._connect() as conn:
@@ -119,13 +123,19 @@ class SqliteCursoRepository(CursoRepositoryPort):
             rows = conn.execute(
                 "SELECT * FROM curso_progreso WHERE usuario_sub = ?", (usuario_sub,)
             ).fetchall()
-        return [
-            ProgresoCurso(
-                curso_id=r["curso_id"], usuario_sub=r["usuario_sub"], proyecto=r["proyecto"],
-                clase_actual=r["clase_actual"], completadas=json.loads(r["completadas"] or "[]"),
-                total_clases=r["total_clases"], graduado=bool(r["graduado"]),
-            ) for r in rows
-        ]
+        return [self._row_to_progreso(r) for r in rows]
+
+    @staticmethod
+    def _row_to_progreso(row: sqlite3.Row) -> ProgresoCurso:
+        claves = row.keys()
+        nivel = row["nivel"] if "nivel" in claves else "desconocido"
+        return ProgresoCurso(
+            curso_id=row["curso_id"], usuario_sub=row["usuario_sub"],
+            proyecto=row["proyecto"], clase_actual=row["clase_actual"],
+            completadas=json.loads(row["completadas"] or "[]"),
+            total_clases=row["total_clases"], graduado=bool(row["graduado"]),
+            nivel=nivel or "desconocido",
+        )
 
     # ---- chat ----
     def guardar_mensaje(self, curso_id, numero_clase, mensaje: MensajeChat) -> None:

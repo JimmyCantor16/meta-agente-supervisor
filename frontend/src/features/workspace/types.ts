@@ -144,6 +144,28 @@ export interface ProgresoCurso {
   completadas: number[];
   total_clases: number;
   graduado: boolean;
+  nivel: "desconocido" | "bajo" | "medio" | "alto";
+}
+
+export interface NivelResult {
+  nivel: string;
+  mensaje: string;
+}
+
+export interface HitoProceso {
+  titulo: string;
+  descripcion: string;
+  depende_de: "alumno" | "plataforma" | "tiempo" | "sistema";
+  hecho: boolean;
+}
+
+export interface MetaProceso {
+  id: string;
+  objetivo: string;
+  resumen: string;
+  hitos: HitoProceso[];
+  hechos: number;
+  total: number;
 }
 
 export interface CursoResult {
@@ -176,6 +198,11 @@ export interface DiagnosticoMVP {
   problemas: string[];
   siguiente_paso: string;
   url: string;
+}
+
+export interface RelanzarResult {
+  diagnostico: DiagnosticoMVP;
+  url: string | null;
 }
 
 // Resumen de un proyecto en la galería.

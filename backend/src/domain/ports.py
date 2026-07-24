@@ -18,6 +18,7 @@ from src.domain.entities import (
     DeveloperPrompt,
     DiagnosticoMVP,
     EvaluationRecord,
+    MetaProceso,
     FewShotExample,
     GeneratedFile,
     GeneratedProject,
@@ -419,8 +420,13 @@ class ProfesorChatPort(ABC):
         mensaje: str,
         contexto_proyecto: str,
         language: str = "es",
+        nivel: str = "desconocido",
     ) -> str:
-        """Devuelve la respuesta del profesor. Raises AuditError si falla."""
+        """Devuelve la respuesta del profesor, adaptada al nivel del alumno.
+
+        `nivel` (bajo/medio/alto/desconocido) calibra la profundidad y el tono.
+        Raises AuditError si falla.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -434,6 +440,55 @@ class ProfesorChatPort(ABC):
 
         Returns (aprobado, mensaje_del_profesor).
         """
+        raise NotImplementedError
+
+    @abstractmethod
+    def estimar_nivel(
+        self,
+        respuesta: str,
+        language: str = "es",
+    ) -> tuple[str, str]:
+        """Estima el nivel del alumno (bajo/medio/alto) a partir de lo que cuenta.
+
+        El profesor mide conversando, sin examen: unas frases del alumno bastan
+        para calibrar cómo enseñarle. Returns (nivel, mensaje_de_bienvenida).
+        """
+        raise NotImplementedError
+
+
+class GeneradorMetaPort(ABC):
+    """Diseña el MAPA DE HITOS de una meta de proceso (no solo código).
+
+    Convierte 'quiero monetizar mi canal' en un camino honesto de pasos, cada
+    uno marcado según de quién depende (el alumno, la plataforma, el tiempo, o
+    lo que construimos aquí).
+    """
+
+    @abstractmethod
+    def generar(
+        self,
+        objetivo: str,
+        contexto: str,
+        language: str = "es",
+    ) -> MetaProceso:
+        """Diseña la meta con sus hitos. Raises AuditError si falla."""
+        raise NotImplementedError
+
+
+class MetaRepositoryPort(ABC):
+    """Persistencia de las metas de proceso y su avance por hito."""
+
+    @abstractmethod
+    def guardar(self, meta: MetaProceso) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def cargar(self, meta_id: str) -> MetaProceso | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def de_usuario(self, usuario_sub: str) -> list[MetaProceso]:
+        """Todas las metas de un usuario (recientes primero)."""
         raise NotImplementedError
 
 
@@ -458,6 +513,14 @@ class CasoRepositoryPort(ABC):
     @abstractmethod
     def todos(self, limit: int = 500) -> list[CasoGeneracion]:
         """Todos los casos (recientes primero) — para inspección/dataset."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def ultimo_por_slug(self, slug: str) -> CasoGeneracion | None:
+        """El caso más reciente de un proyecto (por su slug), o None.
+
+        Sirve para recuperar la idea original y poder RELANZAR el proyecto.
+        """
         raise NotImplementedError
 
 

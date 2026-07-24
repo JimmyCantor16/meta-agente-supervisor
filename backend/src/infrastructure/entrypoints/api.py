@@ -31,7 +31,12 @@ from src.application.curso_profesor import (
     GenerarCursoUseCase,
     VerificarClaseUseCase,
 )
-from src.application.diagnostico_mvp import DiagnosticarMVPUseCase
+from src.application.diagnostico_mvp import DiagnosticarMVPUseCase, RelanzarMVPUseCase
+from src.application.metas_proceso import (
+    CrearMetaUseCase,
+    ListarMetasUseCase,
+    MarcarHitoUseCase,
+)
 from src.config import Settings, get_settings
 from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount
 from src.domain.ports import (
@@ -43,7 +48,9 @@ from src.domain.ports import (
     CursoRepositoryPort,
     DiagnosticadorMVPPort,
     EvaluationRepositoryPort,
+    GeneradorMetaPort,
     GeneradorSyllabusPort,
+    MetaRepositoryPort,
     LicenseRequiredError,
     PaymentRequiredError,
     ProfesorChatPort,
@@ -70,7 +77,10 @@ from src.infrastructure.adapters.mock_adapter import MockPromptEvaluator
 from src.infrastructure.adapters.mock_ajustador import MockAjustadorModulo
 from src.infrastructure.adapters.mock_curso import MockGeneradorSyllabus, MockProfesorChat
 from src.infrastructure.adapters.mock_diagnostico_mvp import MockDiagnosticadorMVP
+from src.infrastructure.adapters.llm_meta_proceso import LLMGeneradorMeta
+from src.infrastructure.adapters.mock_meta_proceso import MockGeneradorMeta
 from src.infrastructure.adapters.sqlite_caso_repository import SqliteCasoRepository
+from src.infrastructure.adapters.sqlite_meta_repository import SqliteMetaRepository
 from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository
 from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
@@ -568,6 +578,46 @@ def get_diagnosticar_mvp_use_case(
     diagnosticador: DiagnosticadorMVPPort = Depends(get_diagnosticador_mvp),
 ) -> DiagnosticarMVPUseCase:
     return DiagnosticarMVPUseCase(reader, diagnosticador)
+
+
+def get_relanzar_mvp_use_case(
+    generate_uc: GenerateProjectUseCase = Depends(get_generate_use_case),
+    diagnosticar_uc: DiagnosticarMVPUseCase = Depends(get_diagnosticar_mvp_use_case),
+    caso_repo: CasoRepositoryPort = Depends(get_caso_repository),
+) -> RelanzarMVPUseCase:
+    return RelanzarMVPUseCase(generate_uc, diagnosticar_uc, caso_repo)
+
+
+@lru_cache
+def get_meta_repository() -> MetaRepositoryPort:
+    """Persistencia de las metas de proceso (mismo SQLite local)."""
+    return SqliteMetaRepository(get_settings().db_path)
+
+
+@lru_cache
+def get_generador_meta() -> GeneradorMetaPort:
+    if get_settings().use_mock_llm:
+        return MockGeneradorMeta()
+    return LLMGeneradorMeta()
+
+
+def get_crear_meta_use_case(
+    generador: GeneradorMetaPort = Depends(get_generador_meta),
+    repo: MetaRepositoryPort = Depends(get_meta_repository),
+) -> CrearMetaUseCase:
+    return CrearMetaUseCase(generador, repo)
+
+
+def get_marcar_hito_use_case(
+    repo: MetaRepositoryPort = Depends(get_meta_repository),
+) -> MarcarHitoUseCase:
+    return MarcarHitoUseCase(repo)
+
+
+def get_listar_metas_use_case(
+    repo: MetaRepositoryPort = Depends(get_meta_repository),
+) -> ListarMetasUseCase:
+    return ListarMetasUseCase(repo)
 
 
 def get_explain_use_case(
@@ -1096,6 +1146,7 @@ class ProgresoDTO(BaseModel):
     completadas: list[int]
     total_clases: int
     graduado: bool
+    nivel: str = "desconocido"
 
 
 class CursoResponse(BaseModel):
@@ -1136,6 +1187,7 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
             curso_id=progreso.curso_id, proyecto=progreso.proyecto,
             clase_actual=progreso.clase_actual, completadas=progreso.completadas,
             total_clases=progreso.total_clases, graduado=progreso.graduado,
+            nivel=progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel,
         ),
     )
 
@@ -1209,6 +1261,34 @@ def chat_curso(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except AuditError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class NivelRequest(BaseModel):
+    curso_id: str = Field(..., min_length=1)
+    respuesta: str = Field(default="", max_length=1500)
+    language: Literal["es", "en"] = "es"
+
+
+class NivelResponse(BaseModel):
+    nivel: str
+    mensaje: str
+
+
+@router.post(
+    "/curso/nivel",
+    response_model=NivelResponse,
+    summary="El profesor mide el nivel del alumno para adaptar el curso.",
+)
+def estimar_nivel(
+    request: NivelRequest,
+    use_case: ChatProfesorUseCase = Depends(get_chat_profesor_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> NivelResponse:
+    try:
+        nivel, mensaje = use_case.estimar_nivel(request.curso_id, request.respuesta, request.language)
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return NivelResponse(nivel=nivel, mensaje=mensaje)
 
 
 class VerificarClaseRequest(BaseModel):
@@ -1296,6 +1376,146 @@ def diagnosticar_mvp(
         lo_que_ve_el_usuario=d.lo_que_ve_el_usuario, problemas=d.problemas,
         siguiente_paso=d.siguiente_paso, url=d.url,
     )
+
+
+class RelanzarRequest(BaseModel):
+    project_name: str = Field(..., min_length=1)
+    idea: str = Field(default="", max_length=4000)
+    language: Literal["es", "en"] = "es"
+
+
+class RelanzarResponse(BaseModel):
+    diagnostico: DiagnosticoResponse
+    url: str | None = None
+
+
+@router.post(
+    "/curso/relanzar",
+    response_model=RelanzarResponse,
+    summary="Repara y RELANZA un MVP que no sirve, recordando su idea original.",
+)
+def relanzar_mvp(
+    request: RelanzarRequest,
+    use_case: RelanzarMVPUseCase = Depends(get_relanzar_mvp_use_case),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
+) -> RelanzarResponse:
+    """El botón del banner: vuelve a generar exigiendo una interfaz visible.
+
+    No cuesta una generación del cupo: es reparar un entregable que no sirvió.
+    """
+    try:
+        d, url = use_case.execute(request.project_name, request.idea, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditError as exc:
+        msg = str(exc)
+        code = 404 if "no tengo registro" in msg.lower() else 502
+        raise HTTPException(status_code=code, detail=msg) from exc
+    return RelanzarResponse(
+        diagnostico=DiagnosticoResponse(
+            estado=d.estado.value if hasattr(d.estado, "value") else d.estado,
+            puede_verse=d.puede_verse, veredicto=d.veredicto,
+            lo_que_ve_el_usuario=d.lo_que_ve_el_usuario, problemas=d.problemas,
+            siguiente_paso=d.siguiente_paso, url=d.url,
+        ),
+        url=url,
+    )
+
+
+# --- METAS DE PROCESO (multi-sesión: p.ej. monetizar un canal) ---
+class HitoDTO(BaseModel):
+    titulo: str
+    descripcion: str
+    depende_de: str
+    hecho: bool
+
+
+class MetaResponse(BaseModel):
+    id: str
+    objetivo: str
+    resumen: str
+    hitos: list[HitoDTO]
+    hechos: int
+    total: int
+
+
+def _meta_response(meta) -> MetaResponse:
+    hechos, total = meta.progreso
+    return MetaResponse(
+        id=meta.id, objetivo=meta.objetivo, resumen=meta.resumen,
+        hitos=[
+            HitoDTO(
+                titulo=h.titulo, descripcion=h.descripcion,
+                depende_de=h.depende_de.value if hasattr(h.depende_de, "value") else h.depende_de,
+                hecho=h.hecho,
+            )
+            for h in meta.hitos
+        ],
+        hechos=hechos, total=total,
+    )
+
+
+class MetaRequest(BaseModel):
+    objetivo: str = Field(..., min_length=1, max_length=600)
+    contexto: str = Field(default="", max_length=1000)
+    language: Literal["es", "en"] = "es"
+
+
+@router.post(
+    "/curso/meta/iniciar",
+    response_model=MetaResponse,
+    summary="Traza el mapa de hitos honesto de una meta de proceso del alumno.",
+)
+def iniciar_meta(
+    request: MetaRequest,
+    use_case: CrearMetaUseCase = Depends(get_crear_meta_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> MetaResponse:
+    try:
+        meta = use_case.execute(user.sub, request.objetivo, request.contexto, request.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return _meta_response(meta)
+
+
+@router.get(
+    "/curso/metas",
+    response_model=list[MetaResponse],
+    summary="Las metas de proceso del alumno, para retomarlas sesión a sesión.",
+)
+def listar_metas(
+    use_case: ListarMetasUseCase = Depends(get_listar_metas_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> list[MetaResponse]:
+    return [_meta_response(m) for m in use_case.execute(user.sub)]
+
+
+class HitoRequest(BaseModel):
+    meta_id: str = Field(..., min_length=1)
+    indice: int = Field(..., ge=0)
+    hecho: bool = True
+
+
+@router.post(
+    "/curso/meta/hito",
+    response_model=MetaResponse,
+    summary="Marca (o desmarca) un hito de una meta como logrado.",
+)
+def marcar_hito(
+    request: HitoRequest,
+    use_case: MarcarHitoUseCase = Depends(get_marcar_hito_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> MetaResponse:
+    try:
+        meta = use_case.execute(user.sub, request.meta_id, request.indice, request.hecho)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _meta_response(meta)
 
 
 @router.get(

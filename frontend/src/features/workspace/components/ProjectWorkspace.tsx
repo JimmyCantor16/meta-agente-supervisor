@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card } from "../../../components/Card";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import { AuditSubsection, TeacherSubsection } from "./DashboardEvaluacion";
+import { MetasProceso } from "./MetasProceso";
 import { ProfesorChat } from "./ProfesorChat";
 
 /**
@@ -19,7 +20,7 @@ export function ProjectWorkspace({
   onBack: () => void;
 }) {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<"curso" | "taller">("curso");
+  const [tab, setTab] = useState<"curso" | "metas" | "taller">("curso");
 
   return (
     <div className="space-y-5">
@@ -40,6 +41,14 @@ export function ProjectWorkspace({
             {t.project.tabCurso}
           </button>
           <button
+            onClick={() => setTab("metas")}
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+              tab === "metas" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
+            }`}
+          >
+            {t.project.tabMetas}
+          </button>
+          <button
             onClick={() => setTab("taller")}
             className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
               tab === "taller" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
@@ -52,6 +61,8 @@ export function ProjectWorkspace({
 
       {tab === "curso" ? (
         <ProfesorChat projectName={projectName} />
+      ) : tab === "metas" ? (
+        <MetasProceso projectName={projectName} />
       ) : (
         <Card title={`📦 ${projectName}`} icon={<span>🛠️</span>}>
           <p className="mb-2 text-sm text-slate-500">{t.project.hint}</p>

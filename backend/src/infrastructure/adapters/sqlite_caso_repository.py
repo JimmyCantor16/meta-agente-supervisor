@@ -106,6 +106,15 @@ class SqliteCasoRepository(CasoRepositoryPort):
             ).fetchall()
         return [self._row_to_caso(r) for r in rows]
 
+    def ultimo_por_slug(self, slug: str) -> CasoGeneracion | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM casos_generacion WHERE slug = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (slug,),
+            ).fetchone()
+        return self._row_to_caso(row) if row else None
+
     @staticmethod
     def _row_to_caso(row: sqlite3.Row) -> CasoGeneracion:
         return CasoGeneracion(

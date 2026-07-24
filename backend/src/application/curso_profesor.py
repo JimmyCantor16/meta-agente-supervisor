@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 from src.domain.entities import (
     Clase,
     MensajeChat,
+    NivelAlumno,
     ProgresoCurso,
     ResultadoVerificacion,
     Syllabus,
@@ -128,11 +129,26 @@ class ChatProfesorUseCase:
         self._repo.guardar_mensaje(curso_id, numero_clase, MensajeChat(rol="alumno", texto=texto))
         historial = self._repo.historial(curso_id, numero_clase)
 
+        # El profesor responde adaptado al nivel del alumno (bajo/medio/alto).
+        progreso = self._repo.cargar_progreso(curso_id)
+        nivel = (progreso.nivel.value if progreso and hasattr(progreso.nivel, "value")
+                 else (progreso.nivel if progreso else "desconocido"))
+
         contexto = _contexto_breve(self._reader, syllabus.proyecto)
-        respuesta = self._chat.responder(clase, historial, texto, contexto, language)
+        respuesta = self._chat.responder(clase, historial, texto, contexto, language, nivel)
         msg = MensajeChat(rol="profesor", texto=respuesta)
         self._repo.guardar_mensaje(curso_id, numero_clase, msg)
         return msg
+
+    def estimar_nivel(self, curso_id: str, respuesta: str, language: str = "es") -> tuple[str, str]:
+        """El profesor mide el nivel del alumno y lo guarda para adaptar el curso."""
+        progreso = self._repo.cargar_progreso(curso_id)
+        if progreso is None:
+            raise AuditError("Ese curso no existe.")
+        nivel, mensaje = self._chat.estimar_nivel(respuesta or "", language)
+        progreso.nivel = NivelAlumno(nivel)
+        self._repo.guardar_progreso(progreso)
+        return nivel, mensaje
 
     def abrir_clase(self, curso_id: str, numero_clase: int) -> list[MensajeChat]:
         """Devuelve el historial; si la clase está vacía, el profesor la inaugura."""

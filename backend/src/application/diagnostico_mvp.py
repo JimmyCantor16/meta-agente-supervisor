@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import logging
 
-from src.domain.entities import DiagnosticoMVP, EstadoMVP, GeneratedFile
+from src.domain.entities import DiagnosticoMVP, EstadoMVP, GeneratedFile, slugify
 from src.domain.ports import (
     AuditError,
+    CasoRepositoryPort,
     DiagnosticadorMVPPort,
     ProjectReaderPort,
 )
@@ -172,3 +173,51 @@ class DiagnosticarMVPUseCase:
         except Exception as exc:  # noqa: BLE001 - el diagnóstico nunca debe tumbar
             logger.warning("No se pudo validar render en diagnóstico: %s", exc)
             return None
+
+
+class RelanzarMVPUseCase:
+    """Repara y RELANZA un MVP que no sirve, recordando su idea original.
+
+    Cierra el círculo del diagnóstico: si el profesor dijo 'esto está vacío',
+    aquí el usuario aprieta un botón y el sistema vuelve a generarlo — pero
+    exigiendo una interfaz visible — sin que él tenga que reescribir su idea.
+    La idea original se recupera del banco de casos por el slug del proyecto.
+    """
+
+    def __init__(
+        self,
+        generate_use_case,
+        diagnosticar_use_case: DiagnosticarMVPUseCase,
+        caso_repo: CasoRepositoryPort,
+    ) -> None:
+        self._generate = generate_use_case
+        self._diagnosticar = diagnosticar_use_case
+        self._caso_repo = caso_repo
+
+    def execute(
+        self, project_name: str, idea: str = "", language: str = "es"
+    ) -> tuple[DiagnosticoMVP, str | None]:
+        slug = slugify(project_name)
+        base = (idea or "").strip()
+        if not base:
+            caso = self._caso_repo.ultimo_por_slug(slug)
+            if caso is None:
+                raise AuditError(
+                    "No tengo registro de la idea original de este proyecto, así que "
+                    "no puedo relanzarlo solo. Cuéntame qué querías que hiciera y lo "
+                    "genero de nuevo."
+                )
+            base = caso.idea
+
+        prompt = (
+            f"{base}\n\n"
+            "IMPORTANTE: la versión anterior NO le sirvió a un usuario final (o "
+            "entregó solo datos/JSON, o no se veía). DEBES entregar una interfaz "
+            "visible y usable en el navegador que muestre lo que el sistema hace. "
+            "El usuario no sabe programar: si abre la URL y no ve algo claro, se va."
+        )
+        logger.info("Relanzando '%s' desde su idea original.", slug)
+        project, _ = self._generate.execute(prompt, language)
+        url = getattr(self._generate, "last_url", None)
+        diag = self._diagnosticar.execute(project.slug(), url or "", language)
+        return diag, url

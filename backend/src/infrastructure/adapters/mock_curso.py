@@ -129,8 +129,14 @@ class MockGeneradorSyllabus(GeneradorSyllabusPort):
 
 
 class MockProfesorChat(ProfesorChatPort):
-    def responder(self, clase, historial, mensaje, contexto_proyecto, language="es") -> str:
-        return (f"[Modo demo] Buena pregunta sobre «{clase.titulo}». En tu proyecto, "
+    def responder(self, clase, historial, mensaje, contexto_proyecto,
+                  language="es", nivel="desconocido") -> str:
+        matiz = {
+            "alto": "Como ya te manejas, voy directo: ",
+            "medio": "Te lo explico con algo de detalle: ",
+            "bajo": "Tranquilo, paso a pasito: ",
+        }.get(nivel, "")
+        return (f"[Modo demo] {matiz}Buena pregunta sobre «{clase.titulo}». En tu proyecto, "
                 "mira el archivo que mencioné y prueba el reto. Si te atascas, dime "
                 "exactamente qué línea no entiendes. 🙂")
 
@@ -139,3 +145,21 @@ class MockProfesorChat(ProfesorChatPort):
         if len((respuesta or "").strip()) >= 15:
             return True, "¡Muy bien! Se nota que lo entendiste. 💪"
         return False, "Cuéntame un poquito más, con tus palabras, y lo reviso de nuevo. 🙂"
+
+    def estimar_nivel(self, respuesta, language="es") -> tuple[str, str]:
+        # Demo determinista: por palabras clave frecuentes.
+        t = (respuesta or "").lower()
+        if any(p in t for p in ("programo", "desarrollador", "código", "python",
+                                "javascript", "años", "backend", "api")):
+            nivel = "alto"
+        elif any(p in t for p in ("html", "curso", "excel", "poquito", "algo",
+                                  "wordpress", "no-code", "toqué")):
+            nivel = "medio"
+        else:
+            nivel = "bajo"
+        msg = {
+            "alto": "¡Genial, ya traes base! Iré al grano contigo. 🚀",
+            "medio": "¡Perfecto, algo de camino andado! Te acompaño desde ahí. 💪",
+            "bajo": "¡Bienvenido! Empezamos desde cero, sin prisa y sin jerga. 🙂",
+        }[nivel]
+        return nivel, msg
