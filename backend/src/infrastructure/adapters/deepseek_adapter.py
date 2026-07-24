@@ -20,6 +20,7 @@ from src.domain.entities import (
     ResponseLanguage,
 )
 from src.domain.ports import PromptEvaluationError, PromptEvaluatorPort
+from src.infrastructure.adapters.skills_loader import skill
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
 
 logger = logging.getLogger(__name__)
@@ -219,7 +220,7 @@ class DeepSeekPromptEvaluator(PromptEvaluatorPort):
     def _request_json(self, user_content: str) -> dict:
         """Llama al LLM (multi-modelo con fallback) y devuelve el JSON."""
         try:
-            return self._llm.chat_json(SYSTEM_PROMPT, user_content, temperature=0.2)
+            return self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"), user_content, temperature=0.2)
         except LLMError as exc:
             logger.error("Fallo del LLM al evaluar: %s", exc)
             raise PromptEvaluationError(str(exc)) from exc
