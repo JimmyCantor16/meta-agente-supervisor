@@ -4,6 +4,7 @@ import { useLanguage } from "../../../i18n/LanguageProvider";
 import { AuditSubsection, TeacherSubsection } from "./DashboardEvaluacion";
 import { MetasProceso } from "./MetasProceso";
 import { ProfesorChat } from "./ProfesorChat";
+import { SistemaEnVivo } from "./SistemaEnVivo";
 
 /**
  * Vista de un proyecto YA generado, abierto desde la galería.
@@ -58,6 +59,9 @@ export function ProjectWorkspace({
           </button>
         </div>
       </div>
+
+      {/* Panel "Tu sistema en vivo": encender/abrir/apagar, URL y puerto. */}
+      <SistemaEnVivo projectName={projectName} />
 
       {tab === "curso" ? (
         <ProfesorChat projectName={projectName} />

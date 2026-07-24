@@ -469,6 +469,7 @@ export async function activateLicense(key: string): Promise<UsageStatus> {
 import type {
   CursoResult,
   DiagnosticoMVP,
+  EstadoProyecto,
   MensajeChat,
   MetaProceso,
   NivelResult,
@@ -477,6 +478,46 @@ import type {
 } from "../features/workspace/types";
 
 const CURSO_BASE = `${API_BASE}/api/v1/agent/curso`;
+const PROYECTOS_BASE = `${API_BASE}/api/v1/agent/projects`;
+
+/** Estado del proyecto en vivo: ¿encendido?, ¿en qué URL/puerto? */
+export async function estadoProyecto(projectName: string): Promise<EstadoProyecto> {
+  const r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(projectName)}/estado`, {
+    headers: { ...authHeaders() },
+  });
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as EstadoProyecto;
+}
+
+async function proyectoAccion(projectName: string, accion: "encender" | "apagar"): Promise<EstadoProyecto> {
+  let r: Response;
+  try {
+    r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(projectName)}/${accion}`, {
+      method: "POST",
+      headers: { ...authHeaders() },
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as EstadoProyecto;
+}
+
+/** Enciende el proyecto y devuelve su URL (arranque en frío puede tardar 1-2 min). */
+export function encenderProyecto(projectName: string): Promise<EstadoProyecto> {
+  return proyectoAccion(projectName, "encender");
+}
+
+/** Apaga el proyecto. */
+export function apagarProyecto(projectName: string): Promise<EstadoProyecto> {
+  return proyectoAccion(projectName, "apagar");
+}
 
 async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {
   let r: Response;

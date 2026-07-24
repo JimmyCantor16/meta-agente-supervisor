@@ -104,23 +104,32 @@ class MultiStackProjectRunner(ProjectRunnerPort):
         self._python = LocalProjectRunner(public_host)
         self._node = NodeProjectRunner(public_host)
         self._static = StaticSiteRunner(public_host)
+        # Recuerda la URL de lo que está corriendo AHORA, para el panel 'en vivo'.
+        self._urls: dict[str, str] = {}
 
     def start(self, project_dir: str, project_name: str) -> str | None:
         if _es_python(project_dir):
-            return self._python.start(project_dir, project_name)
-        if NodeProjectRunner.detecta(project_dir):
-            return self._node.start(project_dir, project_name)
-        if StaticSiteRunner.detecta(project_dir):
-            return self._static.start(project_dir, project_name)
-
-        logger.warning(
-            "SIN URL para '%s': no se reconoce el stack, no se sabe cómo arrancarlo.",
-            project_name,
-        )
-        return None
+            url = self._python.start(project_dir, project_name)
+        elif NodeProjectRunner.detecta(project_dir):
+            url = self._node.start(project_dir, project_name)
+        elif StaticSiteRunner.detecta(project_dir):
+            url = self._static.start(project_dir, project_name)
+        else:
+            logger.warning(
+                "SIN URL para '%s': no se reconoce el stack, no se sabe cómo arrancarlo.",
+                project_name,
+            )
+            url = None
+        if url:
+            self._urls[project_name] = url
+        return url
 
     def stop(self, project_name: str) -> None:
         # No sabemos cuál lo tenía; todos ignoran los nombres desconocidos.
         self._python.stop(project_name)
         self._node.stop(project_name)
         self._static.stop(project_name)
+        self._urls.pop(project_name, None)
+
+    def url_activa(self, project_name: str) -> str | None:
+        return self._urls.get(project_name)

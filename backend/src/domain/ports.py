@@ -255,6 +255,14 @@ class ProjectRunnerPort(ABC):
         """Detiene el proyecto si estaba corriendo."""
         raise NotImplementedError
 
+    def url_activa(self, project_name: str) -> str | None:
+        """URL del proyecto si está corriendo AHORA, o None.
+
+        Por defecto no se sabe (los runners que no lleven registro heredan este
+        no-op). El despachador multistack sí la recuerda para el panel 'en vivo'.
+        """
+        return None
+
 
 class ProjectVerifierPort(ABC):
     """Contrato para verificar que un proyecto generado realmente ejecuta."""

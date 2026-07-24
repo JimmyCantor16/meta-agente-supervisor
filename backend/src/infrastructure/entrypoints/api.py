@@ -31,6 +31,7 @@ from src.application.curso_profesor import (
     GenerarCursoUseCase,
     VerificarClaseUseCase,
 )
+from src.application.control_proyecto import ControlProyectoUseCase
 from src.application.diagnostico_mvp import DiagnosticarMVPUseCase, RelanzarMVPUseCase
 from src.application.metas_proceso import (
     CrearMetaUseCase,
@@ -586,6 +587,13 @@ def get_relanzar_mvp_use_case(
     caso_repo: CasoRepositoryPort = Depends(get_caso_repository),
 ) -> RelanzarMVPUseCase:
     return RelanzarMVPUseCase(generate_uc, diagnosticar_uc, caso_repo)
+
+
+def get_control_proyecto_use_case(
+    runner: ProjectRunnerPort = Depends(get_project_runner),
+    verifier: ProjectVerifierPort = Depends(get_project_verifier),
+) -> ControlProyectoUseCase:
+    return ControlProyectoUseCase(runner, get_settings().generated_dir, verifier)
 
 
 @lru_cache
@@ -1516,6 +1524,60 @@ def marcar_hito(
     except AuditError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _meta_response(meta)
+
+
+# --- CONTROL DEL PROYECTO EN VIVO (encender / apagar / estado) ---
+class EstadoProyectoResponse(BaseModel):
+    corriendo: bool
+    url: str | None = None
+    puerto: int | None = None
+
+
+@router.get(
+    "/projects/{project_name}/estado",
+    response_model=EstadoProyectoResponse,
+    summary="¿Está encendido el proyecto? ¿En qué URL/puerto?",
+)
+def estado_proyecto(
+    project_name: str,
+    use_case: ControlProyectoUseCase = Depends(get_control_proyecto_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> EstadoProyectoResponse:
+    try:
+        return EstadoProyectoResponse(**use_case.estado(project_name))
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_name}/encender",
+    response_model=EstadoProyectoResponse,
+    summary="Enciende el proyecto y devuelve su URL para abrirlo.",
+)
+def encender_proyecto(
+    project_name: str,
+    use_case: ControlProyectoUseCase = Depends(get_control_proyecto_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> EstadoProyectoResponse:
+    try:
+        return EstadoProyectoResponse(**use_case.encender(project_name))
+    except AuditError as exc:
+        msg = str(exc)
+        code = 404 if "no existe" in msg.lower() else 502
+        raise HTTPException(status_code=code, detail=msg) from exc
+
+
+@router.post(
+    "/projects/{project_name}/apagar",
+    response_model=EstadoProyectoResponse,
+    summary="Apaga el proyecto.",
+)
+def apagar_proyecto(
+    project_name: str,
+    use_case: ControlProyectoUseCase = Depends(get_control_proyecto_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> EstadoProyectoResponse:
+    return EstadoProyectoResponse(**use_case.apagar(project_name))
 
 
 @router.get(

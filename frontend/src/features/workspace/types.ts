@@ -205,6 +205,12 @@ export interface RelanzarResult {
   url: string | null;
 }
 
+export interface EstadoProyecto {
+  corriendo: boolean;
+  url: string | null;
+  puerto: number | null;
+}
+
 // Resumen de un proyecto en la galería.
 export interface ProjectSummary {
   name: string;
