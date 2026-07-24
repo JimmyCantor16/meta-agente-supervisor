@@ -26,6 +26,11 @@ from src.application.evaluate_prompt import EvaluatePromptUseCase, RegisterFeedb
 from src.application.explain_project import ExplainProjectUseCase
 from src.application.generate_project import GenerateProjectUseCase
 from src.application.usage_service import UsageService
+from src.application.curso_profesor import (
+    ChatProfesorUseCase,
+    GenerarCursoUseCase,
+    VerificarClaseUseCase,
+)
 from src.config import Settings, get_settings
 from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount
 from src.domain.ports import (
@@ -33,9 +38,12 @@ from src.domain.ports import (
     AuditError,
     CodeAuditorPort,
     CodeTeacherPort,
+    CursoRepositoryPort,
     EvaluationRepositoryPort,
+    GeneradorSyllabusPort,
     LicenseRequiredError,
     PaymentRequiredError,
+    ProfesorChatPort,
     ProjectGenerationError,
     ProjectGeneratorPort,
     ProjectReaderPort,
@@ -52,8 +60,12 @@ from src.infrastructure.adapters.iterative_project_generator import IterativePro
 from src.infrastructure.adapters.llm_ajustador import LLMAjustadorModulo
 from src.infrastructure.adapters.llm_code_auditor import LLMCodeAuditor
 from src.infrastructure.adapters.llm_code_teacher import LLMCodeTeacher
+from src.infrastructure.adapters.llm_generador_syllabus import LLMGeneradorSyllabus
+from src.infrastructure.adapters.llm_profesor_chat import LLMProfesorChat
 from src.infrastructure.adapters.mock_adapter import MockPromptEvaluator
 from src.infrastructure.adapters.mock_ajustador import MockAjustadorModulo
+from src.infrastructure.adapters.mock_curso import MockGeneradorSyllabus, MockProfesorChat
+from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository
 from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
 from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
@@ -480,6 +492,51 @@ def get_code_teacher() -> CodeTeacherPort:
         logger.warning("USE_MOCK_LLM=true -> profesor SIMULADO.")
         return MockCodeTeacher()
     return LLMCodeTeacher()
+
+
+# --- CURSO INTERACTIVO DEL PROFESOR ---
+@lru_cache
+def get_curso_repository() -> CursoRepositoryPort:
+    """Persistencia del curso (SQLite en el mismo db que el resto)."""
+    return SqliteCursoRepository(get_settings().db_path)
+
+
+@lru_cache
+def get_generador_syllabus() -> GeneradorSyllabusPort:
+    if get_settings().use_mock_llm:
+        return MockGeneradorSyllabus()
+    return LLMGeneradorSyllabus()
+
+
+@lru_cache
+def get_profesor_chat() -> ProfesorChatPort:
+    if get_settings().use_mock_llm:
+        return MockProfesorChat()
+    return LLMProfesorChat()
+
+
+def get_generar_curso_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    generador: GeneradorSyllabusPort = Depends(get_generador_syllabus),
+    repo: CursoRepositoryPort = Depends(get_curso_repository),
+) -> GenerarCursoUseCase:
+    return GenerarCursoUseCase(reader, generador, repo)
+
+
+def get_chat_profesor_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    chat: ProfesorChatPort = Depends(get_profesor_chat),
+    repo: CursoRepositoryPort = Depends(get_curso_repository),
+) -> ChatProfesorUseCase:
+    return ChatProfesorUseCase(reader, chat, repo)
+
+
+def get_verificar_clase_use_case(
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    chat: ProfesorChatPort = Depends(get_profesor_chat),
+    repo: CursoRepositoryPort = Depends(get_curso_repository),
+) -> VerificarClaseUseCase:
+    return VerificarClaseUseCase(reader, chat, repo)
 
 
 def get_explain_use_case(
@@ -977,6 +1034,193 @@ def mejorar_proyecto(
         aplicadas=resumen.aplicadas,
         revertidas=resumen.revertidas,
         sin_cambios=resumen.sin_cambios,
+    )
+
+
+# ===========================================================================
+# CURSO INTERACTIVO DEL PROFESOR
+# ===========================================================================
+class CriterioDTO(BaseModel):
+    tipo: str
+    descripcion: str
+    quiz: list[dict] = Field(default_factory=list)
+    aciertos_minimos: int = 2
+    pista: str = ""
+
+
+class ClaseDTO(BaseModel):
+    numero: int
+    titulo: str
+    objetivo: str
+    contenido: str
+    reto: str
+    concepto_clave: str = ""
+    criterio: CriterioDTO
+
+
+class ProgresoDTO(BaseModel):
+    curso_id: str
+    proyecto: str
+    clase_actual: int
+    completadas: list[int]
+    total_clases: int
+    graduado: bool
+
+
+class CursoResponse(BaseModel):
+    titulo_curso: str
+    resumen: str
+    arquetipo: str = ""
+    clases: list[ClaseDTO]
+    progreso: ProgresoDTO
+
+
+class CursoRequest(BaseModel):
+    project_name: str = Field(..., min_length=1)
+    arquetipo: str = Field(default="")
+    language: Literal["es", "en"] = "es"
+
+
+def _curso_response(syllabus, progreso) -> CursoResponse:
+    return CursoResponse(
+        titulo_curso=syllabus.titulo_curso,
+        resumen=syllabus.resumen,
+        arquetipo=syllabus.arquetipo,
+        clases=[
+            ClaseDTO(
+                numero=c.numero, titulo=c.titulo, objetivo=c.objetivo,
+                contenido=c.contenido, reto=c.reto, concepto_clave=c.concepto_clave,
+                criterio=CriterioDTO(
+                    tipo=c.criterio.tipo.value if hasattr(c.criterio.tipo, "value") else c.criterio.tipo,
+                    descripcion=c.criterio.descripcion,
+                    # El quiz viaja SIN la respuesta correcta: el navegador no debe saberla.
+                    quiz=[{"pregunta": q.pregunta, "opciones": q.opciones} for q in c.criterio.quiz],
+                    aciertos_minimos=c.criterio.aciertos_minimos,
+                    pista=c.criterio.pista,
+                ),
+            )
+            for c in syllabus.clases
+        ],
+        progreso=ProgresoDTO(
+            curso_id=progreso.curso_id, proyecto=progreso.proyecto,
+            clase_actual=progreso.clase_actual, completadas=progreso.completadas,
+            total_clases=progreso.total_clases, graduado=progreso.graduado,
+        ),
+    )
+
+
+@router.post(
+    "/curso/iniciar",
+    response_model=CursoResponse,
+    summary="Genera (o recupera) el curso del profesor para un proyecto del alumno.",
+)
+def iniciar_curso(
+    request: CursoRequest,
+    use_case: GenerarCursoUseCase = Depends(get_generar_curso_use_case),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
+) -> CursoResponse:
+    """Al entregar el MVP ya no hay silencio: el profesor abre el curso."""
+    try:
+        account.ensure_can_learn(user)
+    except PaymentRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+    try:
+        syllabus, progreso = use_case.execute(
+            user.sub, request.project_name, user.plan or "free",
+            request.arquetipo, request.language,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditError as exc:
+        msg = str(exc)
+        code = 404 if "no existe" in msg.lower() else 502
+        raise HTTPException(status_code=code, detail=msg) from exc
+    return _curso_response(syllabus, progreso)
+
+
+class ChatRequest(BaseModel):
+    curso_id: str = Field(..., min_length=1)
+    numero_clase: int = Field(..., ge=1)
+    mensaje: str = Field(default="", max_length=2000)
+    abrir: bool = Field(default=False, description="Solo abrir la clase (traer historial).")
+    language: Literal["es", "en"] = "es"
+
+
+class MensajeDTO(BaseModel):
+    rol: str
+    texto: str
+
+
+class ChatResponse(BaseModel):
+    mensajes: list[MensajeDTO]
+
+
+@router.post(
+    "/curso/chat",
+    response_model=ChatResponse,
+    summary="Habla con el profesor dentro de una clase (o abre la clase).",
+)
+def chat_curso(
+    request: ChatRequest,
+    use_case: ChatProfesorUseCase = Depends(get_chat_profesor_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> ChatResponse:
+    try:
+        if request.abrir or not request.mensaje.strip():
+            historial = use_case.abrir_clase(request.curso_id, request.numero_clase)
+            return ChatResponse(mensajes=[MensajeDTO(rol=m.rol, texto=m.texto) for m in historial])
+        respuesta = use_case.execute(
+            request.curso_id, request.numero_clase, request.mensaje, request.language
+        )
+        return ChatResponse(mensajes=[MensajeDTO(rol=respuesta.rol, texto=respuesta.texto)])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class VerificarClaseRequest(BaseModel):
+    curso_id: str = Field(..., min_length=1)
+    numero_clase: int = Field(..., ge=1)
+    respuestas_quiz: list[int] = Field(default_factory=list)
+    texto: str = Field(default="", max_length=2000)
+    language: Literal["es", "en"] = "es"
+
+
+class VerificarClaseResponse(BaseModel):
+    superada: bool
+    mensaje: str
+    avanzo: bool
+    graduado: bool
+
+
+@router.post(
+    "/curso/verificar",
+    response_model=VerificarClaseResponse,
+    summary="El profesor revisa la tarea y decide si el alumno superó la clase.",
+)
+def verificar_clase(
+    request: VerificarClaseRequest,
+    use_case: VerificarClaseUseCase = Depends(get_verificar_clase_use_case),
+    account: AccountService = Depends(get_account_service),
+    user: UserAccount = Depends(get_current_user),
+) -> VerificarClaseResponse:
+    try:
+        account.ensure_can_learn(user)
+    except PaymentRequiredError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+    try:
+        r = use_case.execute(
+            request.curso_id, request.numero_clase,
+            request.respuestas_quiz, request.texto, request.language,
+        )
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if r.superada:
+        account.record_lesson(user)
+    return VerificarClaseResponse(
+        superada=r.superada, mensaje=r.mensaje, avanzo=r.avanzo, graduado=r.graduado
     )
 
 

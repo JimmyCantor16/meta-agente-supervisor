@@ -13,11 +13,15 @@ from src.domain.entities import (
     AgentEvaluation,
     AuditReport,
     CambioArchivo,
+    Clase,
     DeveloperPrompt,
     EvaluationRecord,
     FewShotExample,
     GeneratedFile,
     GeneratedProject,
+    MensajeChat,
+    ProgresoCurso,
+    Syllabus,
     TeachingGuide,
     UserAccount,
 )
@@ -373,4 +377,97 @@ class AjustadorModuloPort(ABC):
         Raises:
             AuditError: Si no se puede proponer el ajuste.
         """
+        raise NotImplementedError
+
+
+class GeneradorSyllabusPort(ABC):
+    """Contrato del agente que diseña el PLAN DE ESTUDIOS de un proyecto.
+
+    A partir del código real del proyecto del alumno, arma N clases con
+    objetivo, contenido, reto y — lo esencial — un criterio de superación
+    VERIFICABLE por clase.
+    """
+
+    @abstractmethod
+    def generar(
+        self,
+        proyecto: str,
+        arquetipo: str,
+        files: list[GeneratedFile],
+        num_clases: int,
+        language: str = "es",
+    ) -> Syllabus:
+        """Diseña el temario. Raises AuditError si falla."""
+        raise NotImplementedError
+
+
+class ProfesorChatPort(ABC):
+    """Contrato del PROFESOR conversacional dentro de una clase.
+
+    Responde al alumno en el contexto de UNA clase concreta, con memoria del
+    historial y del código de su proyecto. Paciente, claro, sin adelantar la
+    respuesta del reto: guía hasta que el alumno la encuentre.
+    """
+
+    @abstractmethod
+    def responder(
+        self,
+        clase: Clase,
+        historial: list[MensajeChat],
+        mensaje: str,
+        contexto_proyecto: str,
+        language: str = "es",
+    ) -> str:
+        """Devuelve la respuesta del profesor. Raises AuditError si falla."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def evaluar_reflexion(
+        self,
+        clase: Clase,
+        respuesta: str,
+        language: str = "es",
+    ) -> tuple[bool, str]:
+        """Juzga si la reflexión del alumno demuestra que entendió.
+
+        Returns (aprobado, mensaje_del_profesor).
+        """
+        raise NotImplementedError
+
+
+class CursoRepositoryPort(ABC):
+    """Persistencia de cursos, progreso e historial de chat por clase."""
+
+    @abstractmethod
+    def guardar_curso(self, curso_id: str, usuario_sub: str, syllabus: Syllabus) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def cargar_syllabus(self, curso_id: str) -> Syllabus | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def cargar_progreso(self, curso_id: str) -> ProgresoCurso | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def guardar_progreso(self, progreso: ProgresoCurso) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def curso_de(self, usuario_sub: str, proyecto: str) -> str | None:
+        """Id del curso de un usuario para un proyecto, o None si no existe."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def cursos_de(self, usuario_sub: str) -> list[ProgresoCurso]:
+        """Todos los cursos (progreso) de un usuario."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def guardar_mensaje(self, curso_id: str, numero_clase: int, mensaje: MensajeChat) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def historial(self, curso_id: str, numero_clase: int) -> list[MensajeChat]:
         raise NotImplementedError

@@ -464,3 +464,80 @@ export async function activateLicense(key: string): Promise<UsageStatus> {
   }
   return (await response.json()) as UsageStatus;
 }
+
+// ===== Curso interactivo del profesor =====
+import type {
+  CursoResult,
+  MensajeChat,
+  VerificacionClase,
+} from "../features/workspace/types";
+
+const CURSO_BASE = `${API_BASE}/api/v1/agent/curso`;
+
+async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(`${CURSO_BASE}/${ruta}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(cuerpo),
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el profesor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as T;
+}
+
+/** Genera (o recupera) el curso del profesor para un proyecto del alumno. */
+export function iniciarCurso(
+  projectName: string,
+  arquetipo: string,
+  language: Language
+): Promise<CursoResult> {
+  return cursoPost<CursoResult>("iniciar", {
+    project_name: projectName,
+    arquetipo,
+    language,
+  });
+}
+
+/** Abre una clase (trae su historial; si está vacía, el profesor la inaugura). */
+export function abrirClase(cursoId: string, numeroClase: number): Promise<{ mensajes: MensajeChat[] }> {
+  return cursoPost("chat", { curso_id: cursoId, numero_clase: numeroClase, abrir: true });
+}
+
+/** Envía un mensaje al profesor dentro de una clase. */
+export function chatProfesor(
+  cursoId: string,
+  numeroClase: number,
+  mensaje: string,
+  language: Language
+): Promise<{ mensajes: MensajeChat[] }> {
+  return cursoPost("chat", {
+    curso_id: cursoId,
+    numero_clase: numeroClase,
+    mensaje,
+    language,
+  });
+}
+
+/** El profesor revisa la tarea y decide si el alumno superó la clase. */
+export function verificarClase(
+  cursoId: string,
+  numeroClase: number,
+  respuestasQuiz: number[],
+  texto: string,
+  language: Language
+): Promise<VerificacionClase> {
+  return cursoPost<VerificacionClase>("verificar", {
+    curso_id: cursoId,
+    numero_clase: numeroClase,
+    respuestas_quiz: respuestasQuiz,
+    texto,
+    language,
+  });
+}

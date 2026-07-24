@@ -334,3 +334,88 @@ class ResultadoAjuste(BaseModel):
     detalle: str = Field(default="", description="Error/traceback real si algo falló.")
 
     model_config = {"extra": "ignore"}
+
+
+# ===========================================================================
+# CURSO INTERACTIVO DEL PROFESOR
+# Tras entregar el MVP, el sistema genera un plan de estudios sobre EL PROYECTO
+# del alumno y lo guía clase por clase, por chat, con superación VERIFICABLE:
+# el alumno no avanza porque diga "entendí", avanza porque el sistema comprueba
+# que aprendió (un quiz sobre su código, un cambio aplicado, su repo/URL vivos).
+# ===========================================================================
+class TipoCriterio(str, Enum):
+    """Cómo se demuestra que una clase fue superada de verdad."""
+
+    QUIZ = "quiz"                    # responder bien un mini-quiz sobre SU proyecto
+    CAMBIO_APLICADO = "cambio"       # aplicar un ajuste verificado al proyecto
+    REPO_GIT = "repo_git"            # su repositorio de GitHub existe (API pública)
+    URL_PUBLICADA = "url_publicada"  # su URL responde viva en internet
+    REFLEXION = "reflexion"          # explica con sus palabras (lo evalúa el profesor)
+
+
+class PreguntaQuiz(BaseModel):
+    """Pregunta de un mini-quiz de superación (sobre el proyecto del alumno)."""
+
+    pregunta: str = Field(..., min_length=1)
+    opciones: list[str] = Field(..., min_length=2)
+    correcta: int = Field(..., ge=0, description="Índice de la opción correcta.")
+
+
+class CriterioSuperacion(BaseModel):
+    """La prueba que el alumno debe pasar para completar una clase."""
+
+    tipo: TipoCriterio
+    descripcion: str = Field(..., description="Qué se pide, en cristiano.")
+    quiz: list[PreguntaQuiz] = Field(default_factory=list)
+    aciertos_minimos: int = Field(default=2, description="Para tipo quiz.")
+    pista: str = Field(default="", description="Ayuda si el alumno se atasca.")
+
+
+class Clase(BaseModel):
+    """Una clase del curso: objetivo, contenido sobre SU código, reto y criterio."""
+
+    numero: int = Field(..., ge=1)
+    titulo: str = Field(..., min_length=1)
+    objetivo: str = Field(..., description="Qué vas a lograr, en una frase.")
+    contenido: str = Field(..., description="La explicación sobre el proyecto (markdown).")
+    reto: str = Field(..., description="El ejercicio práctico de esta clase.")
+    concepto_clave: str = Field(default="", description="El concepto que se aprende.")
+    criterio: CriterioSuperacion
+
+
+class Syllabus(BaseModel):
+    """El plan de estudios completo, generado a partir del proyecto real."""
+
+    proyecto: str
+    arquetipo: str = Field(default="")
+    titulo_curso: str
+    resumen: str
+    clases: list[Clase] = Field(default_factory=list)
+
+
+class MensajeChat(BaseModel):
+    """Un turno de la conversación entre el profesor y el alumno."""
+
+    rol: str = Field(..., description="'profesor' o 'alumno'.")
+    texto: str = Field(..., min_length=1)
+
+
+class ProgresoCurso(BaseModel):
+    """Dónde va el alumno en su curso: la clase actual y las ya superadas."""
+
+    curso_id: str
+    usuario_sub: str
+    proyecto: str
+    clase_actual: int = Field(default=1)
+    completadas: list[int] = Field(default_factory=list)
+    total_clases: int = Field(default=0)
+    graduado: bool = Field(default=False)
+
+
+class ResultadoVerificacion(BaseModel):
+    """Veredicto del profesor sobre si el alumno superó la clase."""
+
+    superada: bool
+    mensaje: str = Field(..., description="Qué pasó, en tono de profesor.")
+    avanzo: bool = Field(default=False, description="Si se pasó a la siguiente clase.")
+    graduado: bool = Field(default=False)

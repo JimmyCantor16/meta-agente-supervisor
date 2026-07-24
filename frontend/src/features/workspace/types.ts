@@ -113,6 +113,59 @@ export interface MejoraResult {
   sin_cambios: string[];
 }
 
+// ===== Curso interactivo del profesor =====
+export interface PreguntaQuizDTO {
+  pregunta: string;
+  opciones: string[];
+}
+
+export interface CriterioClase {
+  tipo: "quiz" | "cambio" | "repo_git" | "url_publicada" | "reflexion";
+  descripcion: string;
+  quiz: PreguntaQuizDTO[];
+  aciertos_minimos: number;
+  pista: string;
+}
+
+export interface ClaseCurso {
+  numero: number;
+  titulo: string;
+  objetivo: string;
+  contenido: string;
+  reto: string;
+  concepto_clave: string;
+  criterio: CriterioClase;
+}
+
+export interface ProgresoCurso {
+  curso_id: string;
+  proyecto: string;
+  clase_actual: number;
+  completadas: number[];
+  total_clases: number;
+  graduado: boolean;
+}
+
+export interface CursoResult {
+  titulo_curso: string;
+  resumen: string;
+  arquetipo: string;
+  clases: ClaseCurso[];
+  progreso: ProgresoCurso;
+}
+
+export interface MensajeChat {
+  rol: "profesor" | "alumno";
+  texto: string;
+}
+
+export interface VerificacionClase {
+  superada: boolean;
+  mensaje: string;
+  avanzo: boolean;
+  graduado: boolean;
+}
+
 // Resumen de un proyecto en la galería.
 export interface ProjectSummary {
   name: string;
