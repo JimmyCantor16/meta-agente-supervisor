@@ -64,6 +64,15 @@ const es = {
       "Render te da una URL tipo https://tu-proyecto.onrender.com — esa es TU sistema, en TU cuenta, visible desde cualquier lugar del mundo. Compártela.",
     step3Note:
       "Nota honesta del profesor: en el plan gratis, Render duerme tu app tras 15 min sin visitas; la primera visita siguiente tarda ~1 min en despertarla. Es el precio de lo gratis, y para mostrar tu MVP sobra.",
+    progressLabel: "Tu progreso en esta clase",
+    classComplete: "¡CLASE COMPLETADA! Tu sistema vive en internet, en TU cuenta. Eso ya te hace desarrollador.",
+    markDone: "Ya lo hice",
+    markedDone: "Hecho",
+    nextClass: "Siguiente clase",
+    reviewTitle: "Revisión de tarea: pega tu URL y el profesor la comprueba",
+    reviewHint: "Esto no lo hace ningún chatbot: voy a visitar TU página desde el servidor y confirmarte que quedó viva de verdad.",
+    reviewButton: "🧪 Profesor, revisa mi página",
+    reviewChecking: "Visitando tu página…",
   },
   plans: {
     title: "Planes",
@@ -310,6 +319,15 @@ const en: Translation = {
       "Render gives you a URL like https://your-project.onrender.com — that's YOUR system, on YOUR account, visible anywhere in the world. Share it.",
     step3Note:
       "Teacher's honest note: on the free plan Render sleeps your app after 15 min without visits; the next first visit takes ~1 min to wake it. That's the price of free, and it's plenty to show your MVP.",
+    progressLabel: "Your progress in this class",
+    classComplete: "CLASS COMPLETE! Your system lives on the internet, on YOUR account. That already makes you a developer.",
+    markDone: "I did it",
+    markedDone: "Done",
+    nextClass: "Next class",
+    reviewTitle: "Homework review: paste your URL and the teacher checks it",
+    reviewHint: "No chatbot does this: I'll visit YOUR page from the server and confirm it's truly live.",
+    reviewButton: "🧪 Teacher, review my page",
+    reviewChecking: "Visiting your page…",
   },
   plans: {
     title: "Plans",

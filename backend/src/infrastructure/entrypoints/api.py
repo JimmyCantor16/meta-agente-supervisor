@@ -846,6 +846,81 @@ def ajustar_modulo(
     )
 
 
+class VerificarPublicacionRequest(BaseModel):
+    """El alumno pega la URL donde publicó; el profesor revisa su tarea."""
+
+    url: str = Field(..., min_length=10, max_length=300)
+
+
+@router.post(
+    "/publicar/verificar",
+    summary="El profesor comprueba que la página publicada por el alumno está VIVA.",
+)
+def verificar_publicacion(request: VerificarPublicacionRequest) -> dict:
+    """La diferencia con un chatbot: aquí el profesor revisa la tarea de verdad.
+
+    Comprueba desde el servidor que la URL del alumno responde y tiene
+    contenido. Con guardas anti-SSRF: solo http(s) público, nunca redes
+    internas.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    import httpx
+
+    url = request.url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    partes = urlparse(url)
+    if partes.scheme not in ("http", "https") or not partes.hostname:
+        raise HTTPException(status_code=422, detail="Esa URL no parece válida.")
+    try:
+        for info in socket.getaddrinfo(partes.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Esa dirección es local: publica primero en internet "
+                           "(Netlify/GitHub Pages/Render) y pega esa URL.",
+                )
+    except socket.gaierror as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Ese dominio no existe todavía. Revisa la URL exacta que te "
+                   "dio tu plataforma de hosting.",
+        ) from exc
+
+    try:
+        with httpx.Client(follow_redirects=True, timeout=15) as cliente:
+            r = cliente.get(url, headers={"User-Agent": "MetaAgente-Profesor/1.0"})
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No pude cargar tu página ({type(exc).__name__}). "
+                   "Puede estar despertando (Render tarda ~1 min) — espera y reintenta.",
+        ) from exc
+
+    cuerpo = r.text or ""
+    import re as _re
+
+    m = _re.search(r"<title>([^<]{1,120})</title>", cuerpo, _re.I)
+    titulo = m.group(1).strip() if m else ""
+    viva = r.status_code == 200 and len(cuerpo) > 200
+    return {
+        "viva": viva,
+        "estado_http": r.status_code,
+        "titulo": titulo,
+        "url_final": str(r.url),
+        "mensaje": (
+            f"¡Tu página está VIVA en internet! 🎉 Título: «{titulo or 'sin título'}»."
+            if viva
+            else f"La URL responde {r.status_code} pero aún no se ve bien. "
+                 "Revisa que subiste la carpeta completa (con index.html)."
+        ),
+    }
+
+
 class MejorarRequest(BaseModel):
     """Cuerpo para lanzar una pasada de auto-mejora sobre un proyecto."""
 
