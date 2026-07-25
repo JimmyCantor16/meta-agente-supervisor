@@ -311,6 +311,15 @@ const es = {
     encendiendoHint: "La primera vez puede tardar 1-2 minutos (prepara todo por ti).",
     errorEncender: "No pude encenderlo. El profesor te ayuda a correrlo en tu computador.",
   },
+  secretos: {
+    titulo: "Secretos y claves (Azure, APIs…)",
+    intro: "¿Tu sistema se conecta a algo con una clave? Déjala aquí, de forma segura.",
+    carpeta: "Carpeta",
+    cargadas: "Claves cargadas",
+    ninguna: "ninguna todavía",
+    aviso:
+      "Suelta un .txt (NOMBRE=valor) en esa carpeta. NUNCA pegues tu clave en el chat: viajaría a la IA. Aquí queda solo en tu computador.",
+  },
   usage: {
     freeLeft: (n: number) => `Te quedan ${n} generaciones gratis`,
     licensed: "Licencia activa ✓",
@@ -635,6 +644,15 @@ const en: Translation = {
     encendiendo: "Starting…",
     encendiendoHint: "The first time can take 1-2 minutes (it prepares everything for you).",
     errorEncender: "I couldn't start it. The teacher will help you run it on your computer.",
+  },
+  secretos: {
+    titulo: "Secrets & keys (Azure, APIs…)",
+    intro: "Does your system connect to something with a key? Drop it here, safely.",
+    carpeta: "Folder",
+    cargadas: "Loaded keys",
+    ninguna: "none yet",
+    aviso:
+      "Drop a .txt (NAME=value) in that folder. NEVER paste your key in the chat: it would go to the AI. Here it stays only on your computer.",
   },
   usage: {
     freeLeft: (n: number) => `${n} free generations left`,

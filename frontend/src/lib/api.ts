@@ -474,6 +474,7 @@ import type {
   MetaProceso,
   NivelResult,
   RelanzarResult,
+  SecretosInfo,
   VerificacionClase,
 } from "../features/workspace/types";
 
@@ -517,6 +518,18 @@ export function encenderProyecto(projectName: string): Promise<EstadoProyecto> {
 /** Apaga el proyecto. */
 export function apagarProyecto(projectName: string): Promise<EstadoProyecto> {
   return proyectoAccion(projectName, "apagar");
+}
+
+/** Carpeta segura de secretos: dónde dejar las claves y qué nombres ya hay. */
+export async function secretosProyecto(projectName: string): Promise<SecretosInfo> {
+  const r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(projectName)}/secretos`, {
+    headers: { ...authHeaders() },
+  });
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as SecretosInfo;
 }
 
 async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {

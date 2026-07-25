@@ -32,6 +32,7 @@ from src.application.curso_profesor import (
     VerificarClaseUseCase,
 )
 from src.application.control_proyecto import ControlProyectoUseCase
+from src.application.secretos import SecretosUseCase
 from src.application.diagnostico_mvp import DiagnosticarMVPUseCase, RelanzarMVPUseCase
 from src.application.metas_proceso import (
     CrearMetaUseCase,
@@ -589,11 +590,16 @@ def get_relanzar_mvp_use_case(
     return RelanzarMVPUseCase(generate_uc, diagnosticar_uc, caso_repo)
 
 
+def get_secretos_use_case() -> SecretosUseCase:
+    return SecretosUseCase(get_settings().generated_dir)
+
+
 def get_control_proyecto_use_case(
     runner: ProjectRunnerPort = Depends(get_project_runner),
     verifier: ProjectVerifierPort = Depends(get_project_verifier),
+    secretos: SecretosUseCase = Depends(get_secretos_use_case),
 ) -> ControlProyectoUseCase:
-    return ControlProyectoUseCase(runner, get_settings().generated_dir, verifier)
+    return ControlProyectoUseCase(runner, get_settings().generated_dir, verifier, secretos)
 
 
 @lru_cache
@@ -1604,6 +1610,29 @@ def apagar_proyecto(
     user: UserAccount = Depends(get_current_user),
 ) -> EstadoProyectoResponse:
     return EstadoProyectoResponse(**use_case.apagar(project_name))
+
+
+class SecretosResponse(BaseModel):
+    carpeta: str
+    nombres: list[str]
+    instruccion: str
+
+
+@router.get(
+    "/projects/{project_name}/secretos",
+    response_model=SecretosResponse,
+    summary="Carpeta segura para las claves (Azure, etc.): nunca por el chat.",
+)
+def secretos_proyecto(
+    project_name: str,
+    use_case: SecretosUseCase = Depends(get_secretos_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> SecretosResponse:
+    """Devuelve DÓNDE dejar las claves y qué NOMBRES ya hay (nunca los valores)."""
+    try:
+        return SecretosResponse(**use_case.info(project_name))
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get(

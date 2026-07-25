@@ -211,6 +211,12 @@ export interface EstadoProyecto {
   puerto: number | null;
 }
 
+export interface SecretosInfo {
+  carpeta: string;
+  nombres: string[];
+  instruccion: string;
+}
+
 // Resumen de un proyecto en la galería.
 export interface ProjectSummary {
   name: string;

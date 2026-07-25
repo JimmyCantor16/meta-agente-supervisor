@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
-import { ApiError, apagarProyecto, encenderProyecto, estadoProyecto } from "../../../lib/api";
-import type { EstadoProyecto } from "../types";
+import {
+  ApiError,
+  apagarProyecto,
+  encenderProyecto,
+  estadoProyecto,
+  secretosProyecto,
+} from "../../../lib/api";
+import type { EstadoProyecto, SecretosInfo } from "../types";
 
 /**
  * Panel "Tu sistema en vivo".
@@ -111,6 +117,70 @@ export function SistemaEnVivo({ projectName }: { projectName: string }) {
         <p className="mt-2 text-xs text-slate-400">{g.encendiendoHint}</p>
       )}
       {error && <p className="mt-2 text-xs font-medium text-amber-700">⚠ {error}</p>}
+
+      <SecretosPanel projectName={projectName} />
+    </div>
+  );
+}
+
+/** Carpeta segura para las claves (Azure, etc.): nunca por el chat. */
+function SecretosPanel({ projectName }: { projectName: string }) {
+  const { t } = useLanguage();
+  const g = t.secretos;
+  const [abierto, setAbierto] = useState(false);
+  const [info, setInfo] = useState<SecretosInfo | null>(null);
+
+  useEffect(() => {
+    if (!abierto || info) return;
+    secretosProyecto(projectName)
+      .then(setInfo)
+      .catch(() => {
+        /* si falla, no rompe el panel */
+      });
+  }, [abierto, info, projectName]);
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      <button
+        onClick={() => setAbierto((a) => !a)}
+        className="flex w-full items-center justify-between text-sm font-semibold text-slate-600"
+      >
+        <span>🔐 {g.titulo}</span>
+        <span className="text-xs text-slate-400">{abierto ? "▴" : "▾"}</span>
+      </button>
+      {abierto && (
+        <div className="mt-2 space-y-2 text-xs text-slate-500">
+          <p>{g.intro}</p>
+          {info ? (
+            <>
+              <p>
+                {g.carpeta}:{" "}
+                <code className="break-all rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">
+                  {info.carpeta}
+                </code>
+              </p>
+              <p>
+                {g.cargadas}:{" "}
+                {info.nombres.length === 0 ? (
+                  <span className="text-slate-400">{g.ninguna}</span>
+                ) : (
+                  info.nombres.map((n) => (
+                    <span
+                      key={n}
+                      className="mr-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 font-mono text-emerald-700"
+                    >
+                      {n}
+                    </span>
+                  ))
+                )}
+              </p>
+              <p className="rounded-lg bg-amber-50 p-2 text-amber-800">⚠ {g.aviso}</p>
+            </>
+          ) : (
+            <p className="text-slate-400">…</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

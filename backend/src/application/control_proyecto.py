@@ -26,12 +26,15 @@ class ControlProyectoUseCase:
         runner: ProjectRunnerPort,
         generated_dir: str,
         verifier: ProjectVerifierPort | None = None,
+        secretos=None,
     ) -> None:
         self._runner = runner
         self._generated_dir = generated_dir
         # El verificador instala las dependencias: necesario para un arranque en
         # frío (tras reiniciar, la copia con node_modules ya no existe).
         self._verifier = verifier
+        # Compone las claves de la carpeta de secretos en el .env antes de arrancar.
+        self._secretos = secretos
 
     def _dir(self, project_name: str) -> Path:
         ruta = Path(self._generated_dir) / slugify(project_name)
@@ -53,6 +56,14 @@ class ControlProyectoUseCase:
         if ya:
             return _estado_dict(True, ya)
         logger.info("Encendiendo proyecto '%s' por petición del usuario.", slug)
+        # Inyecta las claves de la carpeta de secretos (Azure, etc.) al .env.
+        if self._secretos is not None:
+            try:
+                n = self._secretos.componer_env(project_name)
+                if n:
+                    logger.info("Cargadas %d clave(s) secreta(s) para '%s'.", n, slug)
+            except Exception as exc:  # noqa: BLE001 - los secretos nunca tumban el arranque
+                logger.warning("No se pudieron componer los secretos: %s", exc)
         # Camino rápido: si la copia con dependencias sigue viva, arranca ya.
         url = self._runner.start(str(ruta), slug)
         if not url and self._verifier is not None:
