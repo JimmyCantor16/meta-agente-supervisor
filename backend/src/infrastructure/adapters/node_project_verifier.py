@@ -482,7 +482,12 @@ class NodeProjectVerifier(ProjectVerifierPort):
                     cuerpo = resp.read(1500).decode("utf-8", "ignore")
             except urllib.error.HTTPError as exc:
                 status = exc.code
-                cuerpo = ""
+                # El cuerpo del 500 suele traer el mensaje real del error
+                # (res.status(500).json({error: err.message})): es oro para reparar.
+                try:
+                    cuerpo = exc.read(1500).decode("utf-8", "ignore")
+                except Exception:  # noqa: BLE001
+                    cuerpo = ""
             except Exception as exc:  # noqa: BLE001 - si el server murió, se reporta
                 if process.poll() is not None:
                     return (f"El servidor Node murió al pedir {path}:\n"
@@ -506,6 +511,15 @@ class NodeProjectVerifier(ProjectVerifierPort):
                     fallos.append(f"{path}: la respuesta no es JSON válido -> {recorte}")
 
         if fallos:
+            # La CAUSA real del 500 está en lo que imprime el servidor (su
+            # error handler). Sin esto el reparador está a ciegas y "no cambia
+            # nada". Se detiene el proceso para poder leer su salida acumulada.
+            _terminar(process)
+            salida = _leer_salida(process)
+            detalle = ""
+            if salida and salida.strip() not in ("", "(sin salida)"):
+                detalle = ("\n\nLo que imprimió el servidor (AQUÍ está la causa "
+                           f"real del error, arréglala):\n{salida[-1800:]}")
             return (
                 "El sistema arranca y sirve la página, pero su API NO entrega los "
                 "datos que la interfaz necesita (el usuario vería pantallas vacías "
@@ -515,6 +529,7 @@ class NodeProjectVerifier(ProjectVerifierPort):
                 "(mismo nombre y método) devolviendo JSON con datos de ejemplo "
                 "(las semillas). El frontend debe pedir esas mismas rutas. No dejes "
                 "que el fallback que sirve index.html tape las rutas /api."
+                + detalle
             )
         return None
 
