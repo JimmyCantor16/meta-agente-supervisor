@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card } from "../../../components/Card";
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import { AulaEnVivo } from "./AulaEnVivo";
 import { AuditSubsection, TeacherSubsection } from "./DashboardEvaluacion";
 import { MetasProceso } from "./MetasProceso";
 import { ProfesorChat } from "./ProfesorChat";
@@ -21,7 +22,7 @@ export function ProjectWorkspace({
   onBack: () => void;
 }) {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<"curso" | "metas" | "taller">("curso");
+  const [tab, setTab] = useState<"curso" | "aula" | "metas" | "taller">("curso");
 
   return (
     <div className="space-y-5">
@@ -40,6 +41,14 @@ export function ProjectWorkspace({
             }`}
           >
             {t.project.tabCurso}
+          </button>
+          <button
+            onClick={() => setTab("aula")}
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+              tab === "aula" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
+            }`}
+          >
+            {t.project.tabAula}
           </button>
           <button
             onClick={() => setTab("metas")}
@@ -65,6 +74,8 @@ export function ProjectWorkspace({
 
       {tab === "curso" ? (
         <ProfesorChat projectName={projectName} />
+      ) : tab === "aula" ? (
+        <AulaEnVivo projectName={projectName} />
       ) : tab === "metas" ? (
         <MetasProceso projectName={projectName} />
       ) : (

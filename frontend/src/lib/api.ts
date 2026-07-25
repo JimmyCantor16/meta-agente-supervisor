@@ -467,6 +467,8 @@ export async function activateLicense(key: string): Promise<UsageStatus> {
 
 // ===== Curso interactivo del profesor =====
 import type {
+  ArchivoContenido,
+  ArchivoItem,
   CursoResult,
   DiagnosticoMVP,
   EstadoProyecto,
@@ -530,6 +532,28 @@ export async function secretosProyecto(projectName: string): Promise<SecretosInf
     throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
   }
   return (await r.json()) as SecretosInfo;
+}
+
+async function proyectoGet<T>(projectName: string, ruta: string): Promise<T> {
+  const r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(projectName)}/${ruta}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as T;
+}
+
+/** Árbol de archivos del proyecto (para el aula en vivo). */
+export async function listarArchivos(projectName: string): Promise<ArchivoItem[]> {
+  const r = await proyectoGet<{ archivos: ArchivoItem[] }>(projectName, "archivos");
+  return r.archivos;
+}
+
+/** Contenido de un archivo del proyecto (solo lectura). */
+export function leerArchivo(projectName: string, path: string): Promise<ArchivoContenido> {
+  return proyectoGet<ArchivoContenido>(projectName, `archivo?path=${encodeURIComponent(path)}`);
 }
 
 async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {

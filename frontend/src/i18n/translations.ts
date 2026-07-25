@@ -241,6 +241,7 @@ const es = {
     hint: "Este es el taller de tu proyecto: audítalo para recibir sugerencias, aplícalas verificadas, o pide un ajuste en clase con el profesor.",
     tabTaller: "🔧 Taller",
     tabCurso: "🎓 Curso del profesor",
+    tabAula: "🖥️ Aula en vivo",
     tabMetas: "🎯 Metas",
   },
   curso: {
@@ -321,6 +322,16 @@ const es = {
     ninguna: "ninguna todavía",
     aviso:
       "Suelta un .txt (NOMBRE=valor) en esa carpeta. NUNCA pegues tu clave en el chat: viajaría a la IA. Aquí queda solo en tu computador.",
+  },
+  aula: {
+    codigo: "Código fuente",
+    navegador: "Tu sistema en vivo",
+    eligeArchivo: "Elige un archivo de la izquierda para verlo.",
+    abrirAparte: "Abrir aparte",
+    apagado: "Enciende tu sistema para verlo aquí al lado del código.",
+    encender: "Encender",
+    encendiendo: "Encendiendo…",
+    encendiendoHint: "La primera vez puede tardar 1-2 minutos.",
   },
   usage: {
     freeLeft: (n: number) => `Te quedan ${n} generaciones gratis`,
@@ -577,6 +588,7 @@ const en: Translation = {
     hint: "This is your project's workshop: audit it for suggestions, apply them verified, or ask the teacher for an adjustment in class.",
     tabTaller: "🔧 Workshop",
     tabCurso: "🎓 Teacher's course",
+    tabAula: "🖥️ Live classroom",
     tabMetas: "🎯 Goals",
   },
   curso: {
@@ -657,6 +669,16 @@ const en: Translation = {
     ninguna: "none yet",
     aviso:
       "Drop a .txt (NAME=value) in that folder. NEVER paste your key in the chat: it would go to the AI. Here it stays only on your computer.",
+  },
+  aula: {
+    codigo: "Source code",
+    navegador: "Your system live",
+    eligeArchivo: "Pick a file on the left to view it.",
+    abrirAparte: "Open separately",
+    apagado: "Turn on your system to see it here next to the code.",
+    encender: "Turn on",
+    encendiendo: "Starting…",
+    encendiendoHint: "The first time can take 1-2 minutes.",
   },
   usage: {
     freeLeft: (n: number) => `${n} free generations left`,

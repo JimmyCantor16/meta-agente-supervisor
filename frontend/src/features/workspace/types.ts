@@ -217,6 +217,17 @@ export interface SecretosInfo {
   instruccion: string;
 }
 
+export interface ArchivoItem {
+  path: string;
+  bytes: number;
+}
+
+export interface ArchivoContenido {
+  path: string;
+  contenido: string;
+  lenguaje: string;
+}
+
 // Resumen de un proyecto en la galería.
 export interface ProjectSummary {
   name: string;

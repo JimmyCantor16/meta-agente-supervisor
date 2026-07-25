@@ -1635,6 +1635,87 @@ def secretos_proyecto(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+# --- AULA EN VIVO: ver el código fuente del proyecto (solo lectura) ---
+_SECRETO_EN_RUTA = ("secretos/", "/.env", ".env", "node_modules/")
+
+
+def _es_visible_en_aula(path: str) -> bool:
+    """No exponemos secretos ni el .env en el visor de código."""
+    p = path.lower()
+    return not any(marca in p for marca in _SECRETO_EN_RUTA)
+
+
+class ArchivoItem(BaseModel):
+    path: str
+    bytes: int
+
+
+class ArbolResponse(BaseModel):
+    archivos: list[ArchivoItem]
+
+
+class ArchivoResponse(BaseModel):
+    path: str
+    contenido: str
+    lenguaje: str
+
+
+def _lenguaje_de(path: str) -> str:
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    return {
+        "js": "javascript", "jsx": "javascript", "ts": "typescript", "tsx": "typescript",
+        "py": "python", "html": "html", "css": "css", "json": "json", "md": "markdown",
+        "vue": "vue", "svelte": "svelte", "sql": "sql",
+    }.get(ext, "text")
+
+
+@router.get(
+    "/projects/{project_name}/archivos",
+    response_model=ArbolResponse,
+    summary="Árbol de archivos del proyecto (para el aula en vivo).",
+)
+def archivos_proyecto(
+    project_name: str,
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    user: UserAccount = Depends(get_current_user),
+) -> ArbolResponse:
+    try:
+        archivos = reader.read(project_name)
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    items = [
+        ArchivoItem(path=f.path, bytes=len(f.content.encode("utf-8", errors="ignore")))
+        for f in archivos if _es_visible_en_aula(f.path)
+    ]
+    items.sort(key=lambda i: i.path)
+    return ArbolResponse(archivos=items)
+
+
+@router.get(
+    "/projects/{project_name}/archivo",
+    response_model=ArchivoResponse,
+    summary="Contenido de UN archivo del proyecto (solo lectura).",
+)
+def archivo_proyecto(
+    project_name: str,
+    path: str,
+    reader: ProjectReaderPort = Depends(get_project_reader),
+    user: UserAccount = Depends(get_current_user),
+) -> ArchivoResponse:
+    if not _es_visible_en_aula(path):
+        raise HTTPException(status_code=403, detail="Ese archivo no se muestra por seguridad.")
+    try:
+        archivos = reader.read(project_name)
+    except AuditError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    for f in archivos:
+        if f.path == path:
+            return ArchivoResponse(
+                path=f.path, contenido=f.content[:100000], lenguaje=_lenguaje_de(f.path)
+            )
+    raise HTTPException(status_code=404, detail="Ese archivo no existe en el proyecto.")
+
+
 @router.get(
     "/projects",
     response_model=list[ProjectSummary],
