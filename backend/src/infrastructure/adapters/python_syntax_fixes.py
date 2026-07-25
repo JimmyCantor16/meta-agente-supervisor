@@ -1167,6 +1167,52 @@ tbody tr:hover { background:#fafbff; }
 .error, .alert-error { background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:.7rem .9rem; border-radius:10px; font-size:.88rem; margin:.6rem 0; }
 .success, .alert-success { background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; padding:.7rem .9rem; border-radius:10px; font-size:.88rem; margin:.6rem 0; }
 @media (max-width:780px) { .navbar-container { flex-direction:column; align-items:flex-start; gap:.6rem; } .content, .container { padding:1.25rem 1rem 2.5rem; } }
+
+/* === CAPA ESTRUCTURA-AGNÓSTICA ===
+   Viste el markup REAL aunque el modelo use otros nombres (sidebar, <Link>,
+   .chart-container, KPIs...). Selectores amplios por elemento y por clase
+   aproximada: es lo que evita "links azules + layout roto + gráfica vacía". */
+a { color:var(--brand); text-decoration:none; }
+a:hover { text-decoration:none; }
+/* App-shell: SOLO si hay sidebar, se pone en fila (no rompe landings). */
+#root>div:has(aside), #root>div:has([class*="sidebar" i]), .app:has([class*="sidebar" i]),
+[class*="layout" i]:has([class*="sidebar" i]), [class*="dashboard" i]:has([class*="sidebar" i]) {
+  display:flex; min-height:100vh; align-items:stretch; gap:0; }
+aside, .sidebar, [class*="sidebar" i] { flex:0 0 240px; background:var(--panel);
+  border-right:1px solid var(--linea); padding:1.3rem .9rem; }
+main, [class*="content" i]:not([class*="card" i]), [class*="main-" i], [class*="-main" i] {
+  flex:1 1 auto; min-width:0; padding:1.8rem 2rem 3rem; }
+/* Navegación (lateral o superior): items, JAMÁS link azul pelado. */
+nav a, aside a, .sidebar a, [class*="sidebar" i] a, [class*="menu" i] a, [class*="nav" i] a {
+  display:flex; align-items:center; gap:.6rem; padding:.6rem .85rem; margin-bottom:.2rem;
+  border-radius:10px; color:var(--muted); font-weight:600; font-size:.93rem;
+  text-decoration:none; transition:background .15s,color .15s; }
+nav a:hover, aside a:hover, .sidebar a:hover, [class*="sidebar" i] a:hover, [class*="nav" i] a:hover {
+  background:#f1f0ff; color:var(--brand); }
+nav a.active, aside a.active, a.active[class*="link" i], [class*="sidebar" i] a.active {
+  background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff; }
+/* Tarjetas / paneles / KPIs / contenedores de gráfica por nombre aproximado. */
+[class*="card" i], [class*="panel" i], [class*="widget" i], [class*="kpi" i], [class*="stat" i],
+[class*="metric" i], [class*="chart-container" i], [class*="grafic" i] {
+  background:var(--panel); border:1px solid var(--linea); border-radius:var(--radio);
+  box-shadow:var(--sombra); padding:1.3rem; }
+[class*="kpi" i] [class*="value" i], [class*="stat" i] [class*="value" i],
+[class*="metric" i] [class*="value" i] { font-size:1.9rem; font-weight:800; color:var(--ink); line-height:1.1; }
+/* Rejillas de KPIs/tarjetas: grid responsive automático. */
+[class*="cards" i], [class*="kpis" i], [class*="summary" i], [class*="grid" i], [class*="metrics" i] {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:1.1rem; align-items:stretch; }
+/* Gráfica con alto para que SE DIBUJE (recharts/chart.js). */
+[class*="chart" i]:not(svg):not(path):not(g), .recharts-wrapper, [class*="grafic" i] { min-height:280px; }
+.recharts-responsive-container, canvas { max-width:100%; }
+/* Logo/imagen rota: no mostrar el alt feo ni el ícono partido. */
+img:not([src]), img[src=""], img[src="#"] { display:none; }
+@media (max-width:820px){
+  #root>div:has(aside), #root>div:has([class*="sidebar" i]), .app:has([class*="sidebar" i]),
+  [class*="layout" i]:has([class*="sidebar" i]) { flex-direction:column; }
+  aside, .sidebar, [class*="sidebar" i] { flex-basis:auto; border-right:0;
+    border-bottom:1px solid var(--linea); display:flex; flex-wrap:wrap; gap:.35rem; }
+  main, [class*="main-" i] { padding:1.25rem 1rem 2.5rem; }
+}
 """
 
 
