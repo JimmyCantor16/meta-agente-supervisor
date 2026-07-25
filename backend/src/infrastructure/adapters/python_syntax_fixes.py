@@ -750,6 +750,64 @@ def _ruta_relativa_import(desde_carpeta: str, hacia_base: str) -> str:
     return "".join(subidas) + "/".join(resto)
 
 
+def garantizar_seed_en_arranque(archivos: dict[str, str]) -> dict[str, str]:
+    """Asegura que la semilla que CREA las tablas corra al arrancar el servidor.
+
+    Patrón real (tablero Azure): un `seed.js` con `CREATE TABLE` + `INSERT` que
+    se auto-ejecuta al ser requerido (`seedDatabase();` al final), pero el
+    `server.js` NUNCA lo requiere. Resultado: las tablas no se crean y TODA
+    consulta muere con `SQLITE_ERROR: no such table`. Este es un caso que
+    `enganchar_seed` no cubre, porque aquel busca Sequelize (.create/.sync().then),
+    y aquí es sqlite3 crudo sin ORM. Aquí basta con requerir la semilla en el
+    entry, antes de `app.listen`, para que las tablas existan desde el arranque.
+    """
+    # 1) Semilla que CREA tablas (SQL crudo) y se auto-ejecuta al require.
+    seed_mod = None
+    for ruta, cont in archivos.items():
+        if not ruta.endswith(".js") or "seed" not in ruta.lower():
+            continue
+        crea_tablas = re.search(r"create\s+table", cont, re.I)
+        se_llama = re.search(r"^\s*\w*[sS]eed\w*\s*\(\s*\)\s*;?\s*$", cont, re.M)
+        exporta = re.search(r"module\.exports\s*=", cont)
+        if crea_tablas and se_llama and not exporta:
+            seed_mod = ruta
+            break
+    if seed_mod is None:
+        return archivos
+
+    seed_base = seed_mod[:-3]  # sin .js
+    nombre_seed = seed_base.rsplit("/", 1)[-1]
+    resultado = dict(archivos)
+    for ruta, contenido in archivos.items():
+        if not ruta.endswith(".js") or ruta == seed_mod:
+            continue
+        # entry = Express con app.listen
+        if "app.listen" not in contenido or "require(" not in contenido:
+            continue
+        # ¿ya lo requiere? (por nombre de módulo)
+        if re.search(rf"require\(\s*['\"][^'\"]*{re.escape(nombre_seed)}['\"]\s*\)", contenido):
+            continue
+        carpeta = ruta.rsplit("/", 1)[0] if "/" in ruta else ""
+        rel = _ruta_relativa_import(carpeta, seed_base)
+        req_line = (f"require('{rel}'); "
+                    "// crea las tablas y siembra los datos al arrancar\n")
+        # Se inyecta tras el ÚLTIMO require de nivel superior (antes de usar app).
+        ultimo = None
+        for ultimo in re.finditer(r"^\s*(?:const|let|var)\s+.*=\s*require\([^)]*\);\s*$",
+                                  contenido, re.M):
+            pass
+        if ultimo is not None:
+            cuerpo = contenido[:ultimo.end()] + "\n" + req_line + contenido[ultimo.end():]
+        else:
+            cuerpo = req_line + contenido
+        if _js_valido(cuerpo):
+            resultado[ruta] = cuerpo
+            logger.info(
+                "Arreglo automático en %s: se requiere la semilla que crea las "
+                "tablas (%s) para que existan desde el arranque.", ruta, seed_mod)
+    return resultado
+
+
 def alinear_contrato_auth(archivos: dict[str, str]) -> dict[str, str]:
     """Realinea los nombres del contrato de autenticación.
 
