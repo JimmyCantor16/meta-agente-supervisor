@@ -46,11 +46,12 @@ Arquetipos disponibles:
 - "educativo": quiz/juego de preguntas con puntaje y progreso.
 - "contenido": publicaciones de lectura pública administradas por el dueño (blog, noticias, recetas).
 - "landing": página de presentación de marca/persona/negocio SIN sistema detrás.
+- "dashboard": tablero de indicadores/informes/monitoreo con KPIs, gráficas y una tabla (paneles de control, reportes, analítica, estado de recursos). Datos de ejemplo (no conecta fuentes externas reales).
 - "libre": nada de lo anterior encaja sin forzarlo.
 
 Devuelve EXCLUSIVAMENTE un JSON válido:
 {
-  "arquetipo": "gestion|catalogo|reservas|educativo|contenido|landing|libre",
+  "arquetipo": "gestion|catalogo|reservas|educativo|contenido|landing|dashboard|libre",
   "confianza": "alta|media|baja",
   "manifiesto": { ... }   // vacío {} si arquetipo es "libre"
 }
@@ -91,6 +92,24 @@ Manifiesto del arquetipo "landing":
   "caracteristicas": [{"icono": "✨", "titulo": "…", "texto": "…"}],  // 3-6
   "sobre": "párrafo con personalidad",
   "contacto": {"email": "…", "telefono": "…", "whatsapp": "…"}
+}
+
+Manifiesto del arquetipo "dashboard":
+{
+  "nombre": "…", "slug": "…", "descripcion": "1 frase para el subtítulo del panel",
+  "tema": "vidrio|oscuro|calido",
+  "titulo": "Resumen",
+  "secciones": ["Resumen", "Recursos", "Costos"],   // 2-4 nombres del menú lateral
+  "kpis": [                                          // EXACTAMENTE 4
+    {"etiqueta": "Total de proyectos", "valor": "12", "delta": "+2 este mes", "baja": false, "icono": "📦"}
+  ],
+  "grafica_lineas": {"titulo": "Evolución de costos",
+    "datos": [{"etiqueta": "Ene", "valor": 1500}, {"etiqueta": "Feb", "valor": 1650}]},  // 5-7 puntos
+  "grafica_barras": {"titulo": "Costo por proyecto",
+    "datos": [{"etiqueta": "Alpha", "valor": 3100}, {"etiqueta": "Beta", "valor": 2500}]},  // 3-6 barras
+  "tabla": {"titulo": "Recursos", "columnas": ["Nombre", "Tipo", "Uso", "Estado"],
+    "filas": [ ["Servidor web", "VM", "40%", {"texto": "Operativo", "estado": "ok"}] ]}
+    // la última celda de estado usa {"texto","estado"} con estado ok|alerta|peligro
 }
 
 Reglas:
@@ -157,6 +176,9 @@ def _sanear_manifiesto(m: dict) -> dict:
         m["caracteristicas"] = (m.get("caracteristicas") or [])[:6]
         return m
 
+    if m["arquetipo"] == "dashboard":
+        return _sanear_dashboard(m)
+
     entidades = m.get("entidades") or []
     if not entidades:
         raise ValueError("sin entidades")
@@ -210,20 +232,119 @@ def _sanear_manifiesto(m: dict) -> dict:
     return m
 
 
+def _sanear_dashboard(m: dict) -> dict:
+    """Valida el manifiesto de un tablero: KPIs, gráficas y tabla."""
+    m["titulo"] = str(m.get("titulo") or "Resumen").strip()[:60]
+    secciones = [str(s).strip()[:24] for s in (m.get("secciones") or []) if str(s).strip()][:4]
+    m["secciones"] = secciones or ["Resumen", "Datos"]
+
+    kpis = []
+    for k in (m.get("kpis") or [])[:4]:
+        kpis.append({
+            "etiqueta": str(k.get("etiqueta", "")).strip()[:40] or "Indicador",
+            "valor": str(k.get("valor", "")).strip()[:16] or "0",
+            "delta": str(k.get("delta", "")).strip()[:30],
+            "baja": bool(k.get("baja")),
+            "icono": str(k.get("icono", "📊")).strip()[:4] or "📊",
+        })
+    if len(kpis) < 3:
+        raise ValueError("dashboard con menos de 3 KPIs")
+    m["kpis"] = kpis
+
+    def _saneagrafica(g, def_tit):
+        g = g or {}
+        datos = []
+        for d in (g.get("datos") or [])[:8]:
+            try:
+                datos.append({"etiqueta": str(d.get("etiqueta", "")).strip()[:16] or "-",
+                              "valor": float(d.get("valor", 0) or 0)})
+            except (ValueError, TypeError):
+                continue
+        return {"titulo": str(g.get("titulo") or def_tit).strip()[:50], "datos": datos}
+
+    m["grafica_lineas"] = _saneagrafica(m.get("grafica_lineas"), "Evolución")
+    m["grafica_barras"] = _saneagrafica(m.get("grafica_barras"), "Comparativa")
+    if len(m["grafica_lineas"]["datos"]) < 2 and len(m["grafica_barras"]["datos"]) < 2:
+        raise ValueError("dashboard sin datos de gráficas")
+
+    tabla = m.get("tabla") or {}
+    columnas = [str(c).strip()[:24] for c in (tabla.get("columnas") or []) if str(c).strip()][:6]
+    filas = []
+    for fila in (tabla.get("filas") or [])[:12]:
+        if not isinstance(fila, list):
+            continue
+        celdas = []
+        for c in fila[:6]:
+            if isinstance(c, dict) and c.get("texto"):
+                est = c.get("estado") if c.get("estado") in ("ok", "alerta", "peligro") else "ok"
+                celdas.append({"texto": str(c["texto"])[:30], "estado": est})
+            else:
+                celdas.append(str(c)[:40])
+        if celdas:
+            filas.append(celdas)
+    m["tabla"] = {"titulo": str(tabla.get("titulo") or "Detalle").strip()[:50],
+                  "columnas": columnas or ["Nombre", "Estado"], "filas": filas}
+    return m
+
+
 # ---------------------------------------------------------------------------
 def instanciar(manifiesto: dict) -> GeneratedProject:
     """Convierte el manifiesto en un proyecto completo desde la base dorada."""
     if manifiesto["arquetipo"] == "landing":
         files = _instanciar_landing(manifiesto)
+    elif manifiesto["arquetipo"] == "dashboard":
+        files = _instanciar_dashboard(manifiesto)
     else:
         files = _instanciar_nucleo(manifiesto)
+    estatico = manifiesto["arquetipo"] in ("landing", "dashboard")
+    instrucciones = (
+        "Sitio estático instanciado desde un Sistema Base verificado. "
+        "Ábrelo con cualquier servidor estático (o el runner del sistema)."
+        if estatico else
+        "Instanciado desde un Sistema Base verificado. "
+        "Backend: npm install && npm start (sirve también el frontend)."
+    )
     return GeneratedProject(
         name=manifiesto["nombre"],
         summary=manifiesto["descripcion"],
         files=files,
-        run_instructions="Instanciado desde un Sistema Base verificado. "
-                         "Backend: npm install && npm start (sirve también el frontend).",
+        run_instructions=instrucciones,
     )
+
+
+def _instanciar_dashboard(m: dict) -> list[GeneratedFile]:
+    """Instancia la base dorada de tablero: estática, siempre se ve y funciona."""
+    plantilla = _leer_base("dashboard")
+    c1, c2 = _PALETAS[m["tema"]]
+    inicial = next((ch for ch in m["nombre"].upper() if ch.isalnum()), "A")
+
+    datos = {
+        "nombre": m["nombre"], "titulo": m.get("titulo", "Resumen"),
+        "descripcion": m["descripcion"], "tema": m["tema"],
+        "secciones": m["secciones"], "kpis": m["kpis"],
+        "grafica_lineas": m["grafica_lineas"], "grafica_barras": m["grafica_barras"],
+        "tabla": m["tabla"],
+    }
+    archivos: dict[str, str] = {}
+    for rel, contenido in plantilla.items():
+        if rel in ("datos.js", "logo.svg"):
+            continue
+        if rel == "estilos.css":
+            # El acento del tema elegido sobreescribe los tokens por defecto.
+            contenido = contenido + (
+                f"\n:root {{ --acento: {c1}; "
+                f"--acento-suave: color-mix(in srgb, {c1} 14%, transparent); }}\n")
+        archivos[rel] = contenido
+    archivos["datos.js"] = ("window.DATOS = "
+                            + json.dumps(datos, ensure_ascii=False, indent=2) + ";\n")
+    archivos["logo.svg"] = _LOGO.format(c1=c1, c2=c2, inicial=inicial)
+    archivos["MANUAL.md"] = (
+        f"# {m['nombre']}\n\n{m['descripcion']}\n\n"
+        "Es un tablero web listo para usar. Ábrelo en el navegador (el sistema te "
+        "da la URL) y cambia entre tema claro y oscuro con el botón de arriba a la "
+        "derecha. Los datos de ejemplo están en `datos.js`: edítalos para poner los "
+        "tuyos, o el profesor te enseña a conectarlo a una fuente real de datos.\n")
+    return [GeneratedFile(path=rel, content=cont) for rel, cont in archivos.items()]
 
 
 def _leer_base(nombre: str) -> dict[str, str]:
