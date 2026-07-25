@@ -13,6 +13,32 @@ from src.domain.ports import GeneradorMetaPort
 class MockGeneradorMeta(GeneradorMetaPort):
     def generar(self, objetivo, contexto, language="es") -> MetaProceso:
         t = (objetivo or "").lower()
+        if any(p in t for p in ("azure", "nube", "cloud", "aws", "conectar", "credencial", "api real")):
+            hitos = [
+                Hito(titulo="Crear una credencial de SOLO LECTURA en Azure",
+                     descripcion="Un 'service principal' con rol Reader, acotado a tu suscripción. Nunca la llave maestra: así nadie puede crear ni borrar nada, solo mirar.",
+                     depende_de=DependeDe.PLATAFORMA),
+                Hito(titulo="Guardar la clave en la CARPETA DE SECRETOS (nunca en el chat)",
+                     descripcion="Suéltala en un .txt en la carpeta 🔐 Secretos del proyecto. Ahí se queda solo en tu computador; jamás viaja a la IA.",
+                     depende_de=DependeDe.ALUMNO),
+                Hito(titulo="Instalar el Azure CLI / SDK en tu computador",
+                     descripcion="La herramienta que habla con Azure. El profesor te da el comando para tu sistema.",
+                     depende_de=DependeDe.ALUMNO),
+                Hito(titulo="Primera consulta: traer UN dato real",
+                     descripcion="Construimos aquí el código que lee la clave del entorno y trae un solo número real de tu Azure. Ver un dato real confirma que la conexión funciona.",
+                     depende_de=DependeDe.SISTEMA),
+                Hito(titulo="Cablear el tablero con tus datos reales",
+                     descripcion="Reemplazamos los datos de ejemplo por tus recursos, costos y estados reales, uno por uno.",
+                     depende_de=DependeDe.SISTEMA),
+                Hito(titulo="Refresco en vivo",
+                     descripcion="Que el tablero se actualice solo con la última información de Azure.",
+                     depende_de=DependeDe.TIEMPO),
+            ]
+            resumen = ("SÍ se puede conectar tu Azure real, y de forma segura: tu "
+                       "clave va a la carpeta de secretos (NUNCA al chat), usamos "
+                       "una credencial de solo lectura, y lo cableamos paso a paso. "
+                       "Yo (la IA) nunca veo tu clave.")
+            return MetaProceso(usuario_sub="", objetivo=objetivo, resumen=resumen, hitos=hitos)
         if "youtube" in t or "canal" in t or "monetiz" in t:
             hitos = [
                 Hito(titulo="Definir el tema y el público de tu canal",

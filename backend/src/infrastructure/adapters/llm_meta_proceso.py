@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 
 _DEPENDE = {"alumno", "plataforma", "tiempo", "sistema"}
 
+_PALABRAS_CREDENCIAL = (
+    "azure", "aws", "nube", "cloud", "api key", "apikey", "token", "credencial",
+    "clave", "conectar", "conectarme", "conexión", "conexion", "gcp", "google cloud",
+    "base de datos real", "servicio externo",
+)
+
+
+def _es_meta_con_credencial(texto: str) -> bool:
+    t = (texto or "").lower()
+    return any(p in t for p in _PALABRAS_CREDENCIAL)
+
 SYSTEM_PROMPT = """\
 Eres el PROFESOR trazando el camino de una meta que NO se logra de un tirón
 porque es un PROCESO del mundo real (ej: monetizar YouTube, vender por internet).
@@ -58,10 +69,15 @@ class LLMGeneradorMeta(GeneradorMetaPort):
             f"META DEL ALUMNO: {objetivo}\n"
             + (f"CONTEXTO: {contexto}\n" if contexto else "")
         )
+        # Si la meta implica conectarse a algo con una CLAVE (Azure, API, nube),
+        # se inyecta la doctrina de secretos: la credencial NUNCA por el chat,
+        # solo lectura, y el primer hito es una credencial de permiso mínimo.
+        doctrina = skill("metas_de_proceso.md")
+        if _es_meta_con_credencial(objetivo + " " + (contexto or "")):
+            doctrina += "\n\n" + skill("secretos_y_conexiones.md")
         try:
             data = self._llm.chat_json(
-                SYSTEM_PROMPT + "\n\n" + skill("metas_de_proceso.md"),
-                user, temperature=0.4,
+                SYSTEM_PROMPT + "\n\n" + doctrina, user, temperature=0.4,
             )
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
