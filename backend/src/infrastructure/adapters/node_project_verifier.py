@@ -272,6 +272,32 @@ class NodeProjectVerifier(ProjectVerifierPort):
             return None
 
         logger.info("Instalando dependencias Node en %s...", pkg_dir.name)
+        error = self._npm_install(pkg_dir)
+
+        # Un node_modules a medias (copia reutilizada, instalación interrumpida)
+        # hace que npm reviente sobre el filesystem de Docker con ENOTEMPTY/ENOENT
+        # al intentar reescribir un paquete a medio borrar. NO es culpa del
+        # proyecto: se borra node_modules y se reinstala LIMPIO una vez.
+        if error and any(m in error for m in ("ENOTEMPTY", "ENOENT", "EEXIST")):
+            logger.warning(
+                "npm falló por node_modules corrupto en %s; se borra y reinstala limpio.",
+                pkg_dir.name,
+            )
+            shutil.rmtree(pkg_dir / "node_modules", ignore_errors=True)
+            (pkg_dir / "package-lock.json").unlink(missing_ok=True)
+            error = self._npm_install(pkg_dir)
+
+        if error:
+            return f"Fallo instalando dependencias (npm install):\n{error[-3000:]}"
+
+        if actual:
+            huella.parent.mkdir(parents=True, exist_ok=True)
+            huella.write_text(actual, encoding="utf-8")
+        return None
+
+    @staticmethod
+    def _npm_install(pkg_dir: Path) -> str | None:
+        """Corre `npm install` una vez. Devuelve el error (texto) o None si OK."""
         try:
             result = subprocess.run(
                 # `--prefer-offline` reutiliza la caché entre proyectos y
@@ -284,14 +310,8 @@ class NodeProjectVerifier(ProjectVerifierPort):
             )
         except subprocess.TimeoutExpired:
             return "npm install superó el tiempo máximo."
-
         if result.returncode != 0:
-            error = (result.stderr or result.stdout).strip()
-            return f"Fallo instalando dependencias (npm install):\n{error[-3000:]}"
-
-        if actual:
-            huella.parent.mkdir(parents=True, exist_ok=True)
-            huella.write_text(actual, encoding="utf-8")
+            return (result.stderr or result.stdout).strip()
         return None
 
     @staticmethod
