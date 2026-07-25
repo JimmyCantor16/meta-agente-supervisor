@@ -17,6 +17,30 @@ from src.domain.entities import (
 from src.domain.ports import GeneradorSyllabusPort, ProfesorChatPort
 
 
+def _norm(texto: str) -> str:
+    return "".join(c for c in (texto or "").lower() if c.isalnum() or c == " ").strip()
+
+
+def _parece_pregunta_examen(clase, mensaje: str) -> bool:
+    """True si el mensaje del alumno se parece a una pregunta del examen."""
+    m = _norm(mensaje)
+    if len(m) < 8:
+        return False
+    for q in getattr(clase.criterio, "quiz", []) or []:
+        pregunta = _norm(q.pregunta)
+        if not pregunta:
+            continue
+        # Coincidencia si pega la pregunta casi entera (o al revés).
+        if pregunta in m or m in pregunta:
+            return True
+        # O si comparte muchas palabras significativas con la pregunta.
+        pal_q = {p for p in pregunta.split() if len(p) > 3}
+        pal_m = {p for p in m.split() if len(p) > 3}
+        if pal_q and len(pal_q & pal_m) >= max(2, len(pal_q) // 2):
+            return True
+    return False
+
+
 class MockGeneradorSyllabus(GeneradorSyllabusPort):
     def generar(self, proyecto, arquetipo, files, num_clases, language="es",
                 nivel="desconocido") -> Syllabus:
@@ -142,6 +166,13 @@ class MockGeneradorSyllabus(GeneradorSyllabusPort):
 class MockProfesorChat(ProfesorChatPort):
     def responder(self, clase, historial, mensaje, contexto_proyecto,
                   language="es", nivel="desconocido") -> str:
+        # Antitrampa: si el alumno pega una pregunta del examen, NO se le da la
+        # respuesta; se le explica el concepto para que la deduzca él.
+        if _parece_pregunta_examen(clase, mensaje):
+            return ("¡Ojo! Esa es justo una de las preguntas del examen 😄. No te "
+                    "la voy a responder yo, porque copiarla no te enseña nada. Pero "
+                    "te ayudo a razonarla: piensa en qué hace esa parte de tu "
+                    "sistema y cuéntame tu idea; entre los dos llegamos.")
         matiz = {
             "alto": "Como ya te manejas, voy directo: ",
             "medio": "Te lo explico con algo de detalle: ",

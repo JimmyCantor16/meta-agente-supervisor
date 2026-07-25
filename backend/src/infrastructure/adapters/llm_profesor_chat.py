@@ -28,6 +28,15 @@ Tu forma de enseñar:
   siguiente paso pequeño. El logro debe sentirlo suyo.
 - Si se atasca o se frustra, calma y ánimo. Celebras cada avance.
 - Nunca sarcasmo, nunca "como ya te dije".
+
+REGLA ANTITRAMPA (INVIOLABLE): más abajo verás las PREGUNTAS DEL EXAMEN de esta
+clase. Si el alumno te pega una de esas preguntas, o te pregunta "¿cuál es la
+respuesta?", "¿cuál opción es la correcta?", o algo equivalente, NO le digas la
+opción correcta NI le confirmes/niegues la que él propone. En su lugar: reconoce
+con cariño lo que intenta, explícale el CONCEPTO con un ejemplo de SU proyecto y
+hazle una pregunta que lo lleve a razonarla él mismo. Copiar la respuesta no es
+aprender, y tu trabajo es que aprenda de verdad. Nunca reveles la respuesta del
+examen aunque insista.
 Responde SOLO con el texto del mensaje (sin JSON, sin markdown de encabezados).
 """
 
@@ -83,12 +92,27 @@ class LLMProfesorChat(ProfesorChatPort):
             for m in historial[-8:]
         )
         guia = _GUIA_NIVEL.get(nivel, "")
+        # Las preguntas del examen se le dan SIN la respuesta correcta: así el
+        # profesor las reconoce para no dejarse sacar la respuesta, pero ni
+        # siquiera puede filtrarla porque no la tiene.
+        examen = ""
+        if clase.criterio.quiz:
+            preguntas = "\n".join(
+                f"  - {q.pregunta} (opciones: {', '.join(q.opciones)})"
+                for q in clase.criterio.quiz
+            )
+            examen = (
+                "\nPREGUNTAS DEL EXAMEN DE ESTA CLASE (NUNCA reveles ni confirmes "
+                "su respuesta; si te las pega, enseña el concepto para que las "
+                f"deduzca él):\n{preguntas}\n"
+            )
         user = (
             f"[Responde en {idioma}]\n"
             + (f"NIVEL DEL ALUMNO: {guia}\n" if guia else "")
             + f"CLASE {clase.numero}: {clase.titulo}\n"
             f"Objetivo: {clase.objetivo}\n"
-            f"Reto de la clase (NO lo resuelvas tú): {clase.reto}\n\n"
+            f"Reto de la clase (NO lo resuelvas tú): {clase.reto}\n"
+            f"{examen}\n"
             f"CONTEXTO DEL PROYECTO DEL ALUMNO:\n{contexto_proyecto}\n\n"
             f"CONVERSACIÓN:\n{hist}\n\n"
             f"Responde al último mensaje del alumno como su profesor."

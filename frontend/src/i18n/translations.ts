@@ -282,6 +282,8 @@ const es = {
     listoSuperar: "¿Listo para superar la clase?",
     abrirReto: "Abrir el reto",
     ocultar: "Ocultar",
+    marcadas: "Marcadas",
+    completaQuiz: "Marca las 3 respuestas para activar la revisión.",
   },
   metas: {
     titulo: "Tus metas grandes, paso a paso",
@@ -616,6 +618,8 @@ const en: Translation = {
     listoSuperar: "Ready to pass the class?",
     abrirReto: "Open the challenge",
     ocultar: "Hide",
+    marcadas: "Marked",
+    completaQuiz: "Mark all 3 answers to unlock the review.",
   },
   metas: {
     titulo: "Your big goals, step by step",

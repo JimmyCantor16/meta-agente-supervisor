@@ -506,6 +506,12 @@ function SuperarClase({
   const esUrl = criterio.tipo === "url_publicada";
   const esRepo = criterio.tipo === "repo_git";
 
+  // El botón "Ya lo hice, revísame" solo se activa cuando el examen está
+  // completo: en un quiz, con las 3 respuestas marcadas; si no, con texto.
+  const quizRespondidas = criterio.quiz.filter((_, i) => respuestas[i] !== undefined).length;
+  const quizCompleto = criterio.quiz.length > 0 && quizRespondidas === criterio.quiz.length;
+  const puedeRevisar = esQuiz ? quizCompleto : texto.trim().length > 0;
+
   const revisar = async () => {
     setVerificando(true);
     setResultado(null);
@@ -589,6 +595,10 @@ function SuperarClase({
               </div>
             </div>
           ))}
+          <p className={`text-xs font-semibold ${quizCompleto ? "text-emerald-600" : "text-slate-400"}`}>
+            {quizCompleto ? "✓ " : ""}
+            {g.marcadas} {quizRespondidas}/{criterio.quiz.length}
+          </p>
         </div>
       )}
 
@@ -618,11 +628,15 @@ function SuperarClase({
 
       <button
         onClick={() => void revisar()}
-        disabled={verificando}
-        className="mt-3 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white transition hover:brightness-105 disabled:opacity-50"
+        disabled={verificando || !puedeRevisar}
+        title={!puedeRevisar && esQuiz ? g.completaQuiz : undefined}
+        className="mt-3 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {verificando ? g.revisando : "🧪 " + g.revisame}
       </button>
+      {!puedeRevisar && esQuiz && (
+        <p className="mt-1.5 text-xs text-slate-400">🔒 {g.completaQuiz}</p>
+      )}
 
       {resultado && (
         <p
