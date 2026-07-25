@@ -24,6 +24,18 @@ logger = logging.getLogger(__name__)
 
 _TIPOS = {"quiz", "cambio", "repo_git", "url_publicada", "reflexion"}
 
+# Cómo cambia la EXIGENCIA de los criterios según el nivel del alumno.
+_GUIA_NIVEL = {
+    "bajo": ("NUNCA ha programado. Retos muy pequeños y celebrados. Las clases "
+             "avanzadas (git, publicar) deben tener criterio 'reflexion' (que "
+             "explique qué haría), NO exigir repo_git ni url_publicada reales "
+             "todavía: eso lo abruma y lo espanta. Cero pruebas técnicas duras."),
+    "medio": ("Se defiende. Puedes exigir un poco más y mantener repo_git y "
+              "url_publicada en las clases de git/publicar."),
+    "alto": ("Entiende de sistemas. Puedes ser exigente: quiz técnicos, repo_git "
+             "y url_publicada reales, y algún reto avanzado extra."),
+}
+
 SYSTEM_PROMPT = """\
 Eres el DISEÑADOR DE CURSOS del Meta-Agente. Recibes el código real del proyecto
 de un alumno (que NO sabe programar) y diseñas un curso que lo lleva de la mano,
@@ -79,7 +91,8 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
         # Rol "prompt": es diseño y redacción, no escribir código.
         self._llm = MultiModelLLM(role="prompt")
 
-    def generar(self, proyecto, arquetipo, files, num_clases, language="es") -> Syllabus:
+    def generar(self, proyecto, arquetipo, files, num_clases, language="es",
+                nivel="desconocido") -> Syllabus:
         # Contexto: rutas + fragmentos de los archivos que dan identidad.
         rutas = "\n".join(f"- {f.path}" for f in files[:40])
         claves = [f for f in files if f.path.endswith(
@@ -87,9 +100,11 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
              "package.json"))][:5]
         fragmentos = "\n\n".join(f"=== {f.path} ===\n{f.content[:1500]}" for f in claves)
         idioma = "español" if language == "es" else "English"
+        guia_nivel = _GUIA_NIVEL.get(nivel, "")
         user = (
             f"[Redacta TODO en {idioma}]\n"
-            f"PROYECTO: {proyecto} (arquetipo: {arquetipo or 'desconocido'})\n"
+            + (f"NIVEL DEL ALUMNO: {guia_nivel}\n" if guia_nivel else "")
+            + f"PROYECTO: {proyecto} (arquetipo: {arquetipo or 'desconocido'})\n"
             f"NÚMERO EXACTO DE CLASES: {num_clases}\n\n"
             f"ARCHIVOS DEL PROYECTO:\n{rutas}\n\n"
             f"CÓDIGO CLAVE:\n{fragmentos}"

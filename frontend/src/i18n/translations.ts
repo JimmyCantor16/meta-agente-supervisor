@@ -279,6 +279,9 @@ const es = {
     nivelAlgoFrase: "He tocado algo de código o hecho algún curso, pero poco.",
     nivelBastante: "Sé bastante",
     nivelBastanteFrase: "Programo o entiendo bien de sistemas; quiero el cómo técnico.",
+    listoSuperar: "¿Listo para superar la clase?",
+    abrirReto: "Abrir el reto",
+    ocultar: "Ocultar",
   },
   metas: {
     titulo: "Tus metas grandes, paso a paso",
@@ -601,6 +604,9 @@ const en: Translation = {
     nivelAlgoFrase: "I've touched some code or done a course, but not much.",
     nivelBastante: "I know quite a bit",
     nivelBastanteFrase: "I code or understand systems well; I want the technical how.",
+    listoSuperar: "Ready to pass the class?",
+    abrirReto: "Open the challenge",
+    ocultar: "Hide",
   },
   metas: {
     titulo: "Your big goals, step by step",

@@ -65,6 +65,7 @@ class GenerarCursoUseCase:
         plan: str = "free",
         arquetipo: str = "",
         language: str = "es",
+        nivel: str = "desconocido",
     ) -> tuple[Syllabus, ProgresoCurso]:
         nombre = (proyecto or "").strip()
         if not nombre:
@@ -85,15 +86,22 @@ class GenerarCursoUseCase:
             raise AuditError(f"El proyecto '{nombre}' no existe o está vacío.")
 
         num = CLASES_POR_PLAN.get(plan, 10)
-        syllabus = self._generador.generar(nombre, arquetipo, archivos, num, language)
+        # El temario se genera ADAPTADO al nivel: a un principiante no se le
+        # exigen pruebas técnicas duras (git/URL) de golpe.
+        syllabus = self._generador.generar(nombre, arquetipo, archivos, num, language, nivel)
         # Se renumeran las clases por si el modelo se desordenó.
         for i, c in enumerate(syllabus.clases, start=1):
             c.numero = i
 
         self._repo.guardar_curso(cid, usuario_sub, syllabus)
+        try:
+            nivel_val = NivelAlumno(nivel)
+        except ValueError:
+            nivel_val = NivelAlumno.DESCONOCIDO
         progreso = ProgresoCurso(
             curso_id=cid, usuario_sub=usuario_sub, proyecto=nombre,
             clase_actual=1, completadas=[], total_clases=len(syllabus.clases),
+            nivel=nivel_val,
         )
         self._repo.guardar_progreso(progreso)
         logger.info("Curso creado para '%s' (%d clases, plan %s).",
@@ -141,13 +149,18 @@ class ChatProfesorUseCase:
         return msg
 
     def estimar_nivel(self, curso_id: str, respuesta: str, language: str = "es") -> tuple[str, str]:
-        """El profesor mide el nivel del alumno y lo guarda para adaptar el curso."""
-        progreso = self._repo.cargar_progreso(curso_id)
-        if progreso is None:
-            raise AuditError("Ese curso no existe.")
+        """El profesor mide el nivel del alumno.
+
+        Si `curso_id` viene vacío, solo clasifica (aún no hay curso: se usa para
+        adaptar el temario ANTES de generarlo). Si hay curso, además lo guarda.
+        """
         nivel, mensaje = self._chat.estimar_nivel(respuesta or "", language)
-        progreso.nivel = NivelAlumno(nivel)
-        self._repo.guardar_progreso(progreso)
+        if curso_id:
+            progreso = self._repo.cargar_progreso(curso_id)
+            if progreso is None:
+                raise AuditError("Ese curso no existe.")
+            progreso.nivel = NivelAlumno(nivel)
+            self._repo.guardar_progreso(progreso)
         return nivel, mensaje
 
     def abrir_clase(self, curso_id: str, numero_clase: int) -> list[MensajeChat]:

@@ -6,6 +6,7 @@ import {
   chatProfesor,
   diagnosticarMVP,
   estimarNivel,
+  existeCurso,
   iniciarCurso,
   relanzarMVP,
   verificarClase,
@@ -32,21 +33,33 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diagnostico, setDiagnostico] = useState<DiagnosticoMVP | null>(null);
+  // Si el curso aún no existe, primero medimos el nivel para adaptar el temario.
+  const [nivelPrimero, setNivelPrimero] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
 
-  // Inicia (o recupera) el curso al montar.
+  const abrirCurso = async (c: CursoResult) => {
+    setCurso(c);
+    const inicial = c.progreso.clase_actual;
+    setClaseActiva(inicial);
+    await cargarClase(c.progreso.curso_id, inicial);
+  };
+
+  // Al montar: si el curso ya existe, lo abre; si no, mide el nivel primero
+  // para que el temario nazca adaptado (a un principiante no se le exige git/URL).
   useEffect(() => {
     let vivo = true;
     (async () => {
       setCargando(true);
       setError(null);
       try {
-        const c = await iniciarCurso(projectName, "", lang);
+        const info = await existeCurso(projectName);
         if (!vivo) return;
-        setCurso(c);
-        const inicial = c.progreso.clase_actual;
-        setClaseActiva(inicial);
-        await cargarClase(c.progreso.curso_id, inicial);
+        if (info.existe) {
+          const c = await iniciarCurso(projectName, "", lang);
+          if (vivo) await abrirCurso(c);
+        } else {
+          setNivelPrimero(true);
+        }
       } catch (err) {
         if (vivo) setError(err instanceof ApiError ? err.message : "No se pudo abrir el curso.");
       } finally {
@@ -58,6 +71,20 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectName]);
+
+  // Tras nivelar a un curso nuevo: se genera el temario con ese nivel.
+  const generarConNivel = async (nivel: "bajo" | "medio" | "alto") => {
+    setCargando(true);
+    try {
+      const c = await iniciarCurso(projectName, "", lang, nivel);
+      await abrirCurso(c);
+      setNivelPrimero(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo crear el curso.");
+    } finally {
+      setCargando(false);
+    }
+  };
 
   // El profesor RETOMA el proyecto y diagnostica, honesto, si el MVP sirve.
   // No bloquea el curso: corre en paralelo y aparece como aviso arriba.
@@ -128,6 +155,12 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
         </div>
       </div>
     );
+  }
+
+  // Curso nuevo: primero el profesor te conoce, y con eso arma un temario a tu
+  // medida (a un principiante no le pone pruebas técnicas duras de entrada).
+  if (nivelPrimero && !curso) {
+    return <NivelacionPanel cursoId="" onNivel={(nivel) => void generarConNivel(nivel)} />;
   }
 
   if (error && !curso) {
@@ -459,6 +492,9 @@ function SuperarClase({
   const { t, lang } = useLanguage();
   const g = t.curso;
   const [abierto, setAbierto] = useState(false);
+  // El panel de superar la clase va PLEGADO: el chat es lo principal. El alumno
+  // lo abre cuando se sienta listo, sin sentir un examen encima todo el tiempo.
+  const [expandido, setExpandido] = useState(false);
   const [respuestas, setRespuestas] = useState<Record<number, number>>({});
   const [texto, setTexto] = useState("");
   const [verificando, setVerificando] = useState(false);
@@ -503,9 +539,27 @@ function SuperarClase({
     );
   }
 
+  // Plegado por defecto: el chat manda; el reto está a un clic cuando quiera.
+  if (!expandido) {
+    return (
+      <button
+        onClick={() => setExpandido(true)}
+        className="flex w-full items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+      >
+        <span>🎯 {g.listoSuperar}</span>
+        <span className="text-xs font-medium text-brand-600">{g.abrirReto} ▾</span>
+      </button>
+    );
+  }
+
   return (
     <div className="border-t border-slate-200 bg-slate-50/70 p-4">
-      <p className="mb-2 text-sm font-bold text-slate-700">🎯 {g.paraAvanzar}: <span className="font-normal">{criterio.descripcion}</span></p>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <p className="text-sm font-bold text-slate-700">🎯 {g.paraAvanzar}: <span className="font-normal">{criterio.descripcion}</span></p>
+        <button onClick={() => setExpandido(false)} className="shrink-0 text-xs font-medium text-slate-400 hover:text-slate-600">
+          {g.ocultar} ▴
+        </button>
+      </div>
 
       {esQuiz && (
         <div className="space-y-3">

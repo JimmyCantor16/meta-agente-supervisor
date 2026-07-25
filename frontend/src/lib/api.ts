@@ -537,17 +537,24 @@ async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
-/** Genera (o recupera) el curso del profesor para un proyecto del alumno. */
+/** Genera (o recupera) el curso del profesor, adaptado al nivel del alumno. */
 export function iniciarCurso(
   projectName: string,
   arquetipo: string,
-  language: Language
+  language: Language,
+  nivel: string = "desconocido"
 ): Promise<CursoResult> {
   return cursoPost<CursoResult>("iniciar", {
     project_name: projectName,
     arquetipo,
     language,
+    nivel,
   });
+}
+
+/** ¿Ya existe un curso para este proyecto? (para nivelar antes de generarlo). */
+export function existeCurso(projectName: string): Promise<{ existe: boolean; nivel: string }> {
+  return cursoGet(`existe?project_name=${encodeURIComponent(projectName)}`);
 }
 
 /** Abre una clase (trae su historial; si está vacía, el profesor la inaugura). */

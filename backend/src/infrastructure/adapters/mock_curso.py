@@ -18,7 +18,8 @@ from src.domain.ports import GeneradorSyllabusPort, ProfesorChatPort
 
 
 class MockGeneradorSyllabus(GeneradorSyllabusPort):
-    def generar(self, proyecto, arquetipo, files, num_clases, language="es") -> Syllabus:
+    def generar(self, proyecto, arquetipo, files, num_clases, language="es",
+                nivel="desconocido") -> Syllabus:
         base = [
             ("Conoce tu sistema", "Entender qué hace tu proyecto y sus partes.",
              f"Tu proyecto **{proyecto}** tiene un backend (el que atiende) y un frontend "
@@ -120,6 +121,16 @@ class MockGeneradorSyllabus(GeneradorSyllabusPort):
                   concepto_clave=k, criterio=crit)
             for i, (t, o, c, r, k, crit) in enumerate(base[:num_clases], start=1)
         ]
+        # Nivel bajo: los criterios duros (git/URL reales) abruman a un
+        # principiante. Se ablandan a reflexión (que explique qué haría).
+        if nivel == "bajo":
+            for cl in clases:
+                if cl.criterio.tipo in (TipoCriterio.REPO_GIT, TipoCriterio.URL_PUBLICADA):
+                    cl.criterio = CriterioSuperacion(
+                        tipo=TipoCriterio.REFLEXION,
+                        descripcion="Cuéntame con tus palabras cómo lo harías (sin prisa).",
+                        pista=cl.criterio.pista,
+                    )
         return Syllabus(
             proyecto=proyecto, arquetipo=arquetipo,
             titulo_curso=f"De cero a producción con {proyecto}",

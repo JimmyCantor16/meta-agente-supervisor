@@ -1169,6 +1169,12 @@ class CursoRequest(BaseModel):
     project_name: str = Field(..., min_length=1)
     arquetipo: str = Field(default="")
     language: Literal["es", "en"] = "es"
+    nivel: str = Field(default="desconocido", description="Nivel medido antes de generar.")
+
+
+class CursoExisteResponse(BaseModel):
+    existe: bool
+    nivel: str = "desconocido"
 
 
 def _curso_response(syllabus, progreso) -> CursoResponse:
@@ -1219,7 +1225,7 @@ def iniciar_curso(
     try:
         syllabus, progreso = use_case.execute(
             user.sub, request.project_name, user.plan or "free",
-            request.arquetipo, request.language,
+            request.arquetipo, request.language, request.nivel,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1228,6 +1234,26 @@ def iniciar_curso(
         code = 404 if "no existe" in msg.lower() else 502
         raise HTTPException(status_code=code, detail=msg) from exc
     return _curso_response(syllabus, progreso)
+
+
+@router.get(
+    "/curso/existe",
+    response_model=CursoExisteResponse,
+    summary="¿Ya existe un curso para este proyecto? (para nivelar antes de generar).",
+)
+def curso_existe(
+    project_name: str,
+    repo: CursoRepositoryPort = Depends(get_curso_repository),
+    user: UserAccount = Depends(get_current_user),
+) -> CursoExisteResponse:
+    cid = repo.curso_de(user.sub, (project_name or "").strip())
+    if not cid:
+        return CursoExisteResponse(existe=False)
+    progreso = repo.cargar_progreso(cid)
+    nivel = "desconocido"
+    if progreso is not None:
+        nivel = progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel
+    return CursoExisteResponse(existe=True, nivel=nivel)
 
 
 class ChatRequest(BaseModel):
@@ -1272,7 +1298,7 @@ def chat_curso(
 
 
 class NivelRequest(BaseModel):
-    curso_id: str = Field(..., min_length=1)
+    curso_id: str = Field(default="", description="Vacío = solo clasificar (antes de crear el curso).")
     respuesta: str = Field(default="", max_length=1500)
     language: Literal["es", "en"] = "es"
 

@@ -407,8 +407,14 @@ class GeneradorSyllabusPort(ABC):
         files: list[GeneratedFile],
         num_clases: int,
         language: str = "es",
+        nivel: str = "desconocido",
     ) -> Syllabus:
-        """Diseña el temario. Raises AuditError si falla."""
+        """Diseña el temario, ADAPTADO al nivel del alumno.
+
+        Con `nivel='bajo'` los retos avanzados (git, publicar) se plantean de
+        forma suave (reflexión) en vez de exigir repo/URL reales de golpe.
+        Raises AuditError si falla.
+        """
         raise NotImplementedError
 
 
