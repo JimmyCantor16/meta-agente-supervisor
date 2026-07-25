@@ -14,13 +14,19 @@ from __future__ import annotations
 import logging
 
 from src.application.diagnostico_mvp import senales_visibilidad
-from src.domain.entities import CasoGeneracion, EstadoMVP, GeneratedProject
+from src.domain.entities import (
+    CasoGeneracion,
+    EstadoMVP,
+    GeneratedFile,
+    GeneratedProject,
+)
 from src.domain.ports import (
     CasoRepositoryPort,
     ProjectGeneratorPort,
     ProjectRunnerPort,
     ProjectVerifierPort,
     ProjectWriterPort,
+    SpecPlanPort,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,14 +59,16 @@ class GenerateProjectUseCase:
         verifier: ProjectVerifierPort | None = None,
         runner: ProjectRunnerPort | None = None,
         caso_repo: CasoRepositoryPort | None = None,
+        spec_plan: SpecPlanPort | None = None,
     ) -> None:
-        """Inyecta el generador, el escritor y (opcionales) verificador, runner
-        y banco de casos (la memoria que aprende de cada idea y cada fallo)."""
+        """Inyecta el generador, el escritor y (opcionales) verificador, runner,
+        banco de casos (memoria) y diseñador spec+plan (contrato previo)."""
         self._generator = generator
         self._writer = writer
         self._verifier = verifier
         self._runner = runner
         self._caso_repo = caso_repo
+        self._spec_plan = spec_plan
         # URL del último proyecto arrancado (la expone el entrypoint).
         self.last_url: str | None = None
         # Si la interfaz no compiló, aquí queda el motivo para poder decírselo
@@ -98,11 +106,17 @@ class GenerateProjectUseCase:
     def _generar_y_verificar(
         self, original: str, language: str
     ) -> tuple[GeneratedProject, str]:
-        """El bucle generar→verificar→corregir, con RAG y gate de visibilidad."""
-        prompt_gen = self._con_lecciones(original)
+        """El bucle generar→verificar→corregir, con spec+plan, RAG y gate."""
+        # 1) Contrato spec+plan (qué/cómo explícito) y 2) lecciones de casos.
+        spec = self._disenar_spec(original)
+        prompt_gen = self._con_lecciones(self._con_spec(original, spec))
 
         logger.info("Generando proyecto a partir del prompt (%d caracteres)...", len(prompt_gen))
         project = self._generator.generate(prompt_gen, language)
+
+        # El spec+plan se guarda como material del alumno y guía del proyecto.
+        if spec is not None:
+            project.files.append(GeneratedFile(path="SPEC.md", content=spec.como_markdown()))
 
         logger.info("Proyecto '%s' generado con %d archivo(s).", project.name, len(project.files))
         output_path = self._writer.write(project)
@@ -227,6 +241,36 @@ class GenerateProjectUseCase:
     # ------------------------------------------------------------------
     # Fase 0: memoria (RAG) + gate de "MVP visible" + banco de casos
     # ------------------------------------------------------------------
+    def _disenar_spec(self, original: str):
+        """Diseña el contrato spec+plan (best-effort: nunca bloquea generar)."""
+        if self._spec_plan is None:
+            return None
+        try:
+            spec = self._spec_plan.disenar(original)
+            logger.info("Spec+plan: %d pantalla(s), %d endpoint(s).",
+                        len(spec.pantallas), len(spec.endpoints))
+            return spec
+        except Exception as exc:  # noqa: BLE001 - el spec nunca tumba la generación
+            logger.warning("No se pudo diseñar el spec+plan: %s", exc)
+            return None
+
+    def _con_spec(self, original: str, spec) -> str:
+        """Antepone el CONTRATO (qué/cómo) al prompt, para generar predecible."""
+        if spec is None:
+            return original
+        def lista(items):
+            return "; ".join(items) if items else "(por definir)"
+        contrato = (
+            "=== CONTRATO DEL PROYECTO (respétalo) ===\n"
+            f"Pantallas: {lista(spec.pantallas)}\n"
+            f"Datos/entidades: {lista(spec.entidades)}\n"
+            f"Endpoints del backend (el frontend SOLO puede pedir estas rutas): "
+            f"{lista(spec.endpoints)}\n"
+            f"DEBE VERSE (si no, no sirve): {lista(spec.criterios_visibles)}\n"
+            + (f"Stack: {spec.stack_sugerido}\n" if spec.stack_sugerido else "")
+        )
+        return f"{original}\n\n{contrato}"
+
     def _con_lecciones(self, original: str) -> str:
         """Antepone lecciones de proyectos SIMILARES antes de generar (RAG).
 

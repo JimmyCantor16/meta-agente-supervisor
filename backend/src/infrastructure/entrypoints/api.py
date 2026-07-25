@@ -64,6 +64,7 @@ from src.domain.ports import (
     ProjectWriterPort,
     PromptEvaluationError,
     PromptEvaluatorPort,
+    SpecPlanPort,
     UsageRepositoryPort,
     UserRepositoryPort,
 )
@@ -81,6 +82,8 @@ from src.infrastructure.adapters.mock_curso import MockGeneradorSyllabus, MockPr
 from src.infrastructure.adapters.mock_diagnostico_mvp import MockDiagnosticadorMVP
 from src.infrastructure.adapters.llm_meta_proceso import LLMGeneradorMeta
 from src.infrastructure.adapters.mock_meta_proceso import MockGeneradorMeta
+from src.infrastructure.adapters.llm_spec_plan import LLMSpecPlan
+from src.infrastructure.adapters.mock_spec_plan import MockSpecPlan
 from src.infrastructure.adapters.sqlite_caso_repository import SqliteCasoRepository
 from src.infrastructure.adapters.sqlite_meta_repository import SqliteMetaRepository
 from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository
@@ -451,15 +454,24 @@ def get_caso_repository() -> CasoRepositoryPort:
     return SqliteCasoRepository(get_settings().db_path)
 
 
+@lru_cache
+def get_spec_plan() -> SpecPlanPort:
+    """Diseñador spec+plan (contrato previo a generar). Real o mock."""
+    if get_settings().use_mock_llm:
+        return MockSpecPlan()
+    return LLMSpecPlan()
+
+
 def get_generate_use_case(
     generator: ProjectGeneratorPort = Depends(get_project_generator),
     writer: ProjectWriterPort = Depends(get_project_writer),
     verifier: ProjectVerifierPort = Depends(get_project_verifier),
     runner: ProjectRunnerPort = Depends(get_project_runner),
     caso_repo: CasoRepositoryPort = Depends(get_caso_repository),
+    spec_plan: SpecPlanPort = Depends(get_spec_plan),
 ) -> GenerateProjectUseCase:
-    """Construye el caso de uso de generación (auto-verificación + arranque + memoria)."""
-    return GenerateProjectUseCase(generator, writer, verifier, runner, caso_repo)
+    """Construye el caso de uso de generación (spec+plan + auto-verificación + memoria)."""
+    return GenerateProjectUseCase(generator, writer, verifier, runner, caso_repo, spec_plan)
 
 
 @lru_cache

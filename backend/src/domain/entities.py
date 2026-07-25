@@ -517,6 +517,48 @@ class CasoGeneracion(BaseModel):
         return self.estado_mvp == EstadoMVP.FUNCIONA and self.tuvo_url
 
 
+class SpecPlan(BaseModel):
+    """Contrato explícito ANTES de generar (inspirado en Spec-Driven Development).
+
+    Convierte la idea del usuario en un QUÉ y un CÓMO concretos y verificables,
+    para que la generación sea predecible: qué pantallas verá, qué datos maneja,
+    qué endpoints expone el backend (para que el frontend no pida rutas que no
+    existen) y, sobre todo, QUÉ debe VERSE (el contrato anti-'JSON muerto'). Se
+    guarda como SPEC.md/PLAN.md: sirve de guía al generador y de material del
+    profesor.
+    """
+
+    resumen: str = Field(default="", description="1-2 frases del qué se construye.")
+    pantallas: list[str] = Field(
+        default_factory=list, description="Vistas que el usuario verá (nombres claros)."
+    )
+    entidades: list[str] = Field(
+        default_factory=list, description="Los datos del sistema (ej: Proyecto, Recurso)."
+    )
+    endpoints: list[str] = Field(
+        default_factory=list,
+        description="Rutas del backend, ej 'GET /api/resources' (contrato con el frontend).",
+    )
+    criterios_visibles: list[str] = Field(
+        default_factory=list,
+        description="Qué debe VER un usuario no técnico para considerarlo funcional.",
+    )
+    stack_sugerido: str = Field(default="", description="Stack recomendado, en cristiano.")
+
+    def como_markdown(self) -> str:
+        """Render SPEC.md/PLAN.md para guardar en el proyecto (material del alumno)."""
+        def lista(items: list[str]) -> str:
+            return "\n".join(f"- {i}" for i in items) or "- (por definir)"
+        return (
+            f"# Especificación y plan\n\n## Qué se construye\n{self.resumen}\n\n"
+            f"## Pantallas que verás\n{lista(self.pantallas)}\n\n"
+            f"## Datos del sistema\n{lista(self.entidades)}\n\n"
+            f"## API del backend\n{lista(self.endpoints)}\n\n"
+            f"## Para considerarlo funcional, debes VER\n{lista(self.criterios_visibles)}\n\n"
+            f"## Stack\n{self.stack_sugerido or '(a criterio del generador)'}\n"
+        )
+
+
 class DependeDe(str, Enum):
     """De quién depende un hito: por eso una meta es un PROCESO, no un clic."""
 

@@ -19,6 +19,7 @@ from src.domain.entities import (
     DiagnosticoMVP,
     EvaluationRecord,
     MetaProceso,
+    SpecPlan,
     FewShotExample,
     GeneratedFile,
     GeneratedProject,
@@ -467,6 +468,19 @@ class ProfesorChatPort(ABC):
         El profesor mide conversando, sin examen: unas frases del alumno bastan
         para calibrar cómo enseñarle. Returns (nivel, mensaje_de_bienvenida).
         """
+        raise NotImplementedError
+
+
+class SpecPlanPort(ABC):
+    """Diseña el CONTRATO (spec + plan) de un proyecto antes de generarlo.
+
+    Inspirado en Spec-Driven Development: primero se define el qué y el cómo
+    de forma explícita y verificable, y con eso se guía la generación.
+    """
+
+    @abstractmethod
+    def disenar(self, idea: str, contexto: str = "", language: str = "es") -> SpecPlan:
+        """Devuelve el spec+plan de la idea. Raises PromptEvaluationError si falla."""
         raise NotImplementedError
 
 
