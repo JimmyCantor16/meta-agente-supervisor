@@ -556,6 +556,29 @@ export function leerArchivo(projectName: string, path: string): Promise<ArchivoC
   return proyectoGet<ArchivoContenido>(projectName, `archivo?path=${encodeURIComponent(path)}`);
 }
 
+/** Guarda un archivo editado y reinicia el proyecto para ver el cambio en vivo. */
+export async function compilarProyecto(
+  projectName: string,
+  path: string,
+  contenido: string
+): Promise<EstadoProyecto> {
+  let r: Response;
+  try {
+    r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(projectName)}/compilar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ path, contenido }),
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as EstadoProyecto;
+}
+
 async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {
   let r: Response;
   try {

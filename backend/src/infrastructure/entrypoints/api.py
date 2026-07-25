@@ -1612,6 +1612,31 @@ def apagar_proyecto(
     return EstadoProyectoResponse(**use_case.apagar(project_name))
 
 
+class CompilarRequest(BaseModel):
+    path: str = Field(..., min_length=1)
+    contenido: str = Field(default="", max_length=200000)
+
+
+@router.post(
+    "/projects/{project_name}/compilar",
+    response_model=EstadoProyectoResponse,
+    summary="Guarda un archivo editado y reinicia el proyecto para verlo en vivo.",
+)
+def compilar_proyecto(
+    project_name: str,
+    request: CompilarRequest,
+    use_case: ControlProyectoUseCase = Depends(get_control_proyecto_use_case),
+    user: UserAccount = Depends(get_current_user),
+) -> EstadoProyectoResponse:
+    """Fase 2 del aula en vivo: editar → Compilar → ver el cambio al instante."""
+    try:
+        return EstadoProyectoResponse(**use_case.compilar(project_name, request.path, request.contenido))
+    except AuditError as exc:
+        msg = str(exc)
+        code = 404 if "no existe" in msg.lower() else 400 if "no se puede" in msg.lower() or "fuera del" in msg.lower() else 502
+        raise HTTPException(status_code=code, detail=msg) from exc
+
+
 class SecretosResponse(BaseModel):
     carpeta: str
     nombres: list[str]

@@ -9,6 +9,7 @@ devuelve la URL; otro lo apaga; y siempre puede ver si está vivo.
 from __future__ import annotations
 
 import logging
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -16,6 +17,20 @@ from src.domain.entities import slugify
 from src.domain.ports import AuditError, ProjectRunnerPort, ProjectVerifierPort
 
 logger = logging.getLogger(__name__)
+
+# No se deja editar/ver lo sensible ni lo que rompe el proyecto por accidente.
+_NO_EDITABLE = ("secretos/", ".env", "node_modules/", ".git/")
+
+
+def _ruta_segura(base: Path, rel: str) -> Path:
+    """Resuelve `rel` dentro de `base`, bloqueando escapes (../) y secretos."""
+    rel = (rel or "").strip().replace("\\", "/").lstrip("/")
+    if not rel or any(marca in rel.lower() for marca in _NO_EDITABLE):
+        raise AuditError("Ese archivo no se puede editar.")
+    destino = (base / rel).resolve()
+    if base.resolve() not in destino.parents and destino != base.resolve():
+        raise AuditError("Ruta fuera del proyecto.")
+    return destino
 
 
 class ControlProyectoUseCase:
@@ -86,6 +101,46 @@ class ControlProyectoUseCase:
         slug = slugify(project_name)
         self._runner.stop(slug)
         return _estado_dict(False, None)
+
+    def compilar(self, project_name: str, path: str, contenido: str) -> dict:
+        """Guarda el archivo editado y REINICIA el proyecto para verlo en vivo.
+
+        Escribe en la fuente (generated/<slug>) y también en la copia que sirve el
+        runner (/tmp/exec-<slug>), para que el reinicio sea rápido (conserva las
+        dependencias ya instaladas) y el cambio se vea al instante.
+        """
+        slug = slugify(project_name)
+        ruta = self._dir(project_name)
+
+        # 1) Persistir en la fuente.
+        destino = _ruta_segura(ruta, path)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(contenido, encoding="utf-8")
+
+        # 2) Reflejar en la copia servida, si existe (así no hace falta reinstalar).
+        espejo = Path(tempfile.gettempdir()) / f"exec-{slug}"
+        if espejo.exists():
+            try:
+                _ruta_segura(espejo, path).write_text(contenido, encoding="utf-8")
+            except (AuditError, OSError) as exc:
+                logger.warning("No se pudo reflejar el cambio en la copia servida: %s", exc)
+
+        # 3) Reiniciar para que el cambio esté vivo.
+        logger.info("Compilando '%s': reiniciando con el cambio en '%s'.", slug, path)
+        self._runner.stop(slug)
+        url = self._runner.start(str(ruta), slug)
+        if not url and self._verifier is not None:
+            try:
+                self._verifier.verify(str(ruta))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Verify durante compilar falló: %s", exc)
+            url = self._runner.start(str(ruta), slug)
+        if not url:
+            raise AuditError(
+                "Guardé tu cambio, pero no pude volver a arrancarlo. Revisa que el "
+                "código no tenga un error y reintenta."
+            )
+        return _estado_dict(True, url)
 
 
 def _estado_dict(corriendo: bool, url: str | None) -> dict:

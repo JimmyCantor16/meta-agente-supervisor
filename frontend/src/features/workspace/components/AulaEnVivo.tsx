@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import {
   ApiError,
+  compilarProyecto,
   encenderProyecto,
   estadoProyecto,
   leerArchivo,
@@ -10,9 +11,9 @@ import {
 import type { ArchivoContenido, ArchivoItem } from "../types";
 
 /**
- * Aula en vivo (Fase 1): el código fuente a la izquierda y el sistema corriendo
- * a la derecha, lado a lado. Ver el archivo y su resultado al mismo tiempo es lo
- * que vuelve tangible el aprendizaje. (Editar + Compilar llega en la Fase 2.)
+ * Aula en vivo: el código fuente EDITABLE a la izquierda y el sistema corriendo
+ * a la derecha. Editas, das a Compilar y ves el cambio al instante. Ver el
+ * archivo y su resultado al mismo tiempo es lo que vuelve tangible aprender.
  */
 export function AulaEnVivo({ projectName }: { projectName: string }) {
   const { t } = useLanguage();
@@ -20,8 +21,12 @@ export function AulaEnVivo({ projectName }: { projectName: string }) {
   const [archivos, setArchivos] = useState<ArchivoItem[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [codigo, setCodigo] = useState<ArchivoContenido | null>(null);
+  const [editado, setEditado] = useState("");
   const [url, setUrl] = useState<string | null>(null);
   const [encendiendo, setEncendiendo] = useState(false);
+  const [compilando, setCompilando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [refresco, setRefresco] = useState(0);
 
   useEffect(() => {
     let vivo = true;
@@ -51,14 +56,15 @@ export function AulaEnVivo({ projectName }: { projectName: string }) {
   const abrir = async (path: string) => {
     setSel(path);
     setCodigo(null);
+    setAviso(null);
     try {
-      setCodigo(await leerArchivo(projectName, path));
+      const c = await leerArchivo(projectName, path);
+      setCodigo(c);
+      setEditado(c.contenido);
     } catch (err) {
-      setCodigo({
-        path,
-        contenido: err instanceof ApiError ? err.message : "No se pudo leer el archivo.",
-        lenguaje: "text",
-      });
+      const msg = err instanceof ApiError ? err.message : "No se pudo leer el archivo.";
+      setCodigo({ path, contenido: msg, lenguaje: "text" });
+      setEditado(msg);
     }
   };
 
@@ -74,12 +80,39 @@ export function AulaEnVivo({ projectName }: { projectName: string }) {
     }
   };
 
+  const compilar = async () => {
+    if (!sel || compilando) return;
+    setCompilando(true);
+    setAviso(null);
+    try {
+      const e = await compilarProyecto(projectName, sel, editado);
+      setUrl(e.url);
+      setRefresco((n) => n + 1); // fuerza recargar el iframe
+      setCodigo((c) => (c ? { ...c, contenido: editado } : c));
+      setAviso(g.compilado);
+    } catch (err) {
+      setAviso(err instanceof ApiError ? err.message : g.errorCompilar);
+    } finally {
+      setCompilando(false);
+    }
+  };
+
+  const modificado = codigo !== null && editado !== codigo.contenido;
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* Izquierda: código fuente */}
       <div className="flex min-h-[60vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700">
-          📄 {g.codigo}
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">
+          <span>📄 {g.codigo}</span>
+          <button
+            onClick={() => void compilar()}
+            disabled={compilando || !modificado}
+            title={!modificado ? g.editaPrimero : undefined}
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {compilando ? g.compilando : "⚡ " + g.compilar}
+          </button>
         </div>
         <div className="flex min-h-0 flex-1">
           <aside className="w-40 shrink-0 overflow-y-auto border-r border-slate-100 bg-slate-50 p-1.5">
@@ -98,21 +131,24 @@ export function AulaEnVivo({ projectName }: { projectName: string }) {
               </button>
             ))}
           </aside>
-          <div className="min-w-0 flex-1 overflow-auto bg-slate-900">
+          <div className="min-w-0 flex-1 bg-slate-900">
             {codigo ? (
-              <pre className="min-h-full whitespace-pre p-3 text-xs leading-relaxed text-slate-100">
-                <code>{codigo.contenido}</code>
-              </pre>
+              <textarea
+                value={editado}
+                onChange={(e) => setEditado(e.target.value)}
+                spellCheck={false}
+                className="h-full min-h-[48vh] w-full resize-none whitespace-pre bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
+              />
             ) : (
               <p className="p-4 text-xs text-slate-400">{g.eligeArchivo}</p>
             )}
           </div>
         </div>
-        {sel && (
-          <div className="border-t border-slate-200 px-4 py-1.5 font-mono text-[11px] text-slate-400">
-            {sel}
-          </div>
-        )}
+        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-1.5">
+          <span className="font-mono text-[11px] text-slate-400">{sel || ""}</span>
+          {aviso && <span className="text-[11px] font-medium text-slate-500">{aviso}</span>}
+          {modificado && !aviso && <span className="text-[11px] font-medium text-amber-600">● {g.sinGuardar}</span>}
+        </div>
       </div>
 
       {/* Derecha: navegador en vivo */}
@@ -127,6 +163,7 @@ export function AulaEnVivo({ projectName }: { projectName: string }) {
         </div>
         {url ? (
           <iframe
+            key={refresco}
             title="preview"
             src={url}
             className="min-h-0 flex-1 bg-white"
