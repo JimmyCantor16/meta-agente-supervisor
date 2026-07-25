@@ -39,6 +39,29 @@ from src.infrastructure.adapters.python_syntax_fixes import revisar_simbolos_js
 logger = logging.getLogger(__name__)
 
 
+_RE_ENDPOINT = re.compile(r"\b(GET)\s+(/\S+)", re.IGNORECASE)
+
+
+def _endpoints_de_spec(root: Path) -> list[str]:
+    """Extrae los endpoints GET del contrato SPEC.md (rutas /api a probar).
+
+    Solo GET: son los que se pueden pedir sin cuerpo. Devuelve rutas únicas.
+    """
+    spec = root / "SPEC.md"
+    if not spec.is_file():
+        return []
+    rutas: list[str] = []
+    try:
+        for m in _RE_ENDPOINT.finditer(spec.read_text(encoding="utf-8", errors="ignore")):
+            ruta = m.group(2).strip().rstrip(".,;)")
+            # Se saltan rutas con parámetros (ej /api/x/:id) — no sabemos el id.
+            if ruta.startswith("/") and ":" not in ruta and "{" not in ruta and ruta not in rutas:
+                rutas.append(ruta)
+    except OSError:
+        return []
+    return rutas[:12]
+
+
 def espejo_local(original: Path, reutilizar: bool = False) -> Path:
     """Copia el proyecto a disco local del contenedor y devuelve esa ruta.
 
@@ -168,8 +191,8 @@ class NodeProjectVerifier(ProjectVerifierPort):
         if error := self._construir_frontend(root, pkg_dir):
             return error
 
-        # 3) Arranque + petición real
-        return self._check_runtime(pkg_dir)
+        # 3) Arranque + petición real (a '/' y a los endpoints del contrato)
+        return self._check_runtime(pkg_dir, root)
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -380,7 +403,7 @@ class NodeProjectVerifier(ProjectVerifierPort):
         logger.info("Frontend compilado en %s.", destino.relative_to(root))
         return None
 
-    def _check_runtime(self, pkg_dir: Path) -> str | None:
+    def _check_runtime(self, pkg_dir: Path, root: Path | None = None) -> str | None:
         """Levanta el servidor y le hace una petición real."""
         entry = self._find_entry(pkg_dir)
         if entry is None:
@@ -426,9 +449,73 @@ class NodeProjectVerifier(ProjectVerifierPort):
                         f"un mensaje al arrancar."
                     )
                 return f"El servidor Node no respondió en {_BOOT_TIMEOUT}s:\n{salida[-2000:]}"
+
+            # El servidor sirve '/' (el index.html), pero eso NO prueba que la
+            # API funcione: una tabla/dashboard sin sus datos es una pantalla
+            # rota. Se ejercitan los endpoints del contrato (SPEC.md) y se exige
+            # que respondan JSON de verdad, no un 500 ni el HTML del fallback SPA.
+            if root is not None:
+                error_api = self._probar_endpoints(port, root, process)
+                if error_api:
+                    return error_api
         finally:
             _terminar(process)
 
+        return None
+
+    def _probar_endpoints(self, port: int, root: Path, process) -> str | None:
+        """Prueba los endpoints declarados en SPEC.md; exige JSON real."""
+        endpoints = _endpoints_de_spec(root)
+        if not endpoints:
+            return None  # sin contrato no hay nada que exigir (compatibilidad)
+
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        fallos: list[str] = []
+        for path in endpoints:
+            url = f"http://127.0.0.1:{port}{path}"
+            try:
+                with urllib.request.urlopen(url, timeout=6) as resp:
+                    status = resp.status
+                    cuerpo = resp.read(1500).decode("utf-8", "ignore")
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+                cuerpo = ""
+            except Exception as exc:  # noqa: BLE001 - si el server murió, se reporta
+                if process.poll() is not None:
+                    return (f"El servidor Node murió al pedir {path}:\n"
+                            f"{_leer_salida(process)[-2000:]}")
+                fallos.append(f"{path}: no respondió ({exc})")
+                continue
+
+            recorte = cuerpo.strip()[:120]
+            if status >= 500:
+                fallos.append(f"{path}: HTTP {status} (error del servidor) -> {recorte}")
+            elif status == 404:
+                fallos.append(f"{path}: HTTP 404, la ruta NO existe en el backend")
+            elif recorte.startswith("<"):
+                # Le llegó el index.html del fallback SPA: la ruta de API no está
+                # implementada con ese nombre exacto (desajuste frontend/backend).
+                fallos.append(f"{path}: devolvió HTML en vez de JSON (la ruta de API no existe)")
+            else:
+                try:
+                    _json.loads(cuerpo)
+                except ValueError:
+                    fallos.append(f"{path}: la respuesta no es JSON válido -> {recorte}")
+
+        if fallos:
+            return (
+                "El sistema arranca y sirve la página, pero su API NO entrega los "
+                "datos que la interfaz necesita (el usuario vería pantallas vacías "
+                "o rotas). Estas rutas del contrato del proyecto fallan:\n- "
+                + "\n- ".join(fallos[:8])
+                + "\n\nARRÉGLALO: implementa en el backend EXACTAMENTE esas rutas "
+                "(mismo nombre y método) devolviendo JSON con datos de ejemplo "
+                "(las semillas). El frontend debe pedir esas mismas rutas. No dejes "
+                "que el fallback que sirve index.html tape las rutas /api."
+            )
         return None
 
     @staticmethod
