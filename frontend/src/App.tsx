@@ -9,6 +9,7 @@ import { ProjectGallery } from "./features/workspace/components/ProjectGallery";
 import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspace";
 import { PublishGuide } from "./features/workspace/components/PublishGuide";
 import { PromptInput } from "./features/workspace/components/PromptInput";
+import { Multimedia } from "./features/multimedia";
 import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
 import { useProjects } from "./features/workspace/hooks/useProjects";
@@ -220,6 +221,9 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* Pestaña "Multimedia" (TV en vivo + Radio) fija al borde derecho. */}
+      <Multimedia />
     </div>
   );
 }
