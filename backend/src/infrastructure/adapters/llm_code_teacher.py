@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from src.config import Settings
 from src.domain.entities import GeneratedFile, TeachingGuide
 from src.domain.ports import AuditError, CodeTeacherPort
+from src.infrastructure.adapters.skills_loader import skill
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,8 @@ class LLMCodeTeacher(CodeTeacherPort):
     """Profesor respaldado por el cliente multi-modelo."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        self._llm = MultiModelLLM()
+        # Rol "prompt": explicar, no escribir código.
+        self._llm = MultiModelLLM(role="prompt")
 
     def teach(
         self,
@@ -58,7 +60,7 @@ class LLMCodeTeacher(CodeTeacherPort):
             f"=== ARCHIVOS ===\n{context}"
         )
         try:
-            payload = self._llm.chat_json(SYSTEM_PROMPT, user, temperature=0.3)
+            payload = self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"), user, temperature=0.3)
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 

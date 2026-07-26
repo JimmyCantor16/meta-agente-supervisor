@@ -11,6 +11,8 @@ interface PromptInputProps {
   teacherMode: boolean;
   /** Alterna el modo profesor. */
   onTeacherToggle: () => void;
+  /** Texto inicial (lo siembran los chips de ejemplo; remontar con `key`). */
+  initialValue?: string;
 }
 
 const MIN_LENGTH = 10;
@@ -19,9 +21,15 @@ const MIN_LENGTH = 10;
  * Caja de entrada estilo Skywork: textarea amplia + fila de controles
  * (toggle Modo Profesor y botón de evaluar). Tema claro.
  */
-export function PromptInput({ onSubmit, loading, teacherMode, onTeacherToggle }: PromptInputProps) {
+export function PromptInput({
+  onSubmit,
+  loading,
+  teacherMode,
+  onTeacherToggle,
+  initialValue = "",
+}: PromptInputProps) {
   const { t } = useLanguage();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
 
   const trimmed = value.trim();
   const isValid = trimmed.length >= MIN_LENGTH;

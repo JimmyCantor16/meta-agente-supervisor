@@ -13,12 +13,66 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LLMProvider(BaseModel):
-    """Un proveedor/modelo de IA en la cadena de fallback multi-modelo."""
+    """Un proveedor/modelo de IA en la cadena de fallback multi-modelo.
+
+    Además de cómo conectarse, describe QUÉ SABE HACER y CUÁNTO AGUANTA, para
+    que el enrutador mande cada tarea al modelo adecuado en vez de probar a
+    ciegas: los modelos pequeños razonan y ordenan prompts, y los de ventana
+    grande especializados en código escriben el proyecto.
+    """
 
     name: str = Field(..., description="Etiqueta legible, p. ej. 'groq-70b'.")
     base_url: str = Field(..., description="URL base compatible con OpenAI.")
     api_key: str = Field(..., description="Clave de API del proveedor.")
     model: str = Field(..., description="Identificador del modelo.")
+
+    # --- Qué sabe hacer ---
+    # "prompt" = analizar/evaluar/enseñar (peticiones cortas, mucho razonamiento)
+    # "code"   = escribir y reparar código (peticiones largas, contexto grande)
+    # Vacío = sirve para todo (compatibilidad con configuraciones antiguas).
+    roles: list[str] = Field(
+        default_factory=list,
+        description="Roles que atiende: 'prompt', 'code'. Vacío = todos.",
+    )
+
+    # --- Cuánto aguanta ---
+    # Ventana de contexto: evita enviar una petición que se sabe que dará 413.
+    # Ojo: es el límite REAL de la capa gratuita, no el del modelo. GitHub
+    # Models sirve modelos de 128k pero su tier gratis corta la entrada en 8k.
+    max_context: int | None = Field(
+        default=None,
+        description="Tokens máximos por petición. None = desconocido.",
+    )
+    max_tpm: int | None = Field(
+        default=None,
+        description="Tokens por minuto del plan gratuito. None = usa el global.",
+    )
+    max_rpm: int | None = Field(
+        default=None,
+        description="Peticiones por minuto permitidas. None = sin límite conocido.",
+    )
+    # Varios modelos de la MISMA cuenta comparten cuota (p. ej. los dos de
+    # Mistral comparten los 500k tok/min de la cuenta). Si se deja vacío, cada
+    # proveedor lleva su propia contabilidad.
+    quota_group: str = Field(
+        default="",
+        description="Etiqueta de cuota compartida. Vacío = cuota propia.",
+    )
+    # Coste real de usarlo. Los proveedores con bolsa de créditos que NO se
+    # renueva (NVIDIA) deben quedar al final: gastarlos es irreversible.
+    exhaustible: bool = Field(
+        default=False,
+        description="True si consume una bolsa de créditos que no se renueva.",
+    )
+
+    @property
+    def quota_key(self) -> str:
+        """Clave con la que se contabiliza su consumo."""
+        return self.quota_group or self.name
+
+    def serves(self, role: str | None) -> bool:
+        """Indica si este proveedor atiende el rol pedido."""
+        return not self.roles or role is None or role in self.roles
 
 
 class Settings(BaseSettings):
@@ -54,28 +108,63 @@ class Settings(BaseSettings):
         default="evaluations.db",
         description="Ruta del archivo SQLite donde se guardan las evaluaciones.",
     )
+    # En despliegues cloud (Render) el disco es efímero: un archivo SQLite se
+    # perdería en cada deploy. Si esta variable trae una URL de PostgreSQL, los
+    # repositorios usan los adaptadores Postgres en vez de los SQLite.
+    database_url: str = Field(
+        default="",
+        description="URL de PostgreSQL. Vacío = usar SQLite local (`db_path`).",
+    )
+    # URL interna de Redis (caché/estado compartido entre instancias). Opcional.
+    redis_url: str = Field(
+        default="",
+        description="URL de Redis. Vacío = sin caché distribuida.",
+    )
+
+    @property
+    def uses_postgres(self) -> bool:
+        """True si hay que persistir en PostgreSQL en lugar de SQLite."""
+        return self.database_url.startswith(("postgres://", "postgresql://"))
 
     # --- Agente que construye (proyectos generados) ---
     generated_dir: str = Field(
         default="generated",
         description="Carpeta donde se escriben los proyectos generados.",
     )
+    generated_public_host: str = Field(
+        default="localhost",
+        description="Host con el que se construye la URL de los proyectos arrancados.",
+    )
 
     # --- Licencia / modelo de negocio ---
     free_generation_limit: int = Field(
         default=3,
         ge=1,
-        description="Proyectos que se pueden generar gratis antes de pedir licencia.",
+        description="Proyectos gratis por usuario antes de requerir pago.",
+    )
+    free_lesson_limit: int = Field(
+        default=3,
+        ge=1,
+        description="Clases (Modo Profesor) gratis por usuario antes de requerir pago.",
     )
     license_keys: str = Field(
         default="META-PRO-2026",
-        description="Claves de licencia válidas, separadas por comas.",
+        description="Claves de licencia globales válidas (modo legacy).",
+    )
+    super_admin_emails: str = Field(
+        default="",
+        description="Emails de super-admin (aprueban pagos), separados por comas.",
     )
 
     @property
     def license_keys_list(self) -> list[str]:
         """Lista de claves de licencia válidas."""
         return [k.strip() for k in self.license_keys.split(",") if k.strip()]
+
+    @property
+    def super_admin_emails_list(self) -> list[str]:
+        """Lista de emails de super-admin."""
+        return [e.strip() for e in self.super_admin_emails.split(",") if e.strip()]
 
     # --- Modo simulado (pruebas sin saldo de DeepSeek) ---
     use_mock_llm: bool = Field(

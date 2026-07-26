@@ -20,6 +20,7 @@ from src.domain.entities import (
     ResponseLanguage,
 )
 from src.domain.ports import PromptEvaluationError, PromptEvaluatorPort
+from src.infrastructure.adapters.skills_loader import skill
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM
 
 logger = logging.getLogger(__name__)
@@ -51,16 +52,70 @@ texto fuera del JSON) con exactamente estas claves:
   "status": "aprobado" | "sugerir_ajustes",
   "analisis_critico": "Evaluación técnica de la viabilidad de la idea y sus reglas de negocio.",
   "sugerencias_mejora": ["Sugerencia concreta 1", "Sugerencia concreta 2"],
+  "preguntas_para_el_usuario": [
+    {
+      "texto": "¿Qué métodos de pago aceptarás?",
+      "opciones": ["Tarjeta de crédito", "Nequi", "DaviPlata", "Efectivo contra entrega"],
+      "permite_otro": true
+    }
+  ],
+  "plantillas": [
+    {
+      "nombre": "Artesanal cálida",
+      "descripcion": "Tarjetas grandes con fotos, tipografía redondeada, mucho aire.",
+      "estilo": "acogedor y hecho a mano",
+      "colores": ["#8B4513", "#EFEBE9", "#C2185B", "#FFF8F0"]
+    }
+  ],
   "prompt_final_optimizado": "El prompt de grado de ingeniería listo para inyectar en un modelo de generación de código autónomo."
 }
 
 Reglas estrictas:
+- VIABILIDAD PRIMERO (aterrizaje a la realidad). Clasifica la idea en silencio:
+  a) SOFTWARE VIABLE como MVP web → procede normal.
+  b) VIABLE PERO FUERA DE ALCANCE HOY (app móvil nativa, hardware/IoT,
+     integraciones que exigen credenciales de terceros, tiempo real masivo):
+     status "sugerir_ajustes", explica el límite SIN tecnicismos y reformula el
+     prompt final hacia la versión web del MVP que SÍ se puede entregar hoy
+     (p. ej. "app móvil de citas" → web responsive instalable que se ve
+     perfecta en el teléfono). El usuario debe sentir que avanza, no que lo
+     rechazan.
+  c) NO ES SOFTWARE o es físicamente imposible ("llévame a la luna", "hazme
+     rico", "cúrame"): status "sugerir_ajustes", dilo con honestidad y calidez
+     en "analisis_critico" (una frase, sin burlas), y OFRECE el software más
+     cercano que sí aterriza su deseo (p. ej. "no puedo llevarte a la luna,
+     pero puedo construirte una web interactiva para explorar el sistema solar
+     o un planificador de metas"). El prompt final describe ESA alternativa y
+     "preguntas_para_el_usuario" pregunta cuál versión quiere. NUNCA generes
+     un prompt para algo imposible ni finjas que se puede.
 - "status" es "aprobado" solo si la idea ya es clara y ejecutable; en cuanto
   detectes ambigüedad relevante o lógica faltante, usa "sugerir_ajustes".
 - "sugerencias_mejora" debe ir vacía ([]) únicamente cuando el status sea
   "aprobado" y no queden mejoras materiales.
+- "preguntas_para_el_usuario" son EXCLUSIVAMENTE datos que SOLO el usuario puede
+  aportar y que, si faltan, el sistema tendría que INVENTAR relleno: nombres
+  reales de personas o marcas, enlaces (GitHub, redes), productos y precios
+  reales, textos propios, credenciales de servicios. NO son preguntas técnicas
+  de arquitectura (eso decídelo tú). Máximo 4, concretas y fáciles de responder.
+  Cada pregunta lleva "opciones": 2-6 respuestas PROBABLES y marcables (el
+  usuario puede marcar varias), pensadas para que responder cueste un clic; y
+  "permite_otro": true casi siempre, para que pueda escribir algo distinto.
+  Déjala vacía ([]) si la idea no necesita datos personales del usuario.
+- "plantillas": SIEMPRE que la idea tenga interfaz visible, propone entre 3 y 5
+  plantillas visuales CLARAMENTE DISTINTAS entre sí (no variaciones del mismo
+  look). Cada una declara su paleta en "colores" (3-5 hex reales y armónicos) y
+  su "estilo" en pocas palabras. El usuario podrá elegir una, combinar varias, o
+  aportar su propia referencia (una URL de una página que le guste o un texto);
+  tu prompt final debe estar escrito para aceptar esa decisión posterior.
+  Déjala vacía ([]) solo si la idea no tiene interfaz (una API pura, un script).
 - "prompt_final_optimizado" SIEMPRE debe entregarse, incluso si el status es
   "aprobado" (en ese caso, es la versión pulida de la idea original).
+- MODO INQUIETO (por defecto): no te limites a transcribir lo pedido. Explora
+  más allá: propone en el prompt final los detalles que el usuario no pidió pero
+  va a agradecer — responsive real, accesibilidad, estados vacíos cuidados,
+  micro-interacciones, semillas de datos creíbles, escalabilidad razonable.
+  Marca esos extras como "mejoras del agente". Si el usuario dice explícitamente
+  que NO quiere extras o que no seas inquieto, OBEDECE y limítate a lo pedido.
 - Redacta TODOS los valores de texto del JSON en el idioma que se te indique al
   inicio del mensaje del usuario (por defecto, español).
 - No inventes requisitos absurdos; infiere lo razonable y márcalo como asunción.
@@ -81,7 +136,9 @@ class DeepSeekPromptEvaluator(PromptEvaluatorPort):
 
     def __init__(self, settings: Settings | None = None) -> None:
         """Inicializa el evaluador con el cliente multi-modelo (fallback)."""
-        self._llm = MultiModelLLM()
+        # Rol "prompt": analizar y reescribir la idea. Son peticiones cortas con
+        # mucho razonamiento, ideales para los modelos pequeños y rápidos.
+        self._llm = MultiModelLLM(role="prompt")
 
     def evaluate(
         self,
@@ -163,7 +220,7 @@ class DeepSeekPromptEvaluator(PromptEvaluatorPort):
     def _request_json(self, user_content: str) -> dict:
         """Llama al LLM (multi-modelo con fallback) y devuelve el JSON."""
         try:
-            return self._llm.chat_json(SYSTEM_PROMPT, user_content, temperature=0.2)
+            return self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"), user_content, temperature=0.2)
         except LLMError as exc:
             logger.error("Fallo del LLM al evaluar: %s", exc)
             raise PromptEvaluationError(str(exc)) from exc

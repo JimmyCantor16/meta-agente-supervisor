@@ -1,0 +1,86 @@
+# Blueprint de Render: despliega toda la infraestructura del Meta-Agente.
+#
+# Cómo usarlo:
+#   1. Sube este archivo al repositorio (raíz).
+#   2. En https://dashboard.render.com/ -> New + -> Blueprint -> elige el repo.
+#   3. Render lee este archivo y crea los 3 recursos de golpe.
+#   4. Rellena en el dashboard las variables marcadas con `sync: false`
+#      (son secretos: NUNCA se versionan aquí).
+#
+# IMPORTANTE tras el primer deploy:
+#   - Confirma la URL real del backend y ajústala en el `rewrite` de abajo si
+#     Render le añadió un sufijo al nombre.
+#   - Añade la URL del frontend a los orígenes autorizados de Google OAuth.
+
+databases:
+  # Base de datos PostgreSQL: sustituye al archivo SQLite local, porque el
+  # disco de los servicios de Render es efímero y se borra en cada deploy.
+  - name: metaagente-db
+    databaseName: metaagente
+    user: metaagente
+    plan: free
+
+services:
+  # --- Backend: FastAPI (arquitectura hexagonal) sobre Docker ---
+  - type: web
+    name: metaagente-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /docs
+    envVars:
+      # Render inyecta la cadena de conexión: al existir DATABASE_URL, la app
+      # usa automáticamente los adaptadores PostgreSQL en vez de los SQLite.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: metaagente-db
+          property: connectionString
+      # Redis interno ya existente (caché / estado compartido).
+      # Valor: redis://red-d9e08hjtqb8s739ifllg:6379
+      - key: REDIS_URL
+        sync: false
+      # --- Secretos: se rellenan a mano en el dashboard ---
+      - key: LLM_PROVIDERS       # cadena JSON de proveedores gratuitos
+        sync: false
+      - key: DEEPSEEK_API_KEY    # clave del proveedor por defecto
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        sync: false
+      - key: DEEPSEEK_MODEL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: SUPER_ADMIN_EMAILS
+        sync: false
+      # Origen del frontend para CORS. Ajusta al dominio real tras el deploy.
+      - key: CORS_ORIGINS
+        sync: false
+      # --- Ajustes no secretos ---
+      - key: USE_MOCK_LLM
+        value: "false"
+      - key: FREE_GENERATION_LIMIT
+        value: "3"
+      - key: FREE_LESSON_LIMIT
+        value: "3"
+      - key: LOG_LEVEL
+        value: INFO
+
+  # --- Frontend: React + Vite, servido como sitio estático ---
+  - type: web
+    name: metaagente-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      # Equivale al `proxy_pass` de Nginx en Docker: el frontend sigue llamando
+      # a rutas relativas /api/... y Render las reenvía al backend.
+      - type: rewrite
+        source: /api/*
+        destination: https://metaagente-backend.onrender.com/api/*
+      # SPA: cualquier otra ruta devuelve el index para que enrute React.
+      - type: rewrite
+        source: /*
+        destination: /index.html

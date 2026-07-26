@@ -10,20 +10,25 @@ interface SidebarProps {
   open: boolean;
   /** Cierra el sidebar (móvil). */
   onClose: () => void;
+  /** Muestra el ítem de administración (solo super-admin). */
+  showAdmin?: boolean;
 }
 
 /**
  * Barra lateral de navegación (estilo Skywork): marca + items de navegación.
  * Fija en escritorio; deslizable en móvil.
  */
-export function Sidebar({ active, onNavigate, open, onClose }: SidebarProps) {
+export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }: SidebarProps) {
   const { t } = useLanguage();
 
   const items = [
     { key: "home", label: t.nav.home, icon: "🏠" },
     { key: "projects", label: t.nav.projects, icon: "📁" },
     { key: "learn", label: t.nav.learn, icon: "🎓" },
+    { key: "publish", label: t.nav.publish, icon: "🚀" },
+    { key: "plans", label: t.nav.plans, icon: "💎" },
     { key: "help", label: t.nav.help, icon: "❓" },
+    ...(showAdmin ? [{ key: "admin", label: t.nav.admin, icon: "🛡️" }] : []),
   ];
 
   return (
