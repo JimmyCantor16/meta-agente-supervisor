@@ -1,5 +1,6 @@
 import { LanguageToggle } from "./LanguageToggle";
 import { GoogleLoginButton } from "../features/auth/GoogleLoginButton";
+import { NotificationBell } from "../features/notifications/NotificationBell";
 import { useAuth } from "../features/auth/AuthProvider";
 import { useLanguage } from "../i18n/LanguageProvider";
 
@@ -39,6 +40,8 @@ export function TopBar({ onMenu }: TopBarProps) {
         </div>
 
         <LanguageToggle />
+
+        <NotificationBell />
 
         {user ? (
           <div className="flex items-center gap-2">
