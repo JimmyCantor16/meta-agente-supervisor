@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es" data-theme="claro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panel</title>
+  <link rel="icon" href="logo.svg" />
+  <link rel="stylesheet" href="estilos.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="lateral">
+      <div class="marca">
+        <img src="logo.svg" alt="" class="marca-logo" />
+        <span class="marca-nombre" data-marca>Panel</span>
+      </div>
+      <nav class="menu" data-menu></nav>
+      <div class="lateral-pie">
+        <div class="usuario">
+          <span class="usuario-avatar">A</span>
+          <div><strong>Administrador</strong><small>Sesión activa</small></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="principal">
+      <header class="cabecera">
+        <div>
+          <h1 data-titulo>Resumen</h1>
+          <p class="subtitulo" data-descripcion>Vista general de tu sistema.</p>
+        </div>
+        <button class="tema-toggle" data-tema title="Cambiar tema">🌙</button>
+      </header>
+
+      <section id="resumen" class="vista">
+        <div class="kpis" data-kpis></div>
+        <div class="graficas">
+          <article class="tarjeta grafica" data-grafica="lineas">
+            <h2 data-grafica-titulo="lineas">Evolución</h2>
+            <div class="grafica-lienzo" data-lienzo="lineas"></div>
+          </article>
+          <article class="tarjeta grafica" data-grafica="barras">
+            <h2 data-grafica-titulo="barras">Comparativa</h2>
+            <div class="grafica-lienzo" data-lienzo="barras"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="datos" class="vista">
+        <article class="tarjeta">
+          <h2 data-tabla-titulo>Detalle</h2>
+          <div class="tabla-envoltura">
+            <table class="tabla">
+              <thead data-tabla-cabecera></thead>
+              <tbody data-tabla-cuerpo></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="datos.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

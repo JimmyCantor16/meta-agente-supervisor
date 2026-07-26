@@ -283,6 +283,15 @@ class MockProjectGenerator(ProjectGeneratorPort):
             GeneratedFile(path="frontend/Dockerfile", content=_FRONTEND_DOCKERFILE),
         ]
 
+        return self._starter(prompt, configure, files)
+
+    def repair_with_error(self, project: GeneratedProject, error: str) -> GeneratedProject:
+        """El mock no corrige nada: devuelve el proyecto tal cual."""
+        logger.info("[MOCK] repair_with_error ignorado (modo simulado).")
+        return project
+
+    @staticmethod
+    def _starter(prompt: str, configure: str, files: list[GeneratedFile]) -> GeneratedProject:
         return GeneratedProject(
             name="starter-shop",
             summary=(

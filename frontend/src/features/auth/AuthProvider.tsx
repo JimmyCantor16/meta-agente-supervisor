@@ -11,6 +11,7 @@ import { getAuthConfig, loginWithGoogle } from "../../lib/api";
 import type { AuthConfig, AuthUser } from "./types";
 
 const STORAGE_KEY = "auth.user";
+const CREDENTIAL_KEY = "auth.credential";
 
 interface AuthContextValue {
   /** Usuario autenticado, o null. */
@@ -37,15 +38,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
     getAuthConfig().then(setConfig);
   }, []);
 
+  // Si el backend indica que la sesión expiró (401), cerramos sesión para
+  // que la UI pida iniciar sesión de nuevo (login fluido).
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null);
+      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(CREDENTIAL_KEY);
+    };
+    window.addEventListener("auth-expired", onExpired);
+    return () => window.removeEventListener("auth-expired", onExpired);
+  }, []);
+
   const signIn = useCallback(async (credential: string) => {
     const authUser = await loginWithGoogle(credential);
     setUser(authUser);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
+    // Guardamos el token para autenticar las peticiones protegidas (Bearer).
+    window.localStorage.setItem(CREDENTIAL_KEY, credential);
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(CREDENTIAL_KEY);
     // Evita el auto-login de Google en la próxima visita.
     const google = (window as unknown as { google?: { accounts?: { id?: { disableAutoSelect?: () => void } } } }).google;
     google?.accounts?.id?.disableAutoSelect?.();

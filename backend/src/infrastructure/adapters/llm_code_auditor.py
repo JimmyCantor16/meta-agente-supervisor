@@ -51,8 +51,9 @@ class LLMCodeAuditor(CodeAuditorPort):
     """Auditor respaldado por el modelo configurado (Groq/DeepSeek/OpenRouter)."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        # Cliente multi-modelo con fallback entre proveedores gratuitos.
-        self._llm = MultiModelLLM()
+        # Rol "code": aunque su salida es un análisis, le entra el proyecto
+        # entero, así que necesita la misma ventana grande que el generador.
+        self._llm = MultiModelLLM(role="code")
 
     def audit(
         self,

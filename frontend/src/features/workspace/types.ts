@@ -4,10 +4,29 @@
 
 export type EvaluationStatus = "aprobado" | "sugerir_ajustes";
 
+// Pregunta de aterrizaje con opciones marcables (checkbox) + campo libre.
+export interface PreguntaUsuario {
+  texto: string;
+  opciones: string[];
+  permite_otro: boolean;
+}
+
+// Plantilla visual propuesta junto al plan, con su paleta declarada.
+export interface PlantillaPropuesta {
+  nombre: string;
+  descripcion: string;
+  estilo: string;
+  colores: string[];
+}
+
 export interface AgentEvaluation {
   status: EvaluationStatus;
   analisis_critico: string;
   sugerencias_mejora: string[];
+  /** Preguntas de aterrizaje: datos que solo el usuario puede aportar. */
+  preguntas_para_el_usuario?: PreguntaUsuario[];
+  /** Plantillas para elegir, combinar o sustituir por una referencia propia. */
+  plantillas?: PlantillaPropuesta[];
   prompt_final_optimizado: string;
 }
 
@@ -24,6 +43,10 @@ export interface GenerateResult {
   output_path: string;
   files: string[];
   run_instructions: string;
+  /** URL del proyecto ya corriendo (null si no se pudo arrancar). */
+  url?: string | null;
+  /** Manual de usuario con las credenciales de prueba, para mostrarlo tal cual. */
+  manual?: string | null;
 }
 
 // Una sugerencia de mejora del agente auditor.
@@ -50,6 +73,159 @@ export interface TeachingResult {
   steps: string[];
   concepts: string[];
   next_steps: string[];
+}
+
+// Cuánta autonomía se le da a la IA en un ajuste de clase.
+export type NivelAutonomia = "explicar" | "proponer" | "ejecutar";
+
+// Un archivo tocado por un ajuste, con su diff para revisarlo.
+export interface CambioArchivo {
+  path: string;
+  diff: string;
+  es_nuevo: boolean;
+  contenido_nuevo: string;
+}
+
+// Resultado de un ajuste de clase (explicar / proponer / ejecutar).
+export interface AjusteResult {
+  proyecto: string;
+  ajuste: string;
+  nivel: string;
+  explicacion: string;
+  concepto: string;
+  cambios: CambioArchivo[];
+  aplicado: boolean;
+  verificado: boolean;
+  revertido: boolean;
+  detalle: string;
+  /** Id de la propuesta guardada: al ejecutar con él se aplica EXACTAMENTE lo revisado. */
+  propuesta_id?: string | null;
+}
+
+// Resultado de la pasada de auto-mejora (audita y aplica verificando).
+export interface MejoraResult {
+  proyecto: string;
+  diagnostico: string;
+  sugerencias_totales: number;
+  intentadas: number;
+  aplicadas: string[];
+  revertidas: string[];
+  sin_cambios: string[];
+}
+
+// ===== Curso interactivo del profesor =====
+export interface PreguntaQuizDTO {
+  pregunta: string;
+  opciones: string[];
+}
+
+export interface CriterioClase {
+  tipo: "quiz" | "cambio" | "repo_git" | "url_publicada" | "reflexion";
+  descripcion: string;
+  quiz: PreguntaQuizDTO[];
+  aciertos_minimos: number;
+  pista: string;
+}
+
+export interface ClaseCurso {
+  numero: number;
+  titulo: string;
+  objetivo: string;
+  contenido: string;
+  reto: string;
+  concepto_clave: string;
+  criterio: CriterioClase;
+}
+
+export interface ProgresoCurso {
+  curso_id: string;
+  proyecto: string;
+  clase_actual: number;
+  completadas: number[];
+  total_clases: number;
+  graduado: boolean;
+  nivel: "desconocido" | "bajo" | "medio" | "alto";
+}
+
+export interface NivelResult {
+  nivel: string;
+  mensaje: string;
+}
+
+export interface HitoProceso {
+  titulo: string;
+  descripcion: string;
+  depende_de: "alumno" | "plataforma" | "tiempo" | "sistema";
+  hecho: boolean;
+}
+
+export interface MetaProceso {
+  id: string;
+  objetivo: string;
+  resumen: string;
+  hitos: HitoProceso[];
+  hechos: number;
+  total: number;
+}
+
+export interface CursoResult {
+  titulo_curso: string;
+  resumen: string;
+  arquetipo: string;
+  clases: ClaseCurso[];
+  progreso: ProgresoCurso;
+}
+
+export interface MensajeChat {
+  rol: "profesor" | "alumno";
+  texto: string;
+}
+
+export interface VerificacionClase {
+  superada: boolean;
+  mensaje: string;
+  avanzo: boolean;
+  graduado: boolean;
+}
+
+export type EstadoMVP = "funciona" | "parcial" | "vacio";
+
+export interface DiagnosticoMVP {
+  estado: EstadoMVP;
+  puede_verse: boolean;
+  veredicto: string;
+  lo_que_ve_el_usuario: string;
+  problemas: string[];
+  siguiente_paso: string;
+  url: string;
+}
+
+export interface RelanzarResult {
+  diagnostico: DiagnosticoMVP;
+  url: string | null;
+}
+
+export interface EstadoProyecto {
+  corriendo: boolean;
+  url: string | null;
+  puerto: number | null;
+}
+
+export interface SecretosInfo {
+  carpeta: string;
+  nombres: string[];
+  instruccion: string;
+}
+
+export interface ArchivoItem {
+  path: string;
+  bytes: number;
+}
+
+export interface ArchivoContenido {
+  path: string;
+  contenido: string;
+  lenguaje: string;
 }
 
 // Resumen de un proyecto en la galería.

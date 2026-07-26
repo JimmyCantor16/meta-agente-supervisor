@@ -13,7 +13,7 @@ interface UseGenerateProjectResult {
   /** True si el error fue por límite gratuito alcanzado (HTTP 402). */
   licenseRequired: boolean;
   /** Dispara la generación del proyecto para el prompt dado. */
-  generate: (prompt: string) => Promise<void>;
+  generate: (prompt: string, modoInquieto?: boolean) => Promise<void>;
 }
 
 /**
@@ -28,12 +28,12 @@ export function useGenerateProject(): UseGenerateProjectResult {
   const [licenseRequired, setLicenseRequired] = useState(false);
 
   const generate = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, modoInquieto = true) => {
       setLoading(true);
       setError(null);
       setLicenseRequired(false);
       try {
-        setData(await generateProject(prompt, lang));
+        setData(await generateProject(prompt, lang, modoInquieto));
       } catch (err) {
         if (err instanceof ApiError && err.status === 402) {
           setLicenseRequired(true);

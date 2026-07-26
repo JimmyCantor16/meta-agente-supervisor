@@ -1,4 +1,6 @@
-# Orquesta el Meta-Agente completo: backend (FastAPI) + frontend (Nginx).
+# Orquesta el Meta-Agente completo: backend (FastAPI) + frontend (Nginx),
+# más las bases de datos que necesitan los proyectos GENERADOS para poder
+# verificarse ejecutándose de verdad.
 # Levantar todo:  docker compose up --build
 #   Frontend -> http://localhost:8080
 #   API/docs -> http://localhost:8000/docs
@@ -14,11 +16,25 @@ services:
     environment:
       DB_PATH: /app/data/evaluations.db
       GENERATED_DIR: /app/generated
+      # Datos de conexión que el verificador inyecta en el proyecto generado
+      # cuando este pide PostgreSQL o MySQL. Son de USAR Y TIRAR: sirven para
+      # comprobar que el código funciona, no para guardar nada del usuario.
+      VERIFY_POSTGRES_URL: postgresql://verificador:verificador@verify-postgres:5432/verificacion
+      VERIFY_MYSQL_URL: mysql://verificador:verificador@verify-mysql:3306/verificacion
     volumes:
       - ./backend/data:/app/data
       - ./backend/generated:/app/generated
     ports:
       - "8000:8000"
+      # Los proyectos GENERADOS arrancan dentro de este contenedor en este
+      # rango. Sin publicarlo, la URL que se entrega al usuario apunta a un
+      # puerto que su navegador no puede alcanzar: el entregable llegaría roto.
+      - "8100-8120:8100-8120"
+    depends_on:
+      verify-postgres:
+        condition: service_healthy
+      verify-mysql:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -27,4 +43,41 @@ services:
       - backend
     ports:
       - "8080:80"
+    restart: unless-stopped
+
+  # --- Bases de datos SOLO para verificar los proyectos generados ---
+  # Un MVP que pide PostgreSQL debe verificarse CON PostgreSQL: degradarlo a
+  # SQLite sería entregar algo distinto de lo que el usuario pidió. Estas
+  # instancias son efímeras y no guardan nada del usuario final; su base de
+  # datos real es la de su propia máquina.
+  verify-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: verificador
+      POSTGRES_PASSWORD: verificador
+      POSTGRES_DB: verificacion
+    # Sin volumen: los datos deben desaparecer entre verificaciones.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verificador -d verificacion"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  verify-mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: verificador
+      MYSQL_USER: verificador
+      MYSQL_PASSWORD: verificador
+      MYSQL_DATABASE: verificacion
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uverificador", "-pverificador"]
+      interval: 6s
+      timeout: 4s
+      retries: 20
     restart: unless-stopped
