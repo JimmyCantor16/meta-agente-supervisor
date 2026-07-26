@@ -71,11 +71,46 @@ function newId(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
+/** True si corremos DENTRO de la app de escritorio (Tauri), no en el navegador. */
+function esEscritorio(): boolean {
+  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+}
+
+/**
+ * Dispara un aviso NATIVO del sistema (ventana emergente de Windows):
+ * - En ESCRITORIO usa el plugin de notificaciones de Tauri (toast real de Windows).
+ * - En NAVEGADOR usa la Notification API (Chrome/Edge lo muestran como toast de Windows).
+ */
+async function avisoNativo(title: string, body: string): Promise<void> {
+  if (esEscritorio()) {
+    try {
+      const mod = await import("@tauri-apps/plugin-notification");
+      let ok = await mod.isPermissionGranted();
+      if (!ok) ok = (await mod.requestPermission()) === "granted";
+      if (ok) mod.sendNotification({ title, body });
+      return;
+    } catch {
+      /* si el plugin no está, caemos al Notification web */
+    }
+  }
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      const n = new Notification(title, { body });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      /* algunos entornos limitan Notification(); el toast in-app basta */
+    }
+  }
+}
+
 export function NotificationProvider({ children }: PropsWithChildren) {
   const [notifs, setNotifs] = useState<AppNotification[]>(loadNotifs);
   const [toasts, setToasts] = useState<AppNotification[]>([]);
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    "Notification" in window ? Notification.permission : "unsupported",
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() =>
+    esEscritorio() ? "default" : "Notification" in window ? Notification.permission : "unsupported",
   );
   const timers = useRef<Record<string, number>>({});
 
@@ -88,6 +123,16 @@ export function NotificationProvider({ children }: PropsWithChildren) {
   }, [notifs]);
 
   const requestPermission = useCallback(() => {
+    if (esEscritorio()) {
+      import("@tauri-apps/plugin-notification")
+        .then(async (mod) => {
+          const p = await mod.requestPermission();
+          setPermission(p === "granted" ? "granted" : "denied");
+          if (p === "granted") mod.sendNotification({ title: "Avisos activados", body: "Te avisaré aquí cuando tu sistema esté listo." });
+        })
+        .catch(() => undefined);
+      return;
+    }
     if (!("Notification" in window)) return;
     Notification.requestPermission().then((p) => setPermission(p));
   }, []);
@@ -110,18 +155,9 @@ export function NotificationProvider({ children }: PropsWithChildren) {
       setToasts((prev) => prev.filter((t) => t.id !== n.id));
     }, 7000);
 
-    // Aviso NATIVO del sistema (aunque la ventana esté detrás / veas TV).
-    if ("Notification" in window && Notification.permission === "granted") {
-      try {
-        const native = new Notification(n.title, { body: n.body, tag: n.id });
-        native.onclick = () => {
-          window.focus();
-          native.close();
-        };
-      } catch {
-        /* algunos entornos limitan Notification(); el toast in-app basta */
-      }
-    }
+    // Aviso NATIVO del sistema (ventana emergente de Windows), aunque la ventana
+    // esté detrás / estés viendo TV. Escritorio → Tauri; navegador → Notification.
+    void avisoNativo(n.title, n.body);
   }, []);
 
   const markAllRead = useCallback(() => {
