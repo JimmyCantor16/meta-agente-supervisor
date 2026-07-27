@@ -2,6 +2,8 @@
     <!-- Fase 1: la app habla con el backend por red; en pruebas usa http a la
          IP del PC, por eso se permite tráfico en claro (cleartext). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Notificaciones nativas (Android 13+ exige pedir permiso en runtime). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="Meta-Agente · Jamz"
         android:name="${applicationName}"

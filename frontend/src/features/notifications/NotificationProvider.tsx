@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { PropsWithChildren } from "react";
+import { useLanguage } from "../../i18n/LanguageProvider";
 
 // Sistema de notificaciones en tiempo real (per-device): centro de avisos con
 // historial + toasts + AVISO NATIVO del sistema operativo (Notification API, que
@@ -106,7 +107,17 @@ async function avisoNativo(title: string, body: string): Promise<void> {
   }
 }
 
+/** URL del WebSocket de eventos del backend (mismo canal de progreso en vivo). */
+function wsProgresoUrl(): string {
+  // Escritorio (Tauri): el backend compartido corre en el mismo PC (Docker :8000).
+  if (esEscritorio()) return "ws://localhost:8000/api/v1/ws/progreso";
+  // Navegador: mismo origen (nginx hace de proxy al backend).
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${window.location.host}/api/v1/ws/progreso`;
+}
+
 export function NotificationProvider({ children }: PropsWithChildren) {
+  const { t } = useLanguage();
   const [notifs, setNotifs] = useState<AppNotification[]>(loadNotifs);
   const [toasts, setToasts] = useState<AppNotification[]>([]);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() =>
@@ -172,6 +183,63 @@ export function NotificationProvider({ children }: PropsWithChildren) {
   }, []);
 
   const unread = notifs.reduce((acc, n) => acc + (n.read ? 0 : 1), 0);
+
+  // Refs vivos para el WebSocket (evita reconectar en cada render).
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  // FASE 2: un SOLO proceso (la generación en el backend) → aviso EN VIVO a
+  // TODOS los dispositivos conectados (web + escritorio + móvil) al mismo tiempo,
+  // por el WebSocket compartido /api/v1/ws/progreso. Reconecta si se cae.
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let cerrado = false;
+    let retry = 0;
+    const conectar = () => {
+      try {
+        ws = new WebSocket(wsProgresoUrl());
+        ws.onmessage = (e: MessageEvent) => {
+          const txt = String(e.data || "");
+          const tt = tRef.current;
+          if (/VIVO|🚀/i.test(txt)) {
+            const m = txt.match(/https?:\/\/\S+/);
+            notifyRef.current({
+              title: tt.notif.generatedTitle,
+              body: txt.replace(/^🚀\s*/, ""),
+              kind: "success",
+              url: m ? m[0] : null,
+            });
+          } else if (/RETENIDA|no se entrega/i.test(txt)) {
+            notifyRef.current({ title: tt.notif.genErrorTitle, body: tt.notif.genErrorBody, kind: "error" });
+          }
+        };
+        ws.onclose = () => {
+          if (!cerrado) retry = window.setTimeout(conectar, 5000);
+        };
+        ws.onerror = () => {
+          try {
+            ws?.close();
+          } catch {
+            /* noop */
+          }
+        };
+      } catch {
+        retry = window.setTimeout(conectar, 5000);
+      }
+    };
+    conectar();
+    return () => {
+      cerrado = true;
+      window.clearTimeout(retry);
+      try {
+        ws?.close();
+      } catch {
+        /* noop */
+      }
+    };
+  }, []);
 
   const value = useMemo<NotificationContextValue>(
     () => ({ notifs, unread, permission, notify, markAllRead, clearAll, requestPermission }),
