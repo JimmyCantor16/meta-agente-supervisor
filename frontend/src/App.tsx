@@ -10,6 +10,7 @@ import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspa
 import { PublishGuide } from "./features/workspace/components/PublishGuide";
 import { PromptInput } from "./features/workspace/components/PromptInput";
 import { Multimedia } from "./features/multimedia";
+import { MonitorGeneracion } from "./features/monitor/MonitorGeneracion";
 import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
 import { useProjects } from "./features/workspace/hooks/useProjects";
@@ -183,6 +184,8 @@ export default function App() {
                   onOpen={abrirProyecto}
                 />
               ))}
+
+            {view === "monitor" && <MonitorGeneracion />}
 
             {view === "publish" && <PublishGuide projects={projects} />}
 

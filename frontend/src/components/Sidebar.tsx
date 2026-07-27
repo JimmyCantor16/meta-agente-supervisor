@@ -23,6 +23,7 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
 
   const items = [
     { key: "home", label: t.nav.home, icon: "🏠" },
+    { key: "monitor", label: t.nav.monitor, icon: "📡" },
     { key: "projects", label: t.nav.projects, icon: "📁" },
     { key: "learn", label: t.nav.learn, icon: "🎓" },
     { key: "publish", label: t.nav.publish, icon: "🚀" },
