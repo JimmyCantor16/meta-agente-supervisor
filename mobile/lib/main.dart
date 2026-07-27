@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 
 const _brand = Color(0xFF6366F1);
 
@@ -103,15 +104,31 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$ws/api/v1/ws/progreso';
   }
 
-  void _conectarWs() {
+  void _reintentar() {
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted && !_conectado) _conectarWs();
+    });
+  }
+
+  Future<void> _conectarWs() async {
     try {
       _ws?.sink.close();
-      final c = WebSocketChannel.connect(Uri.parse(_wsUrl()));
+    } catch (_) {}
+    try {
+      // ping cada 15s = keep-alive: evita que el router cierre la conexión inactiva.
+      final c = IOWebSocketChannel.connect(
+        Uri.parse(_wsUrl()),
+        pingInterval: const Duration(seconds: 15),
+        connectTimeout: const Duration(seconds: 8),
+      );
       _ws = c;
+      await c.ready; // solo marcamos "En vivo" cuando la conexión es REAL
+      if (!mounted) return;
       setState(() => _conectado = true);
       c.stream.listen(
         (data) {
           final txt = data.toString();
+          if (!mounted) return;
           setState(() {
             _feed.insert(0, txt);
             if (_feed.length > 40) _feed.removeLast();
@@ -123,17 +140,19 @@ class _HomeScreenState extends State<HomeScreen> {
             _mostrarNoti('La generación no terminó', txt);
           }
         },
-        onError: (_) => setState(() => _conectado = false),
-        onDone: () {
-          if (!mounted) return;
-          setState(() => _conectado = false);
-          Future.delayed(const Duration(seconds: 5), () {
-            if (mounted && !_conectado) _conectarWs();
-          });
+        onError: (_) {
+          if (mounted) setState(() => _conectado = false);
+          _reintentar();
         },
+        onDone: () {
+          if (mounted) setState(() => _conectado = false);
+          _reintentar();
+        },
+        cancelOnError: true,
       );
     } catch (_) {
-      setState(() => _conectado = false);
+      if (mounted) setState(() => _conectado = false);
+      _reintentar();
     }
   }
 
