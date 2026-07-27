@@ -119,7 +119,19 @@ export function TvView() {
         {m.channels.length === 0 && (
           <p className="px-1 py-4 text-center text-xs text-slate-400">{t.multimedia.tvNoChannels}</p>
         )}
-        {m.channels.map((c) => {
+        {m.channels
+          .filter(
+            // En producción (HTTPS) el navegador BLOQUEA streams http:// por
+            // mixed-content: se ocultan para no ofrecer canales que nunca
+            // reproducirán. En local (HTTP) se muestran todos.
+            (c) =>
+              !(
+                typeof window !== "undefined" &&
+                window.location.protocol === "https:" &&
+                c.url.startsWith("http://")
+              ),
+          )
+          .map((c) => {
           const activo = m.current?.url === c.url && m.active === "tv";
           return (
             <div
