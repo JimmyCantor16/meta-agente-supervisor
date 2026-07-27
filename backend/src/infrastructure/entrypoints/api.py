@@ -423,7 +423,12 @@ def get_project_generator() -> ProjectGeneratorPort:
         logger.warning("USE_MOCK_LLM=true -> generador de proyectos SIMULADO.")
         return MockProjectGenerator()
     # Generador iterativo (planificar -> escribir por archivo -> auto-reparar).
-    return IterativeProjectGenerator()
+    iterativo = IterativeProjectGenerator()
+    # Envuelto por el generador de ESQUELETO: para la clase más común (CRUD web con
+    # login) entrega un proyecto PROBADO que sube solo; el resto lo hace el libre.
+    from src.infrastructure.adapters.skeleton_generator import SkeletonProjectGenerator
+
+    return SkeletonProjectGenerator(fallback=iterativo)
 
 
 @lru_cache
@@ -683,7 +688,24 @@ def get_current_user(
     """Identifica al usuario a partir del token de Google (header Authorization).
 
     Raises 401 si no hay sesión válida.
+
+    PUERTA DE DESARROLLO LOCAL (AUTH_DEV_BYPASS=1): SOLO para el arnés de pruebas
+    que entrena al agente en la máquina local. Permite disparar /generate sin un
+    token de Google vivo (imposible de scriptear sin abrir el navegador). Se
+    activa únicamente si la variable de entorno está puesta —lo está en el
+    docker-compose local, NUNCA en el despliegue de Render— así producción sigue
+    exigiendo Google. Acepta 'Bearer dev-local' o directamente ninguna cabecera.
     """
+    import os
+
+    if os.environ.get("AUTH_DEV_BYPASS") == "1":
+        token = (authorization or "").split(" ", 1)[-1].strip() if authorization else ""
+        if not authorization or token == "dev-local":
+            dev = account.get_or_create("dev-local", "dev@local.test", "Dev Local")
+            # 'paid' en memoria: el arnés de entrenamiento genera muchas veces y
+            # no debe chocar con el cupo gratis (no persiste; solo esta petición).
+            dev.paid = True
+            return dev
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

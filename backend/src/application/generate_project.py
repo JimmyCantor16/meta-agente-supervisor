@@ -126,6 +126,11 @@ class GenerateProjectUseCase:
 
         # --- Bucle de auto-verificación con el error REAL ---
         for attempt in range(1, _MAX_FIX_ATTEMPTS + 1):
+            # Antes de verificar: fixes DETERMINISTAS (sin IA) de los errores que
+            # el modelo repite y que el verificador no atrapa solo (cableado de
+            # routers, pines incompatibles, módulos ES). Convierte "abre pero no
+            # deja entrar" en "usable".
+            self._normalizar_determinista(output_path)
             error = self._verifier.verify(output_path)
             if error is None:
                 logger.info("Verificación superada en el intento %d.", attempt)
@@ -139,6 +144,24 @@ class GenerateProjectUseCase:
                     )
                 return project, output_path
 
+            # PRIMERO: reparación DETERMINISTA dirigida por el ERROR real (imports
+            # faltantes, import desde el módulo equivocado). El auto-repair del LLM
+            # resultó poco fiable hasta para esto; esto lo arregla garantizado y
+            # gratis. Si resuelve, re-verifica y entrega sin gastar una llamada.
+            if self._reparar_por_error(output_path, error):
+                self._resync_desde_disco(project, output_path)
+                error_post = self._verifier.verify(output_path)
+                if error_post is None:
+                    logger.info("Verificación superada tras fix determinista de imports (intento %d).", attempt)
+                    project, output_path = self._entregar(project, output_path, original, language)
+                    if self.last_url is None:
+                        logger.warning(
+                            "ENTREGABLE INCOMPLETO: '%s' no se pudo arrancar, no hay URL.",
+                            project.name,
+                        )
+                    return project, output_path
+                error = error_post  # sigue roto: el LLM recibe el error ya actualizado
+
             # Se registra el error COMPLETO de cada intento, no solo el último:
             # sin esto no hay forma de saber por qué falló una ronda intermedia,
             # y cada iteración se convierte en una adivinanza.
@@ -148,6 +171,9 @@ class GenerateProjectUseCase:
                 _MAX_FIX_ATTEMPTS,
                 error[-1800:],
             )
+            # El LLM repara sobre la versión YA normalizada en disco (si no, pisa
+            # los fixes deterministas con su copia en memoria desactualizada).
+            self._resync_desde_disco(project, output_path)
             huella_previa = {f.path: f.content for f in project.files}
             project = self._generator.repair_with_error(project, error)
 
@@ -203,6 +229,44 @@ class GenerateProjectUseCase:
             )
         return project, output_path
 
+    def _normalizar_determinista(self, output_path: str) -> None:
+        """Aplica los fixes deterministas (sin IA) antes de verificar/entregar:
+        cableado de routers y pines incompatibles (backend) + módulos ES
+        (frontend). Nunca bloquea: si algo falla, sigue el flujo normal."""
+        try:
+            from src.infrastructure.adapters.backend_fixes import reparar_backend
+            from src.infrastructure.adapters.frontend_fixes import reparar_frontend
+
+            reparar_backend(output_path)
+            reparar_frontend(output_path)
+        except Exception as exc:  # noqa: BLE001 - normalizar es best-effort
+            logger.warning("Normalización determinista falló (no bloquea): %s", exc)
+
+    def _reparar_por_error(self, output_path: str, error: str) -> bool:
+        """Fix determinista dirigido por el error de verificación (imports)."""
+        try:
+            from src.infrastructure.adapters.backend_fixes import reparar_por_error
+
+            return reparar_por_error(output_path, error)
+        except Exception as exc:  # noqa: BLE001 - reparar es best-effort
+            logger.warning("Fix por error falló (no bloquea): %s", exc)
+            return False
+
+    def _resync_desde_disco(self, project: GeneratedProject, output_path: str) -> None:
+        """Re-lee los archivos del proyecto desde disco a memoria, para que las
+        reparaciones deterministas (que editan en disco) no las pise el LLM con
+        su copia en memoria desactualizada."""
+        from pathlib import Path
+
+        base = Path(output_path)
+        for f in project.files:
+            p = base / f.path
+            if p.exists():
+                try:
+                    f.content = p.read_text(encoding="utf-8", errors="ignore")
+                except Exception:  # noqa: BLE001
+                    pass
+
     def _launch(self, project: GeneratedProject, output_path: str) -> None:
         """Arranca el proyecto verificado y guarda su URL para entregarla.
 
@@ -219,6 +283,21 @@ class GenerateProjectUseCase:
             from src.infrastructure.adapters.validacion_navegador import validar_render
 
             fallo_render = validar_render(self.last_url)
+            if fallo_render is not None:
+                # ENTRENAMIENTO DETERMINISTA: antes de retener la URL, arreglamos
+                # los dos fallos de carga de frontend más comunes (módulos ES sin
+                # type=module; símbolos importados que el módulo destino no
+                # exporta) SIN gastar una llamada al LLM. Los estáticos se sirven
+                # por-petición, así que no hay que reiniciar el runner: se parchea
+                # en disco y se revalida una vez.
+                from src.infrastructure.adapters.frontend_fixes import reparar_frontend
+
+                if reparar_frontend(output_path):
+                    logger.info(
+                        "Gate de render: reparación determinista de frontend aplicada; "
+                        "revalidando %s.", self.last_url,
+                    )
+                    fallo_render = validar_render(self.last_url)
             if fallo_render is None:
                 logger.info("Proyecto disponible en %s (render validado).", self.last_url)
                 return
