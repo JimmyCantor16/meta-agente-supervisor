@@ -71,8 +71,11 @@ function esEscritorio(): boolean {
 }
 function wsUrl(): string {
   if (esEscritorio()) return "ws://localhost:8000/api/v1/ws/progreso";
+  const host = window.location.host;
+  // En Render el proxy del sitio estático NO reenvía WebSocket → directo al backend.
+  if (host.endsWith(".onrender.com")) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}/api/v1/ws/progreso`;
+  return `${proto}://${host}/api/v1/ws/progreso`;
 }
 
 /** Aplica un mensaje del WS al estado (heurística por el contenido traducido). */
