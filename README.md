@@ -23,6 +23,8 @@ proyectos de código y a formar a quien los usa.
 | 🧾 **Memoria + feedback (RAG)** | Recuerda evaluaciones marcadas como útiles y las reutiliza como ejemplos. |
 | 🔒 **Licencia** | N generaciones gratis, luego activación por clave. |
 | 🔐 **Login con Google** | Autenticación con la cuenta de Google (OAuth / ID token). |
+| 📺 **Free TV & Radio (Jamz Software)** | Reproductor gratuito integrado (panel izquierdo): TV en vivo (HLS) y Radio, con mini-tele estilo Simpsons que puedes **sacar del navegador** (Picture-in-Picture) y ver **mientras el sistema trabaja** en tu proyecto. |
+| 🔔 **Notificaciones en tiempo real** | Te **avisa** (aviso del sistema) cuando tu proyecto termina de generarse, para que puedas ver tele/oír radio mientras tanto y volver cuando esté listo. |
 | 🌐 **i18n ES/EN** | Interfaz bilingüe. |
 
 ---
