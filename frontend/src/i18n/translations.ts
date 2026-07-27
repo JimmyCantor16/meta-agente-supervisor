@@ -114,9 +114,11 @@ const es = {
     logout: "Salir",
   },
   auth: {
-    bridgeButton: "Entrar con Google (se abre tu navegador)",
+    bridgeButton: "Entrar con Google (abre el navegador)",
     bridgeWaiting: "Esperando tu login en el navegador…",
     bridgeHint: "Completa el inicio de sesión en la ventana de tu navegador y vuelve aquí: la app te reconocerá sola.",
+    desktopOpenedWeb: "Abrí tu navegador en localhost:8080. Inicia sesión con Google ahí; el escritorio te seguirá mostrando las notificaciones.",
+    desktopOpenWebManual: "Abre http://localhost:8080 en tu navegador para iniciar sesión.",
   },
   hero: {
     greeting: "Hola 👋 Soy tu Meta-Agente",
@@ -533,9 +535,11 @@ const en: Translation = {
     logout: "Sign out",
   },
   auth: {
-    bridgeButton: "Sign in with Google (opens your browser)",
+    bridgeButton: "Sign in with Google (opens browser)",
     bridgeWaiting: "Waiting for your login in the browser…",
     bridgeHint: "Complete the sign-in in your browser window and come back: the app will recognize you automatically.",
+    desktopOpenedWeb: "Opened your browser at localhost:8080. Sign in with Google there; the desktop keeps showing your notifications.",
+    desktopOpenWebManual: "Open http://localhost:8080 in your browser to sign in.",
   },
   hero: {
     greeting: "Hi 👋 I'm your Meta-Agent",
