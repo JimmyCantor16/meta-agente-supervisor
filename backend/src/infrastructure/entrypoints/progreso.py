@@ -31,6 +31,7 @@ _FUENTES = (
     "src.infrastructure.adapters.validacion_navegador",
     "src.application.aplicar_ajuste",
     "src.application.mejorar_proyecto",
+    "src.infrastructure.adapters.multimodel_llm",
 )
 
 # Los mensajes técnicos se traducen a pasos que un no-programador entiende.
@@ -47,6 +48,14 @@ _AMIGABLES = (
     (re.compile(r"render validado", re.I), "🛡️ El navegador confirmó que tu página SE VE perfecta."),
     (re.compile(r"URL RETENIDA", re.I), "🛡️ La página no pasó la inspección del navegador: no se entrega rota."),
     (re.compile(r"Arreglo automático en (\S+)", re.I), "🩹 Arreglo automático aplicado en {0}"),
+    # --- Cerebro IA: qué proveedor gratis respondió / cuál falló (fallback) ---
+    (re.compile(r"OK con '(.+?)' \[rol=(.+?)\]", re.I), "🤖 IA «{0}» respondió (rol {1})"),
+    (re.compile(r"Proveedor '(.+?)' falló", re.I), "⚠️ IA «{0}» falló → salto a la siguiente"),
+    (re.compile(r"Proveedor '(.+?)' devolvió respuesta vacía", re.I), "⚠️ IA «{0}» sin respuesta → siguiente"),
+    (re.compile(r"Proveedor '(.+?)' cortó la respuesta", re.I), "⚠️ IA «{0}» respuesta cortada → siguiente"),
+    (re.compile(r"Proveedor '(.+?)' devolvió JSON inválido", re.I), "⚠️ IA «{0}» formato inválido → siguiente"),
+    (re.compile(r"con (\d+) proveedor", re.I), "🧠 Cerebro IA listo: {0} modelos en cadena"),
+    (re.compile(r"Todos los proveedores.*fallaron", re.I), "🛑 Todos los proveedores de IA fallaron"),
 )
 
 logger = logging.getLogger(__name__)
