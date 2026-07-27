@@ -33,6 +33,8 @@ export function useGenerateProject(): UseGenerateProjectResult {
       setError(null);
       setLicenseRequired(false);
       try {
+        // El aviso de "sistema listo" lo emite el WebSocket compartido a TODOS los
+        // dispositivos (web + escritorio + móvil), no solo a este. Ver NotificationProvider.
         setData(await generateProject(prompt, lang, modoInquieto));
       } catch (err) {
         if (err instanceof ApiError && err.status === 402) {
