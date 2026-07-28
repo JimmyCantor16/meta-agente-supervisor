@@ -204,9 +204,13 @@ class EntregarPuenteRequest(BaseModel):
 
 @router.post("/puente/entregar")
 def entregar_puente(request: EntregarPuenteRequest) -> dict:
-    """La página-puente deposita el credential (verificado) para su estado."""
-    if not _es_escritorio():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solo escritorio.")
+    """La web (local o producción) deposita el credential VERIFICADO para su estado.
+
+    Disponible también en producción: es el eslabón del login de la app de
+    escritorio (Google bloquea su login dentro del WebView, así que la sesión
+    nace en el navegador y viaja por aquí). Seguro porque el credential se
+    verifica ANTES de depositarse, caduca a los 5 minutos y se retira UNA vez.
+    """
     if not _estado_valido(request.estado):
         raise HTTPException(status_code=422, detail="Estado inválido.")
     # Se verifica AQUÍ: un credential inválido jamás queda depositado.
@@ -221,9 +225,12 @@ def entregar_puente(request: EntregarPuenteRequest) -> dict:
 
 @router.get("/puente/recoger")
 def recoger_puente(estado: str = "") -> dict:
-    """La app recoge el credential una única vez (y este se destruye)."""
-    if not _es_escritorio():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solo escritorio.")
+    """La app de escritorio recoge el credential UNA única vez (y se destruye).
+
+    Disponible también en producción (ver `entregar_puente`). Adivinar un estado
+    ajeno es inviable: 16-64 caracteres alfanuméricos aleatorios con vida de 5
+    minutos y retiro único.
+    """
     if not _estado_valido(estado):
         raise HTTPException(status_code=422, detail="Estado inválido.")
     with _puente_lock:

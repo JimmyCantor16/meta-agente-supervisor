@@ -36,17 +36,59 @@ export function GoogleLoginButton() {
   // funciona. El escritorio ya ve las notificaciones sin sesión. ---
   const WEB_PROD = "https://metaagente-frontend.onrender.com";
   const [aviso, setAviso] = useState<string | null>(null);
+  const [esperando, setEsperando] = useState(false);
+  const cancelado = useRef(false);
+
+  /** Código de un solo uso (alfanumérico, 16-64), como exige el backend. */
+  const nuevoCodigo = (): string => {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 32);
+  };
+
+  // PUENTE: la sesión nace en el navegador (origen autorizado) y viaja hasta la
+  // app. Se abre la web con un código y se sondea al backend hasta recogerla.
   const entrarPorNavegador = async () => {
     setErrorPuente(null);
     setAviso(null);
+    const codigo = nuevoCodigo();
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(WEB_PROD);
-      setAviso(t.auth.desktopOpenedWeb);
+      await openUrl(`${WEB_PROD}/?puente=${codigo}`);
     } catch {
       setErrorPuente(t.auth.desktopOpenWebManual);
+      return;
     }
+    setAviso(t.auth.desktopOpenedWeb);
+    setEsperando(true);
+    cancelado.current = false;
+    const { recogerCredencialPuente } = await import("../../lib/api");
+    // Hasta 5 minutos (lo que vive el código), comprobando cada 2 segundos.
+    for (let i = 0; i < 150 && !cancelado.current; i += 1) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const credential = await recogerCredencialPuente(codigo);
+      if (!credential) continue;
+      try {
+        await signIn(credential);
+        setEsperando(false);
+        setAviso(null);
+      } catch {
+        setEsperando(false);
+        setErrorPuente(t.auth.desktopOpenWebManual);
+      }
+      return;
+    }
+    setEsperando(false);
+    if (!cancelado.current) setErrorPuente(t.auth.bridgeTimeout);
   };
+
+  // Al desmontar, se corta el sondeo.
+  useEffect(
+    () => () => {
+      cancelado.current = true;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (API_ESCRITORIO) return; // escritorio: no se usa GIS embebido
@@ -94,12 +136,14 @@ export function GoogleLoginButton() {
       <div className="flex flex-col items-end gap-1.5">
         <button
           onClick={() => void entrarPorNavegador()}
-          className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-300"
+          disabled={esperando}
+          className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-300 disabled:opacity-60"
         >
-          <span aria-hidden>🌐</span>
-          {t.auth.bridgeButton}
+          <span aria-hidden>{esperando ? "⏳" : "🌐"}</span>
+          {esperando ? t.auth.bridgeWaiting : t.auth.bridgeButton}
         </button>
-        {aviso && <p className="max-w-[220px] text-right text-xs text-emerald-600">✅ {aviso}</p>}
+        {esperando && <p className="max-w-[220px] text-right text-xs text-slate-500">{t.auth.bridgeHint}</p>}
+        {aviso && !esperando && <p className="max-w-[220px] text-right text-xs text-emerald-600">✅ {aviso}</p>}
         {errorPuente && <p className="max-w-[220px] text-right text-xs text-red-600">⚠ {errorPuente}</p>}
       </div>
     );

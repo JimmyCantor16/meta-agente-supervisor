@@ -118,8 +118,10 @@ const es = {
     bridgeButton: "Entrar con Google (abre el navegador)",
     bridgeWaiting: "Esperando tu login en el navegador…",
     bridgeHint: "Completa el inicio de sesión en la ventana de tu navegador y vuelve aquí: la app te reconocerá sola.",
-    desktopOpenedWeb: "Abrí la web de Meta-Agente en tu navegador. Inicia sesión con Google ahí; el escritorio te seguirá mostrando las notificaciones en vivo.",
+    desktopOpenedWeb: "Abrí la web de Meta-Agente en tu navegador. Inicia sesión con Google ahí y la app te reconocerá sola.",
     desktopOpenWebManual: "Abre metaagente-frontend.onrender.com en tu navegador para iniciar sesión.",
+    bridgeTimeout: "Se agotó el tiempo de espera. Pulsa de nuevo para intentarlo.",
+    bridgeReturn: "¡Listo! Vuelve a la app de escritorio: ya tienes la sesión.",
   },
   hero: {
     greeting: "Hola 👋 Soy tu Meta-Agente",
@@ -560,8 +562,10 @@ const en: Translation = {
     bridgeButton: "Sign in with Google (opens browser)",
     bridgeWaiting: "Waiting for your login in the browser…",
     bridgeHint: "Complete the sign-in in your browser window and come back: the app will recognize you automatically.",
-    desktopOpenedWeb: "Opened the Meta-Agent web app in your browser. Sign in with Google there; the desktop keeps showing your live notifications.",
+    desktopOpenedWeb: "Opened the Meta-Agent web app in your browser. Sign in with Google there and the app will recognize you automatically.",
     desktopOpenWebManual: "Open metaagente-frontend.onrender.com in your browser to sign in.",
+    bridgeTimeout: "Timed out. Press again to retry.",
+    bridgeReturn: "Done! Go back to the desktop app: your session is ready.",
   },
   hero: {
     greeting: "Hi 👋 I'm your Meta-Agent",

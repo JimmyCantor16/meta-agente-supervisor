@@ -7,11 +7,22 @@ import {
   useState,
 } from "react";
 import type { PropsWithChildren } from "react";
-import { getAuthConfig, loginWithGoogle } from "../../lib/api";
+import { depositarCredencialPuente, getAuthConfig, loginWithGoogle } from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageProvider";
 import type { AuthConfig, AuthUser } from "./types";
 
 const STORAGE_KEY = "auth.user";
 const CREDENTIAL_KEY = "auth.credential";
+
+/** Código del PUENTE de escritorio, si esta web se abrió para dar sesión a la app. */
+function codigoPuente(): string | null {
+  try {
+    const codigo = new URLSearchParams(window.location.search).get("puente");
+    return codigo && /^[A-Za-z0-9]{16,64}$/.test(codigo) ? codigo : null;
+  } catch {
+    return null;
+  }
+}
 
 interface AuthContextValue {
   /** Usuario autenticado, o null. */
@@ -22,6 +33,10 @@ interface AuthContextValue {
   signIn: (credential: string) => Promise<void>;
   /** Cierra la sesión. */
   logout: () => void;
+  /** True si esta web se abrió para dar sesión a la app de escritorio. */
+  esPuenteEscritorio: boolean;
+  /** True cuando el token ya viajó al escritorio (puede volver a la app). */
+  puenteEntregado: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -33,6 +48,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return stored ? (JSON.parse(stored) as AuthUser) : null;
   });
   const [config, setConfig] = useState<AuthConfig | null>(null);
+  const [esPuenteEscritorio] = useState<boolean>(() => codigoPuente() !== null);
+  const [puenteEntregado, setPuenteEntregado] = useState(false);
 
   useEffect(() => {
     getAuthConfig().then(setConfig);
@@ -56,6 +73,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     // Guardamos el token para autenticar las peticiones protegidas (Bearer).
     window.localStorage.setItem(CREDENTIAL_KEY, credential);
+
+    // PUENTE: si esta web se abrió desde la app de escritorio, le entregamos la
+    // sesión recién nacida (el escritorio la está esperando con su código).
+    const codigo = codigoPuente();
+    if (codigo) {
+      const ok = await depositarCredencialPuente(codigo, credential);
+      setPuenteEntregado(ok);
+    }
   }, []);
 
   const logout = useCallback(() => {
@@ -68,11 +93,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, config, signIn, logout }),
-    [user, config, signIn, logout]
+    () => ({ user, config, signIn, logout, esPuenteEscritorio, puenteEntregado }),
+    [user, config, signIn, logout, esPuenteEscritorio, puenteEntregado]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {esPuenteEscritorio && puenteEntregado && <AvisoVuelveALaApp />}
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/** Aviso para quien vino desde la app de escritorio: la sesión ya viajó. */
+function AvisoVuelveALaApp() {
+  const { t } = useLanguage();
+  return (
+    <div className="fixed inset-x-0 top-0 z-[80] flex items-center justify-center gap-2 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg">
+      <span aria-hidden>✅</span>
+      {t.auth.bridgeReturn}
+    </div>
+  );
 }
 
 export function useAuth(): AuthContextValue {

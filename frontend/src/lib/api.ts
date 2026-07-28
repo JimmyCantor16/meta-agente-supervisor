@@ -371,6 +371,45 @@ export async function loginWithGoogle(credential: string): Promise<AuthUser> {
   return (await response.json()) as AuthUser;
 }
 
+// --- PUENTE DE SESIÓN para la app de escritorio -----------------------------
+// Google bloquea su login dentro del WebView de la app, así que la sesión nace
+// en el NAVEGADOR (origen autorizado) y viaja al escritorio por este puente:
+// la web deposita el credential ya verificado bajo un código de un solo uso, y
+// el escritorio lo recoge. El código caduca a los 5 minutos.
+const PUENTE_ENTREGAR_ENDPOINT = `${API_BASE}/api/v1/auth/puente/entregar`;
+const PUENTE_RECOGER_ENDPOINT = `${API_BASE}/api/v1/auth/puente/recoger`;
+
+/** La WEB deposita el credential verificado para que lo recoja el escritorio. */
+export async function depositarCredencialPuente(
+  estado: string,
+  credential: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(PUENTE_ENTREGAR_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estado, credential }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** El ESCRITORIO recoge el credential (una sola vez). null si aún no está. */
+export async function recogerCredencialPuente(estado: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `${PUENTE_RECOGER_ENDPOINT}?estado=${encodeURIComponent(estado)}`,
+    );
+    if (!response.ok) return null;
+    const body = (await response.json()) as { credential?: string };
+    return body?.credential ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Cuenta por usuario + super-admin ---------------------------------------
 const ACCOUNT_ME_ENDPOINT = `${API_BASE}/api/v1/agent/account/me`;
 const ACCOUNT_UPGRADE_ENDPOINT = `${API_BASE}/api/v1/agent/account/request-upgrade`;
