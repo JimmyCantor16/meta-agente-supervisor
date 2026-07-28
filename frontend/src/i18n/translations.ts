@@ -118,8 +118,8 @@ const es = {
     bridgeButton: "Entrar con Google (abre el navegador)",
     bridgeWaiting: "Esperando tu login en el navegador…",
     bridgeHint: "Completa el inicio de sesión en la ventana de tu navegador y vuelve aquí: la app te reconocerá sola.",
-    desktopOpenedWeb: "Abrí tu navegador en localhost:8080. Inicia sesión con Google ahí; el escritorio te seguirá mostrando las notificaciones.",
-    desktopOpenWebManual: "Abre http://localhost:8080 en tu navegador para iniciar sesión.",
+    desktopOpenedWeb: "Abrí la web de Meta-Agente en tu navegador. Inicia sesión con Google ahí; el escritorio te seguirá mostrando las notificaciones en vivo.",
+    desktopOpenWebManual: "Abre metaagente-frontend.onrender.com en tu navegador para iniciar sesión.",
   },
   hero: {
     greeting: "Hola 👋 Soy tu Meta-Agente",
@@ -161,6 +161,7 @@ const es = {
     minChars: (current: number, min: number) =>
       `Escribe al menos ${min} caracteres (${current}/${min}).`,
     submit: "Evaluar idea",
+    loginRequired: "Inicia sesión con Google para empezar",
     submitting: "Analizando…",
     teacherMode: "Modo profesor",
     teacherOn: "El agente te explicará y enseñará",
@@ -559,8 +560,8 @@ const en: Translation = {
     bridgeButton: "Sign in with Google (opens browser)",
     bridgeWaiting: "Waiting for your login in the browser…",
     bridgeHint: "Complete the sign-in in your browser window and come back: the app will recognize you automatically.",
-    desktopOpenedWeb: "Opened your browser at localhost:8080. Sign in with Google there; the desktop keeps showing your notifications.",
-    desktopOpenWebManual: "Open http://localhost:8080 in your browser to sign in.",
+    desktopOpenedWeb: "Opened the Meta-Agent web app in your browser. Sign in with Google there; the desktop keeps showing your live notifications.",
+    desktopOpenWebManual: "Open metaagente-frontend.onrender.com in your browser to sign in.",
   },
   hero: {
     greeting: "Hi 👋 I'm your Meta-Agent",
@@ -601,6 +602,7 @@ const en: Translation = {
     minChars: (current: number, min: number) =>
       `Type at least ${min} characters (${current}/${min}).`,
     submit: "Evaluate idea",
+    loginRequired: "Sign in with Google to start",
     submitting: "Analyzing…",
     teacherMode: "Teacher mode",
     teacherOn: "The agent will explain and teach you",

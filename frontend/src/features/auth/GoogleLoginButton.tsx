@@ -31,16 +31,17 @@ export function GoogleLoginButton() {
   const [errorPuente, setErrorPuente] = useState<string | null>(null);
 
   // --- Rama ESCRITORIO: Google BLOQUEA el login dentro del WebView y el origen
-  // de la app no está autorizado. Solución que SÍ funciona hoy: abrir la web
-  // (localhost:8080, origen autorizado) en el navegador real, donde el login de
-  // Google funciona. El escritorio no necesita sesión para ver notificaciones. ---
+  // de la app no está autorizado. Solución que SÍ funciona: abrir la WEB DE
+  // PRODUCCIÓN (origen autorizado en Google) en el navegador real, donde el login
+  // funciona. El escritorio ya ve las notificaciones sin sesión. ---
+  const WEB_PROD = "https://metaagente-frontend.onrender.com";
   const [aviso, setAviso] = useState<string | null>(null);
   const entrarPorNavegador = async () => {
     setErrorPuente(null);
     setAviso(null);
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl("http://localhost:8080");
+      await openUrl(WEB_PROD);
       setAviso(t.auth.desktopOpenedWeb);
     } catch {
       setErrorPuente(t.auth.desktopOpenWebManual);

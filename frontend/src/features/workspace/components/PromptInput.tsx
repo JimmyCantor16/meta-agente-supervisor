@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "../../../components/Button";
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import { useAuth } from "../../auth/AuthProvider";
 
 interface PromptInputProps {
   /** Se dispara al enviar; recibe el texto del prompt. */
@@ -29,10 +30,14 @@ export function PromptInput({
   initialValue = "",
 }: PromptInputProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [value, setValue] = useState(initialValue);
 
   const trimmed = value.trim();
-  const isValid = trimmed.length >= MIN_LENGTH;
+  // Sin sesión NO se puede empezar: evita el "error inesperado" de intentar
+  // generar/evaluar sin estar autenticado.
+  const necesitaSesion = !user;
+  const isValid = trimmed.length >= MIN_LENGTH && !necesitaSesion;
 
   const handleSubmit = () => {
     if (isValid && !loading) onSubmit(trimmed);
@@ -74,8 +79,12 @@ export function PromptInput({
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-slate-400 sm:block">
-            {isValid ? "Ctrl + Enter" : t.promptInput.minChars(trimmed.length, MIN_LENGTH)}
+          <span className={`text-xs ${necesitaSesion ? "font-medium text-brand-600" : "hidden text-slate-400 sm:block"}`}>
+            {necesitaSesion
+              ? `🔐 ${t.promptInput.loginRequired}`
+              : isValid
+                ? "Ctrl + Enter"
+                : t.promptInput.minChars(trimmed.length, MIN_LENGTH)}
           </span>
           <Button onClick={handleSubmit} loading={loading} disabled={!isValid}>
             {loading ? t.promptInput.submitting : t.promptInput.submit}
