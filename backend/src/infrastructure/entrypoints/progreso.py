@@ -40,7 +40,7 @@ _AMIGABLES = (
     (re.compile(r"Sin arquetipo claro", re.I), "🧠 Idea única: diseñando tu sistema desde cero…"),
     (re.compile(r"Plan: (\d+) archivo", re.I), "📐 Plano listo: {0} archivos por construir."),
     (re.compile(r"Escrito (\d+)/(\d+): (.+)", re.I), "✍️ Escribiendo {0} de {1}: {2}"),
-    (re.compile(r"Instalando dependencias", re.I), "📦 Instalando las piezas (npm install)…"),
+    (re.compile(r"Instalando dependencias", re.I), "📦 Instalando las dependencias del proyecto…"),
     (re.compile(r"Compilando el frontend", re.I), "🏗️ Compilando la interfaz…"),
     (re.compile(r"Verificación superada", re.I), "✅ ¡Verificación superada! Tu sistema compila y arranca."),
     (re.compile(r"Verificación falló \(intento (\d+)", re.I), "🔧 Algo falló (intento {0}); reparando con el error real…"),
