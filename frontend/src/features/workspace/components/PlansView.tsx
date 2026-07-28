@@ -17,10 +17,15 @@ interface PlanDef {
   price: string;
   period: string;
   highlight?: boolean;
+  /** Nivel del agente de pago: refleja `ia_experta` del backend. */
+  ia?: "critico" | "total";
+  /** Frase que explica QUÉ hace el agente experto en este plan. */
+  iaClaim?: string;
   features: string[];
 }
 
-// Contenido de los planes (editable por el negocio). Bilingüe.
+// Contenido comercial de los planes. Los límites y el nivel de IA son los
+// mismos que declara el backend en `domain/planes.py`; aquí vive solo el texto.
 function plansFor(lang: Language, forever: string, perMonth: string): PlanDef[] {
   const es = lang === "es";
   return [
@@ -30,27 +35,44 @@ function plansFor(lang: Language, forever: string, perMonth: string): PlanDef[] 
       price: "$0",
       period: forever,
       features: es
-        ? ["3 proyectos generados", "3 clases (Modo Profesor)", "Multi-modelo de IA gratis", "Soporte de comunidad"]
-        : ["3 generated projects", "3 lessons (Teacher mode)", "Free multi-model AI", "Community support"],
+        ? ["1 proyecto generado", "5 clases (Modo Profesor)", "Multi-modelo de IA gratis", "Soporte de comunidad"]
+        : ["1 generated project", "5 lessons (Teacher mode)", "Free multi-model AI", "Community support"],
     },
     {
       id: "pro",
       name: "Pro",
       price: "$9",
       period: perMonth,
-      highlight: true,
       features: es
-        ? ["Proyectos ilimitados", "Clases ilimitadas", "App de escritorio", "Soporte por email"]
-        : ["Unlimited projects", "Unlimited lessons", "Desktop app", "Email support"],
+        ? ["Proyectos ilimitados", "Clases ilimitadas", "App de escritorio y móvil", "Soporte por email"]
+        : ["Unlimited projects", "Unlimited lessons", "Desktop and mobile app", "Email support"],
+    },
+    {
+      id: "studio",
+      name: "Studio",
+      price: "$19",
+      period: perMonth,
+      highlight: true,
+      ia: "critico",
+      iaClaim: es
+        ? "Un agente de IA de pago entra en los momentos difíciles: diseña la arquitectura, rescata las reparaciones donde los modelos gratuitos se atascan y hace el repaso final."
+        : "A paid AI agent steps in at the hard moments: designs the architecture, rescues repairs where free models get stuck, and does the final review.",
+      features: es
+        ? ["Todo lo de Pro", "Arquitectura diseñada por IA experta", "Rescate cuando la IA gratis se atasca", "Repaso de calidad final"]
+        : ["Everything in Pro", "Architecture designed by expert AI", "Rescue when free AI gets stuck", "Final quality review"],
     },
     {
       id: "business",
       name: "Business",
       price: "$29",
       period: perMonth,
+      ia: "total",
+      iaClaim: es
+        ? "El agente experto dirige la construcción de principio a fin: no solo rescata, decide. Para sistemas serios."
+        : "The expert agent leads construction end to end: it doesn't just rescue, it decides. For serious systems.",
       features: es
-        ? ["Todo lo de Pro", "Varios usuarios del equipo", "Soporte prioritario", "Más modelos de IA"]
-        : ["Everything in Pro", "Multiple team users", "Priority support", "More AI models"],
+        ? ["Todo lo de Studio", "IA experta en todo el proceso", "Varios usuarios del equipo", "Soporte prioritario"]
+        : ["Everything in Studio", "Expert AI across the whole process", "Multiple team users", "Priority support"],
     },
   ];
 }
@@ -81,7 +103,7 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
       <h2 className="text-xl font-bold text-slate-900">💎 {t.plans.title}</h2>
       <p className="mt-1 max-w-2xl text-sm text-slate-500">{t.plans.subtitle}</p>
 
-      <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((plan) => {
           const isCurrent = currentPlan === plan.id && account?.paid;
           const isRequested = requestedPlan === plan.id;
@@ -90,9 +112,11 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
           return (
             <div
               key={plan.id}
-              className={`relative flex flex-col rounded-2xl border bg-white p-6 shadow-sm ${
-                plan.highlight ? "border-brand-300 ring-2 ring-brand-200" : "border-slate-200"
-              }`}
+              className={`relative flex flex-col rounded-2xl border p-6 shadow-sm ${
+                plan.ia
+                  ? "border-brand-300 bg-gradient-to-b from-brand-50/70 to-white"
+                  : "border-slate-200 bg-white"
+              } ${plan.highlight ? "ring-2 ring-brand-300" : ""}`}
             >
               {plan.highlight && (
                 <span className="absolute -top-3 left-6 rounded-full bg-brand-600 px-3 py-0.5 text-xs font-semibold text-white">
@@ -100,11 +124,32 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
                 </span>
               )}
 
-              <p className="text-lg font-bold text-slate-900">{plan.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-bold text-slate-900">{plan.name}</p>
+                {plan.ia && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      plan.ia === "total"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-brand-100 text-brand-700"
+                    }`}
+                  >
+                    {plan.ia === "total" ? t.plans.iaTotal : t.plans.iaCritico}
+                  </span>
+                )}
+              </div>
+
               <p className="mt-2">
                 <span className="text-3xl font-extrabold text-slate-900">{plan.price}</span>
                 <span className="ml-1 text-sm text-slate-400">{plan.period}</span>
               </p>
+
+              {plan.iaClaim && (
+                <p className="mt-3 rounded-xl bg-white/70 p-3 text-xs leading-relaxed text-slate-600 ring-1 ring-brand-100">
+                  <span aria-hidden>⭐ </span>
+                  {plan.iaClaim}
+                </p>
+              )}
 
               <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-600">
                 {plan.features.map((f) => (

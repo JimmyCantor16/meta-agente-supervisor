@@ -355,6 +355,21 @@ class AccountStatusResponse(BaseModel):
     lessons_used: int
     lessons_limit: int
     lessons_remaining: int
+    # Nombre legible del plan vigente y nivel del agente de pago que desbloquea
+    # ('no' | 'critico' | 'total'). La interfaz los usa para mostrar el valor.
+    plan_nombre: str = ""
+    ia_experta: str = "no"
+
+
+class PlanResponse(BaseModel):
+    """Un plan del catálogo, tal como se ofrece al usuario."""
+
+    id: str
+    nombre: str
+    precio_usd: int
+    proyectos: int  # -1 = ilimitado
+    clases: int  # -1 = ilimitado
+    ia_experta: str
 
 
 class ApproveRequest(BaseModel):
@@ -760,9 +775,11 @@ def get_current_user(
         token = (authorization or "").split(" ", 1)[-1].strip() if authorization else ""
         if not authorization or token == "dev-local":
             dev = account.get_or_create("dev-local", "dev@local.test", "Dev Local")
-            # 'paid' en memoria: el arnés de entrenamiento genera muchas veces y
-            # no debe chocar con el cupo gratis (no persiste; solo esta petición).
+            # Plan máximo EN MEMORIA (no persiste, solo esta petición): el arnés
+            # de pruebas genera muchas veces y necesita el camino completo,
+            # incluido el agente experto, para poder probarlo en local.
             dev.paid = True
+            dev.plan = "business"
             return dev
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
@@ -1903,6 +1920,35 @@ def account_me(
 ) -> AccountStatusResponse:
     """Estado de la cuenta del usuario autenticado."""
     return AccountStatusResponse(**account.status(user))
+
+
+@router.get("/planes", response_model=list[PlanResponse], tags=["account"])
+def catalogo_planes() -> list[PlanResponse]:
+    """Catálogo de planes disponibles.
+
+    Es público a propósito: los precios se ven antes de iniciar sesión. La
+    interfaz los pinta desde aquí para que no haya dos verdades (una en el
+    backend y otra escrita a mano en el frontend).
+    """
+    from src.domain.planes import PLANES
+
+    settings = get_settings()
+    salida: list[PlanResponse] = []
+    for p in PLANES:
+        # El plan básico respeta los límites del entorno (ajustables sin desplegar).
+        proyectos = settings.free_generation_limit if p.id == "free" else p.proyectos
+        clases = settings.free_lesson_limit if p.id == "free" else p.clases
+        salida.append(
+            PlanResponse(
+                id=p.id,
+                nombre=p.nombre,
+                precio_usd=p.precio_usd,
+                proyectos=proyectos,
+                clases=clases,
+                ia_experta=p.ia_experta,
+            )
+        )
+    return salida
 
 
 @router.post("/account/request-upgrade", response_model=AccountStatusResponse, tags=["account"])

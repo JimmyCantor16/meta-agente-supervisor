@@ -1,10 +1,13 @@
 """Servicio de cuentas: gating por usuario y aprobación de pago por super-admin.
 
 Reglas:
-- Gratis: el usuario puede generar hasta `free_gen_limit` proyectos y recibir
-  hasta `free_lesson_limit` clases (Modo Profesor).
-- Al agotar el cupo, para seguir debe pagar. Queda en `pending_payment` hasta
-  que un super-admin marque el pago (`paid`), y entonces se desbloquea según plan.
+- Cada usuario tiene un PLAN (ver `domain/planes.py`) que define su cupo de
+  proyectos y clases, y si puede usar el agente de IA de pago.
+- Quien no ha pagado está en el plan básico. Al agotar su cupo debe adquirir un
+  plan: queda en `pending_payment` hasta que un super-admin confirme el pago.
+
+Antes esto era binario (`paid` = ilimitado). Ahora el plan concreto manda, que
+es lo que permite tener varios niveles con privilegios distintos.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from __future__ import annotations
 import logging
 
 from src.domain.entities import UserAccount
+from src.domain.planes import ILIMITADO, PLAN_BASE, Plan, plan_por_id
 from src.domain.ports import PaymentRequiredError, UserRepositoryPort
 
 logger = logging.getLogger(__name__)
@@ -39,10 +43,30 @@ class AccountService:
     def is_super_admin(self, email: str) -> bool:
         return email.lower() in self._admins
 
+    # -- Plan efectivo -------------------------------------------------
+    def plan_de(self, user: UserAccount) -> Plan:
+        """Plan que rige HOY para este usuario.
+
+        Solo cuenta el plan si el pago está confirmado: mientras esté pendiente,
+        el usuario sigue con el básico (si no, bastaría con solicitarlo para
+        tener los privilegios sin pagar).
+        """
+        base = plan_por_id(user.plan) if user.paid else PLAN_BASE
+        # El plan básico respeta los límites configurables por entorno, para
+        # poder ajustarlos sin tocar el código.
+        if base.id == PLAN_BASE.id:
+            from dataclasses import replace
+
+            return replace(base, proyectos=self._free_gen_limit, clases=self._free_lesson_limit)
+        return base
+
+    @staticmethod
+    def _restante(limite: int, usado: int) -> int:
+        return ILIMITADO if limite == ILIMITADO else max(0, limite - usado)
+
     # -- Estado para la UI --------------------------------------------
     def status(self, user: UserAccount) -> dict:
-        gen_remaining = -1 if user.paid else max(0, self._free_gen_limit - user.generations_used)
-        lesson_remaining = -1 if user.paid else max(0, self._free_lesson_limit - user.lessons_used)
+        plan = self.plan_de(user)
         return {
             "sub": user.sub,
             "email": user.email,
@@ -53,40 +77,50 @@ class AccountService:
             "status": user.status,
             "is_admin": self.is_super_admin(user.email),
             "generations_used": user.generations_used,
-            "generations_limit": self._free_gen_limit,
-            "generations_remaining": gen_remaining,
+            "generations_limit": plan.proyectos,
+            "generations_remaining": self._restante(plan.proyectos, user.generations_used),
             "lessons_used": user.lessons_used,
-            "lessons_limit": self._free_lesson_limit,
-            "lessons_remaining": lesson_remaining,
+            "lessons_limit": plan.clases,
+            "lessons_remaining": self._restante(plan.clases, user.lessons_used),
+            # Lo que hace visible el valor del plan en la interfaz.
+            "plan_nombre": plan.nombre,
+            "ia_experta": plan.ia_experta,
         }
 
     # -- Gating --------------------------------------------------------
     def ensure_can_generate(self, user: UserAccount) -> None:
-        if user.paid:
+        plan = self.plan_de(user)
+        if plan.proyectos_ilimitados():
             return
-        if user.generations_used >= self._free_gen_limit:
+        if user.generations_used >= plan.proyectos:
             raise PaymentRequiredError(
-                f"Alcanzaste el límite gratuito de {self._free_gen_limit} proyectos. "
-                f"Para continuar, adquiere un plan; un administrador debe confirmar tu pago."
+                f"Alcanzaste el límite de {plan.proyectos} proyecto(s) del plan "
+                f"{plan.nombre}. Para continuar, adquiere un plan superior; un "
+                f"administrador debe confirmar tu pago."
             )
 
     def ensure_can_learn(self, user: UserAccount) -> None:
-        if user.paid:
+        plan = self.plan_de(user)
+        if plan.clases_ilimitadas():
             return
-        if user.lessons_used >= self._free_lesson_limit:
+        if user.lessons_used >= plan.clases:
             raise PaymentRequiredError(
-                f"Alcanzaste el límite gratuito de {self._free_lesson_limit} clases. "
-                f"Para continuar, adquiere un plan; un administrador debe confirmar tu pago."
+                f"Alcanzaste el límite de {plan.clases} clases del plan "
+                f"{plan.nombre}. Para continuar, adquiere un plan superior; un "
+                f"administrador debe confirmar tu pago."
             )
 
-    def record_generation(self, user: UserAccount) -> None:
-        if not user.paid:
-            self._repo.increment_generation(user.sub)
+    def usa_ia_experta(self, user: UserAccount) -> str:
+        """Nivel de intervención del agente de pago: 'no' | 'critico' | 'total'."""
+        return self.plan_de(user).ia_experta
 
+    def record_generation(self, user: UserAccount) -> None:
+        # Se cuenta siempre: aunque el plan sea ilimitado, el histórico sirve
+        # para que el usuario vea cuánto ha construido.
+        self._repo.increment_generation(user.sub)
 
     def record_lesson(self, user: UserAccount) -> None:
-        if not user.paid:
-            self._repo.increment_lesson(user.sub)
+        self._repo.increment_lesson(user.sub)
 
     def request_upgrade(self, user: UserAccount, plan: str = "") -> None:
         """Marca la cuenta como pendiente de pago del plan solicitado."""

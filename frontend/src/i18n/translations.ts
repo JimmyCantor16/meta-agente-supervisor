@@ -86,6 +86,8 @@ const es = {
     perMonth: "/ mes",
     forever: "para siempre",
     loginFirst: "Inicia sesión para elegir un plan.",
+    iaCritico: "IA experta",
+    iaTotal: "IA total",
   },
   account: {
     generationsLeft: (n: number) => `${n} proyectos gratis`,
@@ -539,6 +541,8 @@ const en: Translation = {
     perMonth: "/ month",
     forever: "forever",
     loginFirst: "Sign in to choose a plan.",
+    iaCritico: "Expert AI",
+    iaTotal: "Full AI",
   },
   account: {
     generationsLeft: (n: number) => `${n} free projects`,
