@@ -37,6 +37,9 @@ export function GoogleLoginButton() {
   const WEB_PROD = "https://metaagente-frontend.onrender.com";
   const [aviso, setAviso] = useState<string | null>(null);
   const [esperando, setEsperando] = useState(false);
+  // Código VISIBLE: la persona lo compara con el que le muestra la web antes de
+  // autorizar. Sin esa comparación, un enlace ajeno podría llevarse la sesión.
+  const [codigoMostrado, setCodigoMostrado] = useState<string | null>(null);
   const cancelado = useRef(false);
 
   /** Código de un solo uso (alfanumérico, 16-64), como exige el backend. */
@@ -59,6 +62,9 @@ export function GoogleLoginButton() {
       setErrorPuente(t.auth.desktopOpenWebManual);
       return;
     }
+    // Se muestra el código para que la persona lo compare con el de la web.
+    const { codigoVisible } = await import("./AuthProvider");
+    setCodigoMostrado(codigoVisible(codigo));
     setAviso(t.auth.desktopOpenedWeb);
     setEsperando(true);
     cancelado.current = false;
@@ -142,6 +148,14 @@ export function GoogleLoginButton() {
           <span aria-hidden>{esperando ? "⏳" : "🌐"}</span>
           {esperando ? t.auth.bridgeWaiting : t.auth.bridgeButton}
         </button>
+        {esperando && codigoMostrado && (
+          <div className="rounded-xl border-2 border-brand-200 bg-brand-50 px-4 py-2.5 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-600">
+              {t.auth.bridgeConsentCodeLabel}
+            </p>
+            <p className="font-mono text-xl font-bold tracking-[0.2em] text-brand-800">{codigoMostrado}</p>
+          </div>
+        )}
         {esperando && <p className="max-w-[220px] text-right text-xs text-slate-500">{t.auth.bridgeHint}</p>}
         {aviso && !esperando && <p className="max-w-[220px] text-right text-xs text-emerald-600">✅ {aviso}</p>}
         {errorPuente && <p className="max-w-[220px] text-right text-xs text-red-600">⚠ {errorPuente}</p>}

@@ -122,6 +122,15 @@ const es = {
     desktopOpenWebManual: "Abre metaagente-frontend.onrender.com en tu navegador para iniciar sesión.",
     bridgeTimeout: "Se agotó el tiempo de espera. Pulsa de nuevo para intentarlo.",
     bridgeReturn: "¡Listo! Vuelve a la app de escritorio: ya tienes la sesión.",
+    bridgeConsentTitle: "¿Autorizas a tu app de escritorio?",
+    bridgeConsentBody:
+      "Tu app de escritorio está pidiendo iniciar sesión. Comprueba que este código sea EL MISMO que ves en la app:",
+    bridgeConsentCodeLabel: "Código de verificación",
+    bridgeConsentWarning:
+      "Si no abriste tu app de escritorio, o el código no coincide, pulsa Cancelar: alguien podría estar intentando entrar en tu cuenta.",
+    bridgeConsentAuthorize: "Sí, es mi app",
+    bridgeConsentCancel: "Cancelar",
+    bridgeConsentSending: "Autorizando…",
   },
   hero: {
     greeting: "Hola 👋 Soy tu Meta-Agente",
@@ -566,6 +575,15 @@ const en: Translation = {
     desktopOpenWebManual: "Open metaagente-frontend.onrender.com in your browser to sign in.",
     bridgeTimeout: "Timed out. Press again to retry.",
     bridgeReturn: "Done! Go back to the desktop app: your session is ready.",
+    bridgeConsentTitle: "Authorize your desktop app?",
+    bridgeConsentBody:
+      "Your desktop app is requesting to sign in. Check that this code is THE SAME one shown in the app:",
+    bridgeConsentCodeLabel: "Verification code",
+    bridgeConsentWarning:
+      "If you didn't open your desktop app, or the code doesn't match, press Cancel: someone may be trying to access your account.",
+    bridgeConsentAuthorize: "Yes, that's my app",
+    bridgeConsentCancel: "Cancel",
+    bridgeConsentSending: "Authorizing…",
   },
   hero: {
     greeting: "Hi 👋 I'm your Meta-Agent",
