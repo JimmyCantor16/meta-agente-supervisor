@@ -66,7 +66,7 @@ def _index_html(title: str, tagline: str, cta: str, secciones: list[dict]) -> st
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{esc(title)}</title>
   <meta name="description" content="{esc(tagline)}">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
   <header class="hero">
@@ -95,7 +95,7 @@ def _index_html(title: str, tagline: str, cta: str, secciones: list[dict]) -> st
     <span>{esc(title)}</span>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>
 '''

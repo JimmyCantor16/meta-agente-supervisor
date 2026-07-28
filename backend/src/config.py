@@ -135,6 +135,16 @@ class Settings(BaseSettings):
         default="localhost",
         description="Host con el que se construye la URL de los proyectos arrancados.",
     )
+    public_base_url: str = Field(
+        default="",
+        description=(
+            "URL pública del backend (p. ej. https://mi-backend.onrender.com). "
+            "Si se define, los MVP generados se entregan como "
+            "<base>/preview/<slug>/ y se sirven a través del backend, en vez de "
+            "una dirección a localhost que fuera del servidor no lleva a ningún "
+            "sitio. Déjala vacía en desarrollo local."
+        ),
+    )
 
     # --- Licencia / modelo de negocio ---
     free_generation_limit: int = Field(

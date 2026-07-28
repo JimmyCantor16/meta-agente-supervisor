@@ -39,9 +39,12 @@ _EXPORT_DECL = re.compile(
     r"^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)",
     re.M,
 )
-# definiciones top-level:  function NAME | async function NAME | const/let/var NAME | class NAME
+# Definiciones de NIVEL SUPERIOR: ancladas a columna 0 (sin `\s*`). Con el
+# `\s*` también casaban las declaraciones DENTRO de funciones, y exportar un
+# símbolo local genera `ReferenceError` al cargar: el módulo entero deja de
+# funcionar por intentar arreglar otro.
 _DEF_DECL = re.compile(
-    r"^\s*(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)", re.M
+    r"^(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)", re.M
 )
 
 # <script ... src="..."> (captura atributos antes/después del src)
@@ -66,26 +69,37 @@ def _nombres(lista: str) -> list[str]:
 
 def _reparar_exports_faltantes(root: Path) -> bool:
     """Añade `export { X }` cuando X se importa de un módulo que lo define pero no lo exporta."""
-    js_files = {p.name: p for p in root.rglob("*.js")}
+    # Se ignoran las carpetas de dependencias y de compilación: ahí no hay nada
+    # que reparar y sí mucho que romper.
+    _IGNORAR = {"node_modules", "dist", "build", ".git"}
+    js_files = [
+        p for p in root.rglob("*.js") if not _IGNORAR.intersection(p.parts)
+    ]
     cambio = False
 
-    # 1) recolecta qué símbolos pide cada módulo destino.
-    pedidos: dict[str, set[str]] = {}
-    for p in js_files.values():
+    # 1) recolecta qué símbolos pide cada módulo destino, RESOLVIENDO LA RUTA.
+    # Antes se indexaba por nombre de archivo: con dos `utils.js` en carpetas
+    # distintas (lo normal en un front modular) el export acababa en el archivo
+    # equivocado y rompía un módulo que funcionaba.
+    pedidos: dict[Path, set[str]] = {}
+    for p in js_files:
         try:
             txt = p.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
         for m in _IMPORT_NAMED.finditer(txt):
             nombres = _nombres(m.group(1))
-            destino = m.group(2).rsplit("/", 1)[-1]
-            pedidos.setdefault(destino, set()).update(nombres)
+            especificador = m.group(2)
+            if not especificador.startswith("."):
+                continue  # paquete externo: no es nuestro
+            destino = (p.parent / especificador).resolve()
+            if destino.suffix != ".js":
+                destino = destino.with_suffix(".js")
+            if destino.exists():
+                pedidos.setdefault(destino, set()).update(nombres)
 
     # 2) para cada módulo destino, exporta lo que define pero no exporta y le piden.
-    for base, quiere in pedidos.items():
-        p = js_files.get(base)
-        if p is None:
-            continue
+    for p, quiere in pedidos.items():
         try:
             txt = p.read_text(encoding="utf-8", errors="ignore")
         except Exception:
@@ -100,7 +114,7 @@ def _reparar_exports_faltantes(root: Path) -> bool:
             adicion = "\n\n// export añadido automáticamente (símbolos importados por otros módulos)\nexport { " + ", ".join(faltan) + " };\n"
             p.write_text(txt.rstrip() + adicion, encoding="utf-8")
             cambio = True
-            logger.info("Frontend fix: exportando %s desde %s", faltan, base)
+            logger.info("Frontend fix: exportando %s desde %s", faltan, p.name)
     return cambio
 
 

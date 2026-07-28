@@ -83,6 +83,7 @@ class AccountService:
         if not user.paid:
             self._repo.increment_generation(user.sub)
 
+
     def record_lesson(self, user: UserAccount) -> None:
         if not user.paid:
             self._repo.increment_lesson(user.sub)

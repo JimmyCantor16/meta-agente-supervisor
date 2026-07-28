@@ -100,10 +100,14 @@ class MultiStackProjectVerifier(ProjectVerifierPort):
 class MultiStackProjectRunner(ProjectRunnerPort):
     """Arranca el proyecto con el runner que corresponda a su stack."""
 
-    def __init__(self, public_host: str = "localhost") -> None:
+    def __init__(self, public_host: str = "localhost", public_base_url: str = "") -> None:
         self._python = LocalProjectRunner(public_host)
         self._node = NodeProjectRunner(public_host)
         self._static = StaticSiteRunner(public_host)
+        # Si el backend tiene URL pública, el MVP se entrega a través de él
+        # (/preview/<slug>/): en la nube, el puerto local no es alcanzable y
+        # entregar 'localhost' equivale a no entregar nada.
+        self._base_publica = public_base_url.rstrip("/")
         # Recuerda la URL de lo que está corriendo AHORA, para el panel 'en vivo'.
         self._urls: dict[str, str] = {}
 
@@ -121,7 +125,13 @@ class MultiStackProjectRunner(ProjectRunnerPort):
             )
             url = None
         if url:
+            # El registro guarda SIEMPRE la dirección local: es la que usa el
+            # proxy de vista previa para hablar con el proyecto.
             self._urls[project_name] = url
+            if self._base_publica:
+                publica = f"{self._base_publica}/preview/{project_name}/"
+                logger.info("MVP '%s' publicado en %s", project_name, publica)
+                return publica
         return url
 
     def stop(self, project_name: str) -> None:

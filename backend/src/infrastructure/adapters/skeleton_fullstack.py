@@ -493,7 +493,7 @@ def _index_html(app_name: str, item_label: str, field_ph: str) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{titulo}</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
   <main id="app" class="wrap"></main>
@@ -501,7 +501,7 @@ def _index_html(app_name: str, item_label: str, field_ph: str) -> str:
     // Textos de la app (los inyecta el generador; el resto del código es fijo).
     window.__APP__ = {datos};
   </script>
-  <script type="module" src="/static/js/app.js"></script>
+  <script type="module" src="static/js/app.js"></script>
 </body>
 </html>
 '''
@@ -520,24 +520,24 @@ async function req(path, opts = {}) {
 }
 
 export async function register(username, password) {
-  return req("/api/register", { method: "POST", body: JSON.stringify({ username, password }) });
+  return req("api/register", { method: "POST", body: JSON.stringify({ username, password }) });
 }
 
 export async function login(username, password) {
   const body = new URLSearchParams();
   body.set("username", username);
   body.set("password", password);
-  return fetch("/api/login", {
+  return fetch("api/login", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
 }
 
-export async function listItems() { return req("/api/items"); }
-export async function addItem(text) { return req("/api/items", { method: "POST", body: JSON.stringify({ text }) }); }
-export async function toggleItem(id) { return req("/api/items/" + id + "/toggle", { method: "POST" }); }
-export async function deleteItem(id) { return req("/api/items/" + id, { method: "DELETE" }); }
+export async function listItems() { return req("api/items"); }
+export async function addItem(text) { return req("api/items", { method: "POST", body: JSON.stringify({ text }) }); }
+export async function toggleItem(id) { return req("api/items/" + id + "/toggle", { method: "POST" }); }
+export async function deleteItem(id) { return req("api/items/" + id, { method: "DELETE" }); }
 '''
 
 

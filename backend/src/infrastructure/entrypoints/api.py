@@ -447,7 +447,8 @@ def get_project_verifier() -> ProjectVerifierPort:
 @lru_cache
 def get_project_runner() -> ProjectRunnerPort:
     """Provee el runner, que sabe arrancar tanto FastAPI como Express."""
-    return MultiStackProjectRunner(get_settings().generated_public_host)
+    settings = get_settings()
+    return MultiStackProjectRunner(settings.generated_public_host, settings.public_base_url)
 
 
 @lru_cache
@@ -682,6 +683,40 @@ def get_account_service(
     )
 
 
+def _exigir_destino_publico(url: str) -> None:
+    """Rechaza URLs que apunten a la red interna del servidor.
+
+    Se aplica a la URL inicial Y a cada redirección: si solo se validara la
+    primera, bastaba con que el destino contestara «302 → 169.254.169.254» para
+    que el servidor consultara su propia red interna en nombre de un extraño.
+    """
+    partes = urlparse(url)
+    if partes.scheme not in ("http", "https") or not partes.hostname:
+        raise HTTPException(status_code=422, detail="Esa URL no parece válida.")
+    try:
+        for info in socket.getaddrinfo(partes.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Esa dirección es local: publica primero en internet "
+                           "(Netlify/GitHub Pages/Render) y pega esa URL.",
+                )
+    except socket.gaierror as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Ese dominio no existe todavía. Revisa la URL exacta que te "
+                   "dio tu plataforma de hosting.",
+        ) from exc
+
+
 def _bypass_local_activo() -> bool:
     """True solo si estamos, sin lugar a dudas, en una máquina de desarrollo.
 
@@ -868,6 +903,19 @@ def generate_project(
         _INSTRUCCION_INQUIETO if request.modo_inquieto else _INSTRUCCION_OBEDIENTE
     )
 
+    # Se valida la entrada ANTES de reservar cupo: así un prompt vacío no cuesta
+    # nada, y todo lo que pase de aquí sí consume modelo de verdad.
+    if not request.prompt or not request.prompt.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Escribe tu idea antes de generar.",
+        )
+
+    # El cupo se RESERVA antes de empezar. Contarlo solo al terminar bien dejaba
+    # un agujero de coste: una generación fallida hace decenas de llamadas al
+    # modelo (spec, RAG, escritura, hasta 7 reparaciones) y no descontaba nada,
+    # así que un prompt que siempre falla permitía gastar IA sin límite.
+    account.record_generation(user)
     try:
         project, output_path = use_case.execute(prompt_final, request.language)
     except ValueError as exc:
@@ -875,9 +923,6 @@ def generate_project(
     except ProjectGenerationError as exc:
         logger.error("Fallo generando el proyecto: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-
-    # Cuenta la generación exitosa contra el cupo del usuario.
-    account.record_generation(user)
 
     return GenerateResponse(
         name=project.name,
@@ -1084,28 +1129,24 @@ def verificar_publicacion(request: VerificarPublicacionRequest) -> dict:
     url = request.url.strip()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    partes = urlparse(url)
-    if partes.scheme not in ("http", "https") or not partes.hostname:
-        raise HTTPException(status_code=422, detail="Esa URL no parece válida.")
-    try:
-        for info in socket.getaddrinfo(partes.hostname, None):
-            ip = ipaddress.ip_address(info[4][0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Esa dirección es local: publica primero en internet "
-                           "(Netlify/GitHub Pages/Render) y pega esa URL.",
-                )
-    except socket.gaierror as exc:
-        raise HTTPException(
-            status_code=422,
-            detail="Ese dominio no existe todavía. Revisa la URL exacta que te "
-                   "dio tu plataforma de hosting.",
-        ) from exc
+    _exigir_destino_publico(url)
 
     try:
-        with httpx.Client(follow_redirects=True, timeout=15) as cliente:
-            r = cliente.get(url, headers={"User-Agent": "MetaAgente-Profesor/1.0"})
+        # Las redirecciones se siguen A MANO revalidando la IP en cada salto: con
+        # `follow_redirects=True`, un destino podía contestar «302 → 169.254.169.254»
+        # y httpx lo seguía sin volver a comprobar nada, convirtiendo este endpoint
+        # en una ventana a la red interna del servidor.
+        with httpx.Client(follow_redirects=False, timeout=15) as cliente:
+            actual = url
+            for _ in range(5):
+                r = cliente.get(actual, headers={"User-Agent": "MetaAgente-Profesor/1.0"})
+                if r.status_code not in (301, 302, 303, 307, 308):
+                    break
+                siguiente = r.headers.get("location")
+                if not siguiente:
+                    break
+                actual = str(httpx.URL(actual).join(siguiente))
+                _exigir_destino_publico(actual)
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,
@@ -1973,6 +2014,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from src.infrastructure.entrypoints.progreso import router_ws
 
     app.include_router(router_ws)
+
+    # Vista previa pública de los MVP: en la nube el puerto local del proyecto
+    # no es alcanzable, así que el backend hace de intermediario y el sistema
+    # generado se puede ver desde cualquier sitio.
+    from src.infrastructure.entrypoints.vista_previa import router as preview_router
+
+    app.include_router(preview_router)
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:
