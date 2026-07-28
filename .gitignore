@@ -35,3 +35,8 @@ backend/build-desktop/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Firma de la app movil (NUNCA versionar)
+mobile/android/key.properties
+*.jks
+*.keystore

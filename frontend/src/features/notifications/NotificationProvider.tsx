@@ -200,9 +200,17 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     let ws: WebSocket | null = null;
     let cerrado = false;
     let retry = 0;
+    // Espera creciente: sin esto, con el servidor dormido se reintentaba cada
+    // 5 s indefinidamente, gastando batería y datos sin necesidad.
+    let intentos = 0;
+    const esperaMs = () => Math.min(5000 * 2 ** intentos, 60000);
     const conectar = () => {
+      window.clearTimeout(retry);
       try {
         ws = new WebSocket(wsProgresoUrl());
+        ws.onopen = () => {
+          intentos = 0;
+        };
         ws.onmessage = (e: MessageEvent) => {
           const txt = String(e.data || "");
           const tt = tRef.current;
@@ -219,7 +227,11 @@ export function NotificationProvider({ children }: PropsWithChildren) {
           }
         };
         ws.onclose = () => {
-          if (!cerrado) retry = window.setTimeout(conectar, 5000);
+          if (!cerrado) {
+            window.clearTimeout(retry);
+            retry = window.setTimeout(conectar, esperaMs());
+            intentos += 1;
+          }
         };
         ws.onerror = () => {
           try {
@@ -229,7 +241,9 @@ export function NotificationProvider({ children }: PropsWithChildren) {
           }
         };
       } catch {
-        retry = window.setTimeout(conectar, 5000);
+        window.clearTimeout(retry);
+        retry = window.setTimeout(conectar, esperaMs());
+        intentos += 1;
       }
     };
     conectar();

@@ -1,7 +1,19 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Datos de la firma de publicación. Viven FUERA del repositorio (key.properties
+// está en .gitignore) porque quien tenga esa clave puede publicar
+// actualizaciones en nombre de la app.
+val propsFirma = Properties()
+val archivoFirma = rootProject.file("key.properties")
+if (archivoFirma.exists()) {
+    propsFirma.load(FileInputStream(archivoFirma))
 }
 
 android {
@@ -27,11 +39,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (archivoFirma.exists()) {
+                storeFile = file(propsFirma["storeFile"] as String)
+                storePassword = propsFirma["storePassword"] as String
+                keyAlias = propsFirma["keyAlias"] as String
+                keyPassword = propsFirma["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Firma REAL de publicación. Con la clave de depuración la app no se
+            // podía actualizar (habría que desinstalarla) ni publicar.
+            signingConfig = if (archivoFirma.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

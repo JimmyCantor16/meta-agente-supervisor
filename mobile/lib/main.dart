@@ -5,6 +5,7 @@
 // dispositivo (web/escritorio) se genera un proyecto, este teléfono lanza una
 // NOTIFICACIÓN NATIVA de Android — los 3 al tiempo. Estado en vivo animado.
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -76,13 +77,18 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _idea = TextEditingController();
   bool _cargando = false;
   String? _resultado;
   String? _error;
 
   WebSocketChannel? _ws;
+  StreamSubscription? _suscripcion;
+  Timer? _reintento;
+  int _intentos = 0;
+  bool _conectando = false;
   bool _conectado = false;
   bool _generando = false;
   final List<_Evento> _feed = [];
@@ -94,15 +100,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    // Observa el ciclo de vida: al volver del segundo plano hay que revisar la
+    // conexión (el sistema corta los sockets ociosos y la píldora se quedaba
+    // diciendo "EN VIVO" sobre un canal muerto).
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _conectarWs());
   }
 
-  void _reintentar() => Future.delayed(const Duration(seconds: 5), () {
-        if (mounted && !_conectado) _conectarWs();
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed) {
+      _intentos = 0;
+      if (!_conectado) _conectarWs();
+    }
+  }
+
+  /// Espera CRECIENTE entre reintentos (5 s, 10 s, 20 s… hasta 1 min). Antes
+  /// reintentaba cada 5 s para siempre: con el servidor dormido, eso vaciaba
+  /// la batería y los datos del teléfono.
+  void _reintentar() {
+    _reintento?.cancel();
+    final espera = Duration(seconds: (5 * (1 << _intentos)).clamp(5, 60));
+    _intentos = (_intentos + 1).clamp(0, 4);
+    _reintento = Timer(espera, () {
+      if (mounted && !_conectado) _conectarWs();
+    });
+  }
 
   Future<void> _conectarWs() async {
+    // Guardia: sin ella, dos intentos solapados dejaban un canal huérfano con
+    // su oyente vivo, que DUPLICABA las notificaciones.
+    if (_conectando) return;
+    _conectando = true;
     try {
+      await _suscripcion?.cancel();
+      _suscripcion = null;
       _ws?.sink.close();
     } catch (_) {}
     try {
@@ -111,8 +143,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _ws = c;
       await c.ready;
       if (!mounted) return;
+      _intentos = 0; // conexión buena: la próxima espera vuelve a empezar corta
       setState(() => _conectado = true);
-      c.stream.listen(
+      _suscripcion = c.stream.listen(
         (data) {
           final txt = data.toString();
           if (!mounted) return;
@@ -145,6 +178,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     } catch (_) {
       if (mounted) setState(() => _conectado = false);
       _reintentar();
+    } finally {
+      _conectando = false;
     }
   }
 
@@ -162,22 +197,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               headers: {'Content-Type': 'application/json'},
               body: utf8.encode(jsonEncode({'prompt': idea, 'language': 'es'})))
           .timeout(const Duration(seconds: 60));
+      if (res.statusCode == 429) throw 'Demasiadas peticiones seguidas; espera un minuto.';
       if (res.statusCode != 200) throw 'El servidor respondió ${res.statusCode}';
       final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
       final estado = data['status'] ?? '';
       final critica = data['analisis_critico'] ?? '';
       final sugerencias = (data['sugerencias_mejora'] as List?) ?? const [];
       final extra = sugerencias.isNotEmpty ? '\n\n💡 Sugerencias:\n• ${sugerencias.take(4).join('\n• ')}' : '';
+      // Tras un `await` largo la pantalla puede haberse cerrado: sin esta
+      // comprobación saltaba "setState() called after dispose()".
+      if (!mounted) return;
       setState(() => _resultado = '🔎 Estado: $estado\n\n$critica$extra');
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = 'No pude conectar con el sistema.\n$e');
     } finally {
-      setState(() => _cargando = false);
+      if (mounted) setState(() => _cargando = false);
     }
   }
 
   @override
   void dispose() {
+    // Se liberan TODOS los recursos: antes quedaban vivos el oyente del canal y
+    // el reintento pendiente, que seguían trabajando sobre una pantalla muerta.
+    WidgetsBinding.instance.removeObserver(this);
+    _reintento?.cancel();
+    _suscripcion?.cancel();
+    _idea.dispose();
     _pulso.dispose();
     _ws?.sink.close();
     super.dispose();

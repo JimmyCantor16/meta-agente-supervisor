@@ -192,10 +192,19 @@ export function useMonitor(): MonitorState {
     let ws: WebSocket | null = null;
     let cerrado = false;
     let retry = 0;
+    // Espera CRECIENTE entre reintentos. Con el servidor dormido (el plan
+    // gratuito tarda ~50 s en despertar), reintentar cada 4 s para siempre
+    // martilleaba el servidor y vaciaba la batería del portátil.
+    let intentos = 0;
+    const esperaMs = () => Math.min(4000 * 2 ** intentos, 60000);
     const conectar = () => {
+      window.clearTimeout(retry); // evita dos bucles de reconexión a la vez
       try {
         ws = new WebSocket(wsUrl());
-        ws.onopen = () => setEstado((s) => ({ ...s, conectado: true }));
+        ws.onopen = () => {
+          intentos = 0;
+          setEstado((s) => ({ ...s, conectado: true }));
+        };
         ws.onmessage = (e: MessageEvent) => {
           const txt = String(e.data || "");
           if (/^👋/.test(txt)) return; // saludo de bienvenida
@@ -203,7 +212,11 @@ export function useMonitor(): MonitorState {
         };
         ws.onclose = () => {
           setEstado((s) => ({ ...s, conectado: false }));
-          if (!cerrado) retry = window.setTimeout(conectar, 4000);
+          if (!cerrado) {
+            window.clearTimeout(retry);
+            retry = window.setTimeout(conectar, esperaMs());
+            intentos += 1;
+          }
         };
         ws.onerror = () => {
           try {
@@ -213,7 +226,9 @@ export function useMonitor(): MonitorState {
           }
         };
       } catch {
-        retry = window.setTimeout(conectar, 4000);
+        window.clearTimeout(retry);
+        retry = window.setTimeout(conectar, esperaMs());
+        intentos += 1;
       }
     };
     conectar();
