@@ -70,7 +70,10 @@ function esEscritorio(): boolean {
   return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
 }
 function wsUrl(): string {
-  if (esEscritorio()) return "ws://localhost:8000/api/v1/ws/progreso";
+  // Escritorio: se conecta al backend COMPARTIDO en producción, para ver en vivo
+  // lo mismo que la web y el móvil (los 3 en el mismo canal). Para desarrollo
+  // local del escritorio, apunta a ws://localhost:8000.
+  if (esEscritorio()) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
   const host = window.location.host;
   // En Render el proxy del sitio estático NO reenvía WebSocket → directo al backend.
   if (host.endsWith(".onrender.com")) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";

@@ -17,7 +17,10 @@ const _bg = Color(0xFF0E1020);
 const _panel = Color(0xFF1A1D33);
 
 // Backend del PC en la Wi-Fi de casa. FIJO (el usuario no lo edita).
-const _servidor = 'http://192.168.1.16:8000';
+// Backend COMPARTIDO en producción: así el móvil ve en tiempo real lo mismo que
+// la web y el escritorio (los 3 conectados al mismo canal). Para desarrollo
+// local, cambia por 'http://TU_IP_LAN:8000' (el móvil no resuelve 'localhost').
+const _servidor = 'https://metaagente-backend.onrender.com';
 
 final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
 const _canal = AndroidNotificationChannel(

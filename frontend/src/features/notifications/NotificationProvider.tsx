@@ -109,8 +109,9 @@ async function avisoNativo(title: string, body: string): Promise<void> {
 
 /** URL del WebSocket de eventos del backend (mismo canal de progreso en vivo). */
 function wsProgresoUrl(): string {
-  // Escritorio (Tauri): el backend compartido corre en el mismo PC (Docker :8000).
-  if (esEscritorio()) return "ws://localhost:8000/api/v1/ws/progreso";
+  // Escritorio (Tauri): se conecta al backend COMPARTIDO en producción, para
+  // recibir los mismos avisos que la web y el móvil (los 3 al tiempo).
+  if (esEscritorio()) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
   // Render: el proxy estático no reenvía WebSocket → directo al backend.
   if (window.location.host.endsWith(".onrender.com")) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
   // Navegador local: mismo origen (nginx hace de proxy al backend).
