@@ -181,10 +181,24 @@ def _definido_local(txt: str, nombre: str) -> bool:
 
 
 def _insertar_import(txt: str, linea: str) -> str:
+    """Inserta el import tras el último import de NIVEL SUPERIOR.
+
+    El patrón llevaba `\\s*`, así que también casaba con imports INDENTADOS
+    dentro de funciones o bloques `try:`; insertar ahí una línea sin sangrar
+    provocaba un IndentationError en un archivo que solo tenía un fallo menor.
+    Ahora se ancla a columna 0 y se ignora lo que haya dentro de cadenas triples.
+    """
     lineas = txt.splitlines(keepends=True)
     idx = 0
+    en_cadena = False
     for i, ln in enumerate(lineas):
-        if re.match(r"^\s*(import|from)\s+\S", ln):
+        # Alterna al entrar/salir de un docstring de comillas triples.
+        if ln.count('"""') % 2 or ln.count("'''") % 2:
+            en_cadena = not en_cadena
+            continue
+        if en_cadena:
+            continue
+        if re.match(r"^(import|from)\s+\S", ln):  # columna 0: nivel superior
             idx = i + 1
     lineas.insert(idx, linea if linea.endswith("\n") else linea + "\n")
     return "".join(lineas)
@@ -257,11 +271,27 @@ def reparar_por_error(root: str | Path, error_text: str) -> bool:
             for p in root.rglob("*.py"):
                 txt = p.read_text(encoding="utf-8", errors="ignore")
                 patron = rf"from\s+{re.escape(mod_malo)}\s+import\s+([^\n]*\b{re.escape(nombre)}\b[^\n]*)"
-                if re.search(patron, txt):
-                    # quita el símbolo del import malo y añade uno correcto.
-                    txt2 = re.sub(patron, lambda mm: "from %s import %s" % (mod_malo, mm.group(1).replace(nombre, "").strip().strip(",")), txt)
-                    txt2 = _insertar_import(txt2, f"from {mod_bueno} import {nombre}")
-                    p.write_text(txt2, encoding="utf-8")
-                    logger.info("Import fix: '%s' movido de %s a %s en %s", nombre, mod_malo, mod_bueno, p.name)
-                    return True
+                m_imp = re.search(patron, txt)
+                if not m_imp:
+                    continue
+
+                def _quitar(mm: re.Match) -> str:
+                    # Se reconstruye la LISTA de símbolos comparando por igualdad
+                    # exacta. Un `replace` de subcadena borraba parte de otros
+                    # nombres ('User' dentro de 'UserProfile') o dejaba el import
+                    # vacío -> archivos que dejaban de compilar.
+                    restantes = [
+                        s.strip()
+                        for s in re.split(r"\s*,\s*", mm.group(1).strip())
+                        if s.strip() and s.strip().split(" as ")[0].strip() != nombre
+                    ]
+                    if not restantes:
+                        return ""  # el import se queda sin símbolos: se elimina
+                    return f"from {mod_malo} import {', '.join(restantes)}"
+
+                txt2 = re.sub(patron, _quitar, txt, count=1)
+                txt2 = _insertar_import(txt2, f"from {mod_bueno} import {nombre}")
+                p.write_text(txt2, encoding="utf-8")
+                logger.info("Import fix: '%s' movido de %s a %s en %s", nombre, mod_malo, mod_bueno, p.name)
+                return True
     return False

@@ -19,6 +19,10 @@ Solo se parametrizan los TEXTOS visibles. El código no cambia entre generacione
 
 from __future__ import annotations
 
+import html
+import json
+import secrets
+
 from src.domain.entities import GeneratedFile, GeneratedProject
 
 # Marcador oculto: el generador sabe que el proyecto salió del esqueleto
@@ -280,10 +284,14 @@ class SqlItemRepository(ItemRepository):
 '''
 
 
-def _infra_security() -> str:
-    return '''"""Adaptadores de seguridad: hashing (bcrypt) y tokens (JWT)."""
+def _infra_security(secret: str) -> str:
+    # La clave se genera ÚNICA por proyecto: si fuera un literal compartido,
+    # cualquiera que viera otro proyecto generado podría firmar un token y
+    # entrar como quien quisiera en TODAS las apps creadas con el esqueleto.
+    plantilla = '''"""Adaptadores de seguridad: hashing (bcrypt) y tokens (JWT)."""
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 
 from jose import JWTError, jwt
@@ -291,7 +299,9 @@ from passlib.context import CryptContext
 
 from backend.domain.ports import PasswordHasher, TokenService
 
-_SECRET = "cambia-esta-clave-en-produccion-por-una-larga-y-secreta"
+# Clave única de este proyecto. En producción, defínela como variable de
+# entorno SECRET_KEY para poder rotarla sin tocar el código.
+_SECRET = os.environ.get("SECRET_KEY", "@@CLAVE@@")
 _ALGO = "HS256"
 _EXPIRE_MIN = 60 * 24
 
@@ -318,6 +328,7 @@ class JwtTokenService(TokenService):
         except JWTError:
             return None
 '''
+    return plantilla.replace("@@CLAVE@@", secret)
 
 
 def _infra_web() -> str:
@@ -468,19 +479,27 @@ def index():
 # FRONTEND — por componentes (módulos ES, sin build, rutas relativas)
 # ---------------------------------------------------------------------------
 def _index_html(app_name: str, item_label: str, field_ph: str) -> str:
+    # Los textos vienen del prompt del usuario a través del LLM: se ESCAPAN.
+    # En el HTML con html.escape; en el literal JavaScript con json.dumps (que
+    # además cierra la vía de `</script>` gracias al escape de la barra).
+    titulo = html.escape(app_name)
+    datos = json.dumps(
+        {"name": app_name, "itemLabel": item_label, "fieldPh": field_ph},
+        ensure_ascii=False,
+    ).replace("</", "<\\/")
     return f'''<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{app_name}</title>
+  <title>{titulo}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <main id="app" class="wrap"></main>
   <script type="module">
     // Textos de la app (los inyecta el generador; el resto del código es fijo).
-    window.__APP__ = {{ name: "{app_name}", itemLabel: "{item_label}", fieldPh: "{field_ph}" }};
+    window.__APP__ = {datos};
   </script>
   <script type="module" src="/static/js/app.js"></script>
 </body>
@@ -542,8 +561,8 @@ export function AuthView(onLogged) {
   const el = document.createElement("section");
   el.className = "card";
   el.innerHTML = `
-    <h1>${window.__APP__.name}</h1>
-    <p class="sub">Entra o crea tu cuenta para ver tus ${window.__APP__.itemLabel}.</p>
+    <h1></h1>
+    <p class="sub"></p>
     <input class="u" placeholder="Usuario" autocomplete="username">
     <input class="p" type="password" placeholder="Contraseña" autocomplete="current-password">
     <div class="row">
@@ -551,6 +570,11 @@ export function AuthView(onLogged) {
       <button class="up ghost">Crear cuenta</button>
     </div>
     <p class="msg"></p>`;
+  // textContent (no innerHTML): el nombre viene de la idea del usuario y no
+  // debe poder inyectar HTML en la página.
+  el.querySelector("h1").textContent = window.__APP__.name;
+  el.querySelector(".sub").textContent =
+    `Entra o crea tu cuenta para ver tus ${window.__APP__.itemLabel}.`;
   const u = el.querySelector(".u"), p = el.querySelector(".p"), msg = el.querySelector(".msg");
 
   el.querySelector(".up").onclick = async () => {
@@ -577,18 +601,22 @@ export function BoardView(onLogout) {
   el.className = "card";
   el.innerHTML = `
     <div class="board-head">
-      <h1>${window.__APP__.name}</h1>
+      <h1></h1>
       <button class="out ghost small">Salir</button>
     </div>
     <form class="add">
-      <input class="new" placeholder="${window.__APP__.fieldPh}" autocomplete="off">
+      <input class="new" autocomplete="off">
       <button type="submit">Agregar</button>
     </form>
     <ul class="list"></ul>
-    <p class="empty msg">Aún no hay ${window.__APP__.itemLabel}.</p>`;
+    <p class="empty msg"></p>`;
 
   const list = el.querySelector(".list"), empty = el.querySelector(".empty");
   const nueva = el.querySelector(".new");
+  // textContent / setAttribute: los textos vienen de la idea del usuario.
+  el.querySelector("h1").textContent = window.__APP__.name;
+  nueva.placeholder = window.__APP__.fieldPh;
+  empty.textContent = `Aún no hay ${window.__APP__.itemLabel}.`;
 
   async function refresh() {
     const r = await listItems();
@@ -726,7 +754,8 @@ def construir(app_name: str, item_label: str, field_ph: str) -> GeneratedProject
         "backend/infrastructure/__init__.py": "",
         "backend/infrastructure/db.py": _infra_db(),
         "backend/infrastructure/repositories.py": _infra_repositories(),
-        "backend/infrastructure/security.py": _infra_security(),
+        # Clave de firma ÚNICA para este proyecto (nunca compartida entre apps).
+        "backend/infrastructure/security.py": _infra_security(secrets.token_urlsafe(48)),
         "backend/infrastructure/web.py": _infra_web(),
         "backend/main.py": _main(),
         "frontend/index.html": _index_html(app_name, item_label, field_ph),

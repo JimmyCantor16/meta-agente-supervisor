@@ -681,6 +681,33 @@ def get_account_service(
     )
 
 
+def _bypass_local_activo() -> bool:
+    """True solo si estamos, sin lugar a dudas, en una máquina de desarrollo.
+
+    La puerta de desarrollo se abría con UNA sola variable (`AUTH_DEV_BYPASS=1`),
+    y esa variable vive en `backend/.env` — justo el archivo que se copia entero
+    al panel de variables de Render en el primer despliegue. Si eso pasaba,
+    cualquiera en internet entraba SIN cabecera como usuario con todo pagado.
+
+    Ahora se exigen señales POSITIVAS de localidad que un despliegue en la nube
+    nunca cumple: nada de plataforma cloud detectada y base de datos local
+    (SQLite), no PostgreSQL gestionado.
+    """
+    import os
+
+    if os.environ.get("AUTH_DEV_BYPASS") != "1":
+        return False
+    # Señales de que esto es un servidor gestionado, no un portátil.
+    marcas_cloud = ("RENDER", "RENDER_SERVICE_ID", "DYNO", "KUBERNETES_SERVICE_HOST", "AWS_EXECUTION_ENV")
+    if any(os.environ.get(m) for m in marcas_cloud):
+        logger.error("AUTH_DEV_BYPASS ignorado: se detectó un entorno de servidor gestionado.")
+        return False
+    if get_settings().uses_postgres:
+        logger.error("AUTH_DEV_BYPASS ignorado: hay una base de datos gestionada (no es local).")
+        return False
+    return True
+
+
 def get_current_user(
     authorization: str | None = Header(default=None),
     account: AccountService = Depends(get_account_service),
@@ -689,16 +716,11 @@ def get_current_user(
 
     Raises 401 si no hay sesión válida.
 
-    PUERTA DE DESARROLLO LOCAL (AUTH_DEV_BYPASS=1): SOLO para el arnés de pruebas
-    que entrena al agente en la máquina local. Permite disparar /generate sin un
-    token de Google vivo (imposible de scriptear sin abrir el navegador). Se
-    activa únicamente si la variable de entorno está puesta —lo está en el
-    docker-compose local, NUNCA en el despliegue de Render— así producción sigue
-    exigiendo Google. Acepta 'Bearer dev-local' o directamente ninguna cabecera.
+    PUERTA DE DESARROLLO LOCAL: ver `_bypass_local_activo`. Exige VARIAS señales
+    de localidad, no solo una variable: copiar el `.env` entero al panel de
+    Render no debe poder abrir la puerta en producción.
     """
-    import os
-
-    if os.environ.get("AUTH_DEV_BYPASS") == "1":
+    if _bypass_local_activo():
         token = (authorization or "").split(" ", 1)[-1].strip() if authorization else ""
         if not authorization or token == "dev-local":
             dev = account.get_or_create("dev-local", "dev@local.test", "Dev Local")
