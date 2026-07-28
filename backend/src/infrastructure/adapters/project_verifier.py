@@ -171,8 +171,15 @@ class PythonProjectVerifier(ProjectVerifierPort):
         Si el MVP necesita PostgreSQL o MySQL, se le presta el del entorno de
         verificación. Antes fallaba al conectar y el error real quedaba oculto
         tras un traceback de conexión que no decía nada del código.
+
+        IMPORTANTE: se parte de un entorno MÍNIMO (lista blanca). El código que
+        se instala y ejecuta aquí lo escribió un modelo a partir del prompt de un
+        usuario, así que no debe ver las claves de los proveedores de IA ni la
+        base de datos del backend.
         """
-        entorno = dict(os.environ)
+        from src.infrastructure.adapters.entorno_seguro import entorno_minimo
+
+        entorno = entorno_minimo()
         motor = motor_requerido(str(root))
         if motor:
             url = url_de_verificacion(motor, _slug_bd(root.name))

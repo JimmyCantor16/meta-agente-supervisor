@@ -106,8 +106,13 @@ def entorno_con_bd(directorio: Path) -> dict[str, str]:
 
     Se busca desde la carpeta del proyecto (no solo la del package.json) porque
     el motor puede declararse en cualquier parte del repositorio.
+
+    Parte de un entorno MÍNIMO (lista blanca): `npm install` ejecuta scripts del
+    `package.json` que escribió el modelo, y no debe ver los secretos del backend.
     """
-    entorno = dict(os.environ)
+    from src.infrastructure.adapters.entorno_seguro import entorno_minimo
+
+    entorno = entorno_minimo()
     raiz = directorio.parent if directorio.name == "backend" else directorio
     motor = motor_requerido(str(raiz))
     if motor:

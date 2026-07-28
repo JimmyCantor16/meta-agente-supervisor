@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from pathlib import Path
 
+from src.infrastructure.entrypoints.limite_ritmo import limitar_por_ip
 from src.application.account_service import AccountService
 from src.application.aplicar_ajuste import AplicarAjusteUseCase
 from src.application.audit_project import AuditProjectUseCase
@@ -780,6 +781,7 @@ router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 def evaluate_prompt(
     request: EvaluateRequest,
     use_case: EvaluatePromptUseCase = Depends(get_evaluate_use_case),
+    _limite: None = Depends(limitar_por_ip),
 ) -> EvaluationResponse:
     """Recibe el prompt del usuario y devuelve la evaluación estructurada.
 
@@ -915,6 +917,8 @@ def _manual_del_proyecto(project) -> str | None:
 def audit_project(
     request: AuditRequest,
     use_case: AuditProjectUseCase = Depends(get_audit_use_case),
+    # Exige sesión: audita leyendo el CÓDIGO del proyecto y gasta cuota de IA.
+    user: UserAccount = Depends(get_current_user),
 ) -> AuditResponse:
     """Lee un proyecto del disco, lo analiza con la IA y devuelve mejoras.
 
@@ -1802,7 +1806,11 @@ def archivo_proyecto(
     response_model=list[ProjectSummary],
     summary="Lista los proyectos generados (para la galería).",
 )
-def list_projects() -> list[ProjectSummary]:
+def list_projects(
+    # Exige sesión: sin ella, cualquiera enumeraba los proyectos de TODOS y con
+    # el nombre en la mano podía leer su código por los endpoints de archivos.
+    user: UserAccount = Depends(get_current_user),
+) -> list[ProjectSummary]:
     """Enumera las carpetas de proyectos generados y su número de archivos."""
     base = Path(get_settings().generated_dir)
     if not base.is_dir():
