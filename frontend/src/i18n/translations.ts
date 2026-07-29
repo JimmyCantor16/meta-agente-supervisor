@@ -100,6 +100,12 @@ const es = {
     honestBody:
       "En el plan gratuito, los sistemas publicados se duermen tras unos minutos sin visitas: la primera visita siguiente tarda cerca de un minuto en despertarlos. Es el precio de lo gratis, y para enseñar tu idea sobra.",
   },
+  avance: {
+    preparando: "Preparando…",
+    acompanamiento:
+      "Esto tarda unos minutos. Puedes dejarlo trabajando y hacer otra cosa: abre la pestaña Multimedia para ver la tele o escuchar radio, y te avisaremos aquí y en tus otros dispositivos en cuanto esté listo.",
+    terminado: "Construcción terminada.",
+  },
   plans: {
     title: "Planes",
     subtitle: "Elige el plan que se ajuste a ti. El acceso se activa cuando un administrador confirma tu pago.",
@@ -584,6 +590,12 @@ const en: Translation = {
     honestTitle: "An honest note",
     honestBody:
       "On the free plan, published systems sleep after a few minutes without visits: the next first visit takes about a minute to wake them. That's the price of free, and it's plenty to show your idea.",
+  },
+  avance: {
+    preparando: "Getting ready…",
+    acompanamiento:
+      "This takes a few minutes. You can leave it working and do something else: open the Multimedia tab to watch TV or listen to the radio, and we'll let you know here and on your other devices as soon as it's ready.",
+    terminado: "Build finished.",
   },
   plans: {
     title: "Plans",

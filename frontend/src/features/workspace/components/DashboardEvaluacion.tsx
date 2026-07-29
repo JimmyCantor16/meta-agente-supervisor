@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "../../../components/Badge";
 import { Button } from "../../../components/Button";
 import { Card } from "../../../components/Card";
+import { AvanceConstruccion } from "./AvanceConstruccion";
 import { GitHubLoginButton } from "../../auth/GitHubLoginButton";
 import { GoogleLoginButton } from "../../auth/GoogleLoginButton";
 import { useLanguage } from "../../../i18n/LanguageProvider";
@@ -400,7 +401,14 @@ function GenerateProjectSection({
         </div>
       )}
 
-      {/* Consola en vivo: el sistema narra su construcción por WebSocket */}
+      {/* Cuánto falta, en cristiano, y la invitación a hacer otra cosa mientras */}
+      {loading && progreso.length > 0 && (
+        <div className="mt-4">
+          <AvanceConstruccion progreso={progreso} />
+        </div>
+      )}
+
+      {/* Consola en vivo: el detalle técnico, para quien quiera mirarlo */}
       {loading && progreso.length > 0 && (
         <div
           id="consola-progreso"
