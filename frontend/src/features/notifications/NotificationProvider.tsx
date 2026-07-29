@@ -222,6 +222,14 @@ export function NotificationProvider({ children }: PropsWithChildren) {
               kind: "success",
               url: m ? m[0] : null,
             });
+          } else if (/REVISIÓN PENDIENTE|REVISION PENDIENTE/i.test(txt)) {
+            // El agente entregó su trabajo en una rama: hay algo que revisar.
+            const rama = txt.match(/«(.+?)»/);
+            notifyRef.current({
+              title: tt.notif.reviewTitle,
+              body: rama ? tt.notif.reviewBody(rama[1]) : txt,
+              kind: "info",
+            });
           } else if (/RETENIDA|no se entrega/i.test(txt)) {
             notifyRef.current({ title: tt.notif.genErrorTitle, body: tt.notif.genErrorBody, kind: "error" });
           }

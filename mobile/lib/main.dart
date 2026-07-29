@@ -161,6 +161,9 @@ class _HomeScreenState extends State<HomeScreen>
           });
           if (RegExp(r'VIVO|🚀').hasMatch(txt)) {
             _mostrarNoti('¡Tu sistema está listo! 🎉', txt.replaceAll('🚀', '').trim());
+          } else if (RegExp(r'REVISI[ÓO]N PENDIENTE').hasMatch(txt)) {
+            // El agente dejó su entrega en una rama: hay algo que revisar.
+            _mostrarNoti('📬 Listo para revisión', txt.replaceAll('📬', '').trim());
           } else if (RegExp(r'RETENIDA|no se entrega').hasMatch(txt)) {
             _mostrarNoti('La generación no terminó', txt);
           }

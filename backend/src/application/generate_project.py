@@ -71,6 +71,10 @@ class GenerateProjectUseCase:
         self._spec_plan = spec_plan
         # URL del último proyecto arrancado (la expone el entrypoint).
         self.last_url: str | None = None
+        # Rama de entrega y traza de la corrida, para el informe de revisión.
+        self.rama_entrega: str | None = None
+        self.intentos_verificacion: int = 0
+        self.atascos: list[str] = []
         # Si la interfaz no compiló, aquí queda el motivo para poder decírselo
         # al usuario en vez de entregarle una URL a medias sin explicación.
         self.frontend_error: str | None = None
@@ -98,10 +102,58 @@ class GenerateProjectUseCase:
         self.last_url = None
         self.frontend_error = None
         self.relanzado_por_visibilidad = False
+        self.rama_entrega = None
+        self.intentos_verificacion = 0
+        self.atascos = []
 
         project, output_path = self._generar_y_verificar(original, language)
         self._guardar_caso(original, project)
+        self._entregar_en_rama(original, project, output_path)
         return project, output_path
+
+    def _entregar_en_rama(self, idea: str, project: GeneratedProject, output_path: str) -> None:
+        """Deja el trabajo en una rama con su informe, listo para revisión.
+
+        Nunca bloquea: si algo falla aquí, el proyecto generado sigue siendo
+        válido; solo se pierde la comodidad de revisarlo como un cambio de git.
+        """
+        try:
+            from src.infrastructure.adapters.entrega_en_rama import (
+                EntregaEnRama,
+                InformeEntrega,
+            )
+
+            atascos = list(self.atascos)
+            if self.frontend_error:
+                atascos.append(self.frontend_error.splitlines()[0][:200])
+            if self.last_url is None:
+                atascos.append("No conseguí dejarlo arrancado: no hay URL que entregar.")
+
+            pendientes = ["Revisar el diseño visual: es funcional, pero genérico."]
+            if self.relanzado_por_visibilidad:
+                pendientes.append("Hubo que insistir para que trajera interfaz; conviene revisarla.")
+            if atascos:
+                pendientes.append("Resolver los puntos de «dónde me atasqué».")
+
+            informe = InformeEntrega(
+                idea=idea,
+                proyecto=project.slug(),
+                archivos=len(project.files),
+                intentos=max(1, self.intentos_verificacion),
+                verificado=self.last_url is not None or not atascos,
+                url=self.last_url,
+                atascos=atascos,
+                pendientes=pendientes,
+            )
+            self.rama_entrega = EntregaEnRama().entregar(output_path, informe)
+            if self.rama_entrega:
+                # Mensaje que las 3 apps convierten en aviso de "hay algo que revisar".
+                logger.info(
+                    "ENTREGA LISTA PARA REVISION en la rama '%s' (proyecto '%s').",
+                    self.rama_entrega, project.slug(),
+                )
+        except Exception as exc:  # noqa: BLE001 - entregar es best-effort
+            logger.warning("No se pudo entregar en rama: %s", exc)
 
     def _generar_y_verificar(
         self, original: str, language: str
@@ -131,6 +183,7 @@ class GenerateProjectUseCase:
             # routers, pines incompatibles, módulos ES). Convierte "abre pero no
             # deja entrar" en "usable".
             self._normalizar_determinista(output_path)
+            self.intentos_verificacion = attempt
             error = self._verifier.verify(output_path)
             if error is None:
                 logger.info("Verificación superada en el intento %d.", attempt)
@@ -171,6 +224,14 @@ class GenerateProjectUseCase:
                 _MAX_FIX_ATTEMPTS,
                 error[-1800:],
             )
+            # Se guarda la PRIMERA línea útil del error para el informe de
+            # revisión: es lo que necesita quien vaya a arreglarlo.
+            resumen = next(
+                (l.strip() for l in reversed(error.splitlines()) if l.strip() and "File \"" not in l),
+                "",
+            )
+            if resumen and resumen not in self.atascos:
+                self.atascos.append(f"Intento {attempt}: {resumen[:200]}")
             # El LLM repara sobre la versión YA normalizada en disco (si no, pisa
             # los fixes deterministas con su copia en memoria desactualizada).
             self._resync_desde_disco(project, output_path)

@@ -6,8 +6,10 @@ WORKDIR /app
 # Node.js: necesario para VERIFICAR y ARRANCAR los proyectos generados que usan
 # Express/Node. Sin esto solo podríamos comprobar los proyectos Python, y los
 # demás se entregarían sin verificar y sin URL.
+# git: cada entrega del agente queda en una RAMA con su informe, para poder
+# revisarla, ajustarla y revertirla como en cualquier equipo de desarrollo.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm \
+    && apt-get install -y --no-install-recommends nodejs npm git \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala dependencias primero (mejor cacheo de capas).

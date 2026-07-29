@@ -48,6 +48,11 @@ _AMIGABLES = (
     (re.compile(r"render validado", re.I), "🛡️ El navegador confirmó que tu página SE VE perfecta."),
     (re.compile(r"URL RETENIDA", re.I), "🛡️ La página no pasó la inspección del navegador: no se entrega rota."),
     (re.compile(r"Arreglo automático en (\S+)", re.I), "🩹 Arreglo automático aplicado en {0}"),
+    # Entrega en rama: el aviso que despierta a las 3 apps para revisar.
+    (
+        re.compile(r"ENTREGA LISTA PARA REVISION en la rama '(.+?)'", re.I),
+        "📬 REVISIÓN PENDIENTE · el agente entregó su trabajo en la rama «{0}» con su informe",
+    ),
     # --- Cerebro IA: qué proveedor gratis respondió / cuál falló (fallback) ---
     (re.compile(r"OK con '(.+?)' \[rol=(.+?)\]", re.I), "🤖 IA «{0}» respondió (rol {1})"),
     (re.compile(r"Proveedor '(.+?)' falló", re.I), "⚠️ IA «{0}» falló → salto a la siguiente"),

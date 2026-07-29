@@ -386,6 +386,9 @@ const es = {
     generatedNoUrl: "Ábrelo desde «Proyectos».",
     genErrorTitle: "La generación no terminó",
     genErrorBody: "Revisa el error e inténtalo de nuevo.",
+    reviewTitle: "📬 Listo para revisión",
+    reviewBody: (rama: string) =>
+      `El agente entregó su trabajo en la rama «${rama}» con su informe de qué quedó pendiente.`,
   },
   monitor: {
     title: "Monitor en vivo",
@@ -840,6 +843,9 @@ const en: Translation = {
     generatedNoUrl: "Open it from \"Projects\".",
     genErrorTitle: "Generation didn't finish",
     genErrorBody: "Check the error and try again.",
+    reviewTitle: "📬 Ready for review",
+    reviewBody: (rama: string) =>
+      `The agent delivered its work on branch "${rama}" with a report of what's pending.`,
   },
   monitor: {
     title: "Live monitor",
