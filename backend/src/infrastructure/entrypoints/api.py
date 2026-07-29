@@ -941,6 +941,12 @@ def generate_project(
         logger.error("Fallo generando el proyecto: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
+    # El proyecto queda a nombre de quien lo pidió: así aparece en SU galería y
+    # nadie más puede leer su código.
+    from src.infrastructure.adapters.duenos_proyecto import marcar_dueno
+
+    marcar_dueno(output_path, user.sub, user.email)
+
     return GenerateResponse(
         name=project.name,
         summary=project.summary,
@@ -1868,17 +1874,23 @@ def list_projects(
     # Exige sesión: sin ella, cualquiera enumeraba los proyectos de TODOS y con
     # el nombre en la mano podía leer su código por los endpoints de archivos.
     user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
 ) -> list[ProjectSummary]:
-    """Enumera las carpetas de proyectos generados y su número de archivos."""
+    """Enumera los proyectos DEL USUARIO y su número de archivos."""
+    from src.infrastructure.adapters.duenos_proyecto import es_suyo
+
     base = Path(get_settings().generated_dir)
     if not base.is_dir():
         return []
 
+    admin = account.is_super_admin(user.email)
+
     projects: list[ProjectSummary] = []
     for entry in sorted(base.iterdir()):
-        if entry.is_dir():
-            file_count = sum(1 for p in entry.rglob("*") if p.is_file())
-            projects.append(ProjectSummary(name=entry.name, files=file_count))
+        if not entry.is_dir() or not es_suyo(entry, user.sub, admin):
+            continue
+        file_count = sum(1 for p in entry.rglob("*") if p.is_file())
+        projects.append(ProjectSummary(name=entry.name, files=file_count))
     return projects
 
 
