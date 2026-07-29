@@ -4,6 +4,7 @@ import { TopBar } from "./components/TopBar";
 import { useAuth } from "./features/auth/AuthProvider";
 import { AdminView } from "./features/workspace/components/AdminView";
 import { DashboardEvaluacion } from "./features/workspace/components/DashboardEvaluacion";
+import { AprenderView } from "./features/workspace/components/AprenderView";
 import { PlansView } from "./features/workspace/components/PlansView";
 import { ProjectGallery } from "./features/workspace/components/ProjectGallery";
 import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspace";
@@ -199,16 +200,7 @@ export default function App() {
 
             {view === "admin" && isAdmin && <AdminView />}
 
-            {view === "learn" && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h2 className="text-xl font-bold text-slate-900">🎓 {t.nav.learn}</h2>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                  Activa el <strong>Modo profesor</strong> en la caja de entrada y genera un
-                  proyecto. El agente te explicará el código paso a paso y te propondrá retos
-                  para que aprendas haciéndolo tú mismo — no te lo da todo hecho.
-                </p>
-              </div>
-            )}
+            {view === "learn" && <AprenderView />}
 
             {view === "help" && (
               <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">

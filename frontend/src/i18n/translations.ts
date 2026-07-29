@@ -75,6 +75,31 @@ const es = {
     reviewButton: "🧪 Profesor, revisa mi página",
     reviewChecking: "Visitando tu página…",
   },
+  learn: {
+    deployedTitle: "Desplegado · ya puedes probar",
+    deployedBody:
+      "Estos sistemas están vivos en internet ahora mismo. Ábrelos, crea una cuenta y úsalos: los construyó el agente a partir de una idea escrita en español.",
+    intro:
+      "Antes de construir lo tuyo, mira lo que el sistema ya hizo. Cada uno de estos nació de una frase y terminó publicado en internet, con su base de datos y su inicio de sesión.",
+    cycleTitle: "Cómo funciona, de la idea a internet",
+    cycle: [
+      "Escribes tu idea en español, como se la contarías a alguien. No hace falta saber programar.",
+      "El agente diseña el plan, escribe el código y lo instala.",
+      "Lo arranca de verdad y un navegador comprueba que la página SE VE. Si está rota, no te la entrega: prefiere decírtelo.",
+      "Recibes la dirección de tu sistema funcionando, y un aviso en el móvil o el escritorio cuando esté listo.",
+      "Deja su trabajo firmado con un informe de qué hizo y qué quedó pendiente, para que alguien lo revise y lo pula.",
+      "Pides cambios al profesor y quedan guardados en la historia del proyecto.",
+    ],
+    teacherTitle: "El modo profesor",
+    teacherBody:
+      "Actívalo en la caja de entrada antes de generar. En vez de darte todo hecho, el agente te explica el código paso a paso y te propone retos para que lo completes tú. Cada explicación, ajuste o corrección cuenta como una clase de tu plan.",
+    publishedOn: "Publicado el",
+    auditTitle: "Registro de auditoría",
+    auditChecked: "revisados",
+    honestTitle: "Una nota honesta",
+    honestBody:
+      "En el plan gratuito, los sistemas publicados se duermen tras unos minutos sin visitas: la primera visita siguiente tarda cerca de un minuto en despertarlos. Es el precio de lo gratis, y para enseñar tu idea sobra.",
+  },
   plans: {
     title: "Planes",
     subtitle: "Elige el plan que se ajuste a ti. El acceso se activa cuando un administrador confirma tu pago.",
@@ -532,6 +557,31 @@ const en: Translation = {
     reviewHint: "No chatbot does this: I'll visit YOUR page from the server and confirm it's truly live.",
     reviewButton: "🧪 Teacher, review my page",
     reviewChecking: "Visiting your page…",
+  },
+  learn: {
+    deployedTitle: "Deployed · ready to try",
+    deployedBody:
+      "These systems are live on the internet right now. Open them, create an account and use them: the agent built them from an idea written in plain language.",
+    intro:
+      "Before building yours, look at what the system already did. Each of these started as a sentence and ended up published online, with its database and its sign-in.",
+    cycleTitle: "How it works, from idea to internet",
+    cycle: [
+      "You write your idea in plain language, like you'd tell a friend. No programming needed.",
+      "The agent designs the plan, writes the code and installs it.",
+      "It actually starts it and a browser checks the page IS VISIBLE. If it's broken, it won't hand it over: it tells you instead.",
+      "You get the address of your working system, and an alert on your phone or desktop when it's ready.",
+      "It signs off its work with a report of what it did and what's still pending, so someone can review and polish it.",
+      "You ask the teacher for changes and they're saved in the project's history.",
+    ],
+    teacherTitle: "Teacher mode",
+    teacherBody:
+      "Turn it on in the input box before generating. Instead of handing everything over, the agent explains the code step by step and gives you challenges to complete yourself. Each explanation, adjustment or check counts as a lesson from your plan.",
+    publishedOn: "Published on",
+    auditTitle: "Audit log",
+    auditChecked: "checked",
+    honestTitle: "An honest note",
+    honestBody:
+      "On the free plan, published systems sleep after a few minutes without visits: the next first visit takes about a minute to wake them. That's the price of free, and it's plenty to show your idea.",
   },
   plans: {
     title: "Plans",

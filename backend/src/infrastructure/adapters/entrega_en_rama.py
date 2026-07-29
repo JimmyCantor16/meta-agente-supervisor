@@ -152,4 +152,46 @@ class EntregaEnRama:
             return None
 
         logger.info("ENTREGA EN RAMA '%s' lista para revisión.", rama)
+        self._respaldar_en_github(root, informe.proyecto, rama)
         return rama
+
+    def _respaldar_en_github(self, root: Path, proyecto: str, rama: str) -> None:
+        """Empuja la entrega a GitHub para que SOBREVIVA al reinicio del servidor.
+
+        En la nube el disco es efímero: cuando el servicio duerme o se
+        redespliega, las ramas locales desaparecen y la cola de revisión se
+        pierde. GitHub sí es permanente, así que el trabajo de la noche sigue
+        ahí por la mañana — y además se puede mirar desde el móvil.
+
+        Es opcional: si no hay credencial configurada, no se hace nada y la
+        entrega local sigue siendo válida.
+        """
+        import os
+
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        cuenta = os.environ.get("GITHUB_OWNER", "").strip()
+        if not token or not cuenta:
+            logger.debug("Sin credencial de GitHub: la entrega se queda solo en local.")
+            return
+
+        remoto = f"https://{token}@github.com/{cuenta}/{proyecto}.git"
+        # El remoto se reescribe cada vez: así un token rotado no deja el
+        # repositorio apuntando a una credencial muerta.
+        self._git(root, "remote", "remove", "origin")
+        ok, salida = self._git(root, "remote", "add", "origin", remoto)
+        if not ok:
+            logger.warning("No se pudo configurar el remoto de '%s': %s", proyecto, salida)
+            return
+
+        ok, salida = self._git(root, "push", "-u", "--force", "origin", rama)
+        if ok:
+            logger.info(
+                "ENTREGA RESPALDADA en GitHub: %s/%s (rama %s).", cuenta, proyecto, rama
+            )
+        else:
+            # El repositorio puede no existir todavía: se avisa sin alarmar,
+            # porque la entrega local sigue sirviendo.
+            logger.warning(
+                "No se pudo respaldar '%s' en GitHub (¿existe el repositorio?): %s",
+                proyecto, salida[:200],
+            )
