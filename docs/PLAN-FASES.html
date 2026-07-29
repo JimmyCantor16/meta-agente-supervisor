@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan por fases — de «funciona» a «Wao»</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230B6060'/%3E%3Cpath d='M22 70V40M42 70V26M62 70V50M82 70V32' stroke='white' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  *{box-sizing:border-box}
+  :root{
+    --ground:#EDF0F3; --surface:#FFFFFF; --surface-2:#E4E9EE;
+    --ink:#16202B; --ink-2:#55636F; --ink-3:#7C8894;
+    --line:#D0D9E0; --line-2:#B3C0CB;
+    --amber:#9A5A0B; --amber-bg:rgba(180,105,14,.10);
+    --teal:#0B6060; --teal-bg:rgba(11,96,96,.09);
+    --rojo:#9B2C21; --violeta:#5B3E8E;
+    --display:"Cascadia Mono",Consolas,"SF Mono",ui-monospace,monospace;
+    --prose:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ui:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#0E141A; --surface:#161E26; --surface-2:#1D2831;
+    --ink:#E4EAF0; --ink-2:#9BA9B5; --ink-3:#75838F;
+    --line:#26333F; --line-2:#374857;
+    --amber:#E9A24C; --amber-bg:rgba(233,162,76,.12);
+    --teal:#5CC4C4; --teal-bg:rgba(92,196,196,.12);
+    --rojo:#E07365; --violeta:#B49BE0;
+  }}
+  :root[data-theme="dark"]{
+    --ground:#0E141A; --surface:#161E26; --surface-2:#1D2831;
+    --ink:#E4EAF0; --ink-2:#9BA9B5; --ink-3:#75838F;
+    --line:#26333F; --line-2:#374857;
+    --amber:#E9A24C; --amber-bg:rgba(233,162,76,.12);
+    --teal:#5CC4C4; --teal-bg:rgba(92,196,196,.12);
+    --rojo:#E07365; --violeta:#B49BE0;
+  }
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--prose);
+    font-size:17px;line-height:1.66;-webkit-font-smoothing:antialiased}
+  ::selection{background:var(--amber-bg)}
+  ::-webkit-scrollbar{width:11px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;border:3px solid var(--ground)}
+  html{scrollbar-width:thin;scrollbar-color:var(--line) var(--ground)}
+  a{color:var(--amber)}
+  .hoja{width:min(100% - 2.4rem,90ch);margin-inline:auto;
+    padding-block:clamp(2.4rem,6vh,4rem) 5rem;display:grid;gap:clamp(2rem,4vh,3rem)}
+
+  .cab{display:grid;gap:.9rem}
+  .eyebrow{font-family:var(--display);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ink-3);margin:0;display:flex;align-items:center;gap:.6rem}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--teal)}
+  h1{font-family:var(--display);font-weight:600;font-size:clamp(1.9rem,5vw,2.7rem);line-height:1.08;
+    letter-spacing:-.02em;margin:0;text-wrap:balance}
+  .entrada{margin:0;max-width:66ch;color:var(--ink-2);font-size:1.05rem}
+
+  /* Índice */
+  .indice{background:var(--surface);border:1px solid var(--line);border-radius:3px;padding:1.1rem 1.3rem}
+  .indice p{font-family:var(--display);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-3);margin:0 0 .7rem}
+  .indice ol{margin:0;padding-left:1.3rem;display:grid;gap:.35rem;font-family:var(--ui);font-size:.9rem}
+  .indice a{text-decoration:none;color:var(--ink-2)}
+  .indice a:hover{color:var(--amber);text-decoration:underline}
+
+  /* Fase */
+  .fase{background:var(--surface);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+  .fase > header{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem 1rem;
+    padding:1rem 1.3rem;border-bottom:1px solid var(--line);background:var(--surface-2)}
+  .fase .n{font-family:var(--display);font-size:.7rem;letter-spacing:.14em;color:var(--amber);
+    border:1px solid var(--line-2);border-radius:2px;padding:.14rem .45rem;flex:none}
+  .fase h2{font-family:var(--display);font-size:1rem;font-weight:600;margin:0;letter-spacing:.01em}
+  .fase .cuerpo{padding:1.2rem 1.3rem;display:grid;gap:1rem}
+  .porque{font-family:var(--ui);font-size:.94rem;color:var(--ink-2);margin:0;max-width:70ch}
+  .porque b{color:var(--ink)}
+
+  .estado{font-family:var(--display);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+    padding:.16rem .5rem;border-radius:2px;white-space:nowrap;margin-left:auto}
+  .e-hecho{background:var(--teal-bg);color:var(--teal)}
+  .e-medias{background:var(--amber-bg);color:var(--amber)}
+  .e-pend{background:var(--surface);color:var(--ink-3);border:1px solid var(--line)}
+  .e-tuyo{background:rgba(91,62,142,.12);color:var(--violeta)}
+
+  h3{font-family:var(--display);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-3);margin:.2rem 0 0}
+  ol.tareas{margin:.3rem 0 0;padding-left:1.35rem;display:grid;gap:.45rem;
+    font-family:var(--ui);font-size:.93rem;color:var(--ink-2)}
+  ol.tareas b{color:var(--ink);font-weight:600}
+  ol.tareas li::marker{color:var(--line-2);font-family:var(--display);font-size:.85em}
+
+  .valida{background:var(--ground);border-left:3px solid var(--teal);border-radius:2px;
+    padding:.85rem 1rem;display:grid;gap:.4rem}
+  .valida .k{font-family:var(--display);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--teal);margin:0}
+  .valida ul{margin:0;padding-left:1.15rem;display:grid;gap:.3rem;font-family:var(--ui);font-size:.9rem}
+  .valida li::marker{color:var(--teal)}
+
+  .dep{font-family:var(--display);font-size:.72rem;color:var(--ink-3);margin:0}
+
+  em.t{font-style:normal;font-family:var(--display);font-size:.9em;background:var(--surface-2);
+    padding:.06em .32em;border-radius:2px}
+  pre{margin:0;padding:.85rem 1rem;background:var(--ground);border:1px solid var(--line);
+    border-radius:2px;overflow-x:auto;font-family:var(--display);font-size:.78rem;line-height:1.65}
+
+  .pie{border-top:1px solid var(--line);padding-top:1.2rem;font-family:var(--display);font-size:.72rem;
+    color:var(--ink-3);display:flex;flex-wrap:wrap;gap:.4rem 1.5rem}
+</style>
+</head>
+<body>
+<article class="hoja">
+
+  <header class="cab">
+    <p class="eyebrow"><span class="dot"></span>Plan de ejecución · 29 de julio de 2026</p>
+    <h1>De «funciona» a «Wao», por fases.</h1>
+    <p class="entrada">
+      Ocho fases, con sus tareas y con la prueba concreta que determina si cada una está terminada.
+      Nada se da por hecho hasta que su validación pasa. El orden importa: cada fase se apoya en la
+      anterior.
+    </p>
+  </header>
+
+  <nav class="indice">
+    <p>Las ocho fases</p>
+    <ol>
+      <li><a href="#f0">Trámites que desbloquean (tuyos)</a></li>
+      <li><a href="#f1">Dominio adaptativo — el corazón del «Wao»</a></li>
+      <li><a href="#f2">Ideas grandes: plan por N clases</a></li>
+      <li><a href="#f3">El circuito del alumno</a></li>
+      <li><a href="#f4">Que se sienta vivo</a></li>
+      <li><a href="#f5">El móvil como auditor experto</a></li>
+      <li><a href="#f6">El agente experto (IA de pago)</a></li>
+      <li><a href="#f7">La prueba plan a plan</a></li>
+    </ol>
+  </nav>
+
+  <!-- FASE 0 -->
+  <section class="fase" id="f0">
+    <header>
+      <span class="n">FASE 0</span>
+      <h2>Trámites que desbloquean</h2>
+      <span class="estado e-tuyo">Depende de ti</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        Cuatro gestiones cortas que <b>no puedo hacer yo</b> porque requieren tus cuentas. Sin ellas,
+        varias fases quedan a medias por más código que escriba.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li><b>Token de GitHub</b> (permiso <em class="t">repo</em>) → activa el respaldo automático. Sin esto, en producción los proyectos se pierden al reiniciar.</li>
+        <li><b>OAuth App de GitHub</b> → enciende el botón de entrar con GitHub, que ya está desplegado.</li>
+        <li><b>Páginas de privacidad y términos</b> → último requisito para publicar en Google. <b>Te las genero yo</b> si me lo pides.</li>
+        <li><b>Publicar la app en Google</b> → salir del modo prueba. No necesita verificación con los permisos que usamos.</li>
+        <li><i>Opcional:</i> <b>clave de Anthropic</b> con $5 → habilita la Fase 6.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Cómo sabremos que está lista</p>
+        <ul>
+          <li>Un proyecto generado aparece solo como repositorio en tu GitHub.</li>
+          <li>El botón «Entrar con GitHub» aparece y completa el ingreso.</li>
+          <li>Una cuenta de Google <b>no autorizada a mano</b> puede entrar.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FASE 1 -->
+  <section class="fase" id="f1">
+    <header>
+      <span class="n">FASE 1</span>
+      <h2>Dominio adaptativo — el corazón del «Wao»</h2>
+      <span class="estado e-pend">Pendiente</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        Hoy la plantilla tiene <b>una entidad fija</b> con un campo de texto. Por eso catas, tareas y
+        facturas salen idénticas — el problema que detectaste. La corrección: <b>que el modelo diseñe
+        el dominio y el código construya la plomería para ese dominio</b>. Se conserva la fiabilidad
+        (el modelo no toca el cableado, que es donde falla) y se recupera la variedad.
+      </p>
+      <pre>  Hoy:  idea → [plantilla FIJA: Item{texto}] → siempre la misma app
+
+  Debe: idea → el modelo diseña el DOMINIO
+               Cata: nombre · origen · tueste · notas · puntaje 1-100
+                    ↓
+               el código genera modelos, formularios, validación y cálculos
+                    ↓
+               apps distintas · plomería igual de fiable</pre>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li>Definir el <b>contrato de dominio</b>: entidades, campos, tipos (texto, número, fecha, opción, booleano), obligatoriedad, rangos y cálculos derivados.</li>
+        <li>Que el modelo <b>rellene ese contrato</b> a partir de la idea, y validarlo antes de construir (si no cumple, se corrige o se cae a un dominio mínimo).</li>
+        <li><b>Generador de plomería por dominio</b>: modelos y tablas, esquemas de entrada/salida, repositorio y CRUD, validación por tipo.</li>
+        <li><b>Formularios y listados</b> que se dibujan solos según los campos, con el control adecuado a cada tipo.</li>
+        <li><b>Cálculos</b>: totales, promedios y contadores declarados en el dominio.</li>
+        <li>Aplicar el mismo criterio de <b>diseño según el dominio</b>, no una paleta única.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación — se prueba con tres ideas distintas</p>
+        <ul>
+          <li>«Bitácora de catas», «Control de gastos» y «Inventario de bodega» producen <b>tres aplicaciones distintas</b>, no la misma con otro título.</li>
+          <li>Cada una arranca, deja registrarse, iniciar sesión y guardar datos <b>reales de su dominio</b> (no un campo de texto genérico).</li>
+          <li>Los campos numéricos <b>rechazan letras</b>; los obligatorios no se pueden dejar vacíos.</li>
+          <li>El de gastos <b>suma un total</b> correcto.</li>
+          <li>Las tres pasan la verificación <b>al primer intento</b> y entregan URL.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FASE 2 -->
+  <section class="fase" id="f2">
+    <header>
+      <span class="n">FASE 2</span>
+      <h2>Ideas grandes: plan por N clases</h2>
+      <span class="estado e-pend">Pendiente</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        Tu SaaS de trading —WebSockets, velas, backtesting, order book— <b>excede cualquier
+        plantilla</b>. Intentarlo de golpe entrega un amasijo roto. Un ingeniero de verdad respondería
+        <i>«esto son ocho clases; empecemos por el motor de precios en vivo»</i>. Eso impresiona más, y
+        además es honesto.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li><b>Medir la complejidad</b> de la idea: número de entidades, tiempo real, cálculos, integraciones externas, gráficos.</li>
+        <li>Si excede una entrega: <b>proponer el temario</b> — N clases, cada una con un entregable que funciona por sí solo.</li>
+        <li><b>Construir la clase 1</b> completa y entregarla viva, no un esqueleto de todo.</li>
+        <li>Cada clase siguiente <b>parte de la anterior</b> y se suma al mismo proyecto.</li>
+        <li>Mostrar el temario en la interfaz, con lo hecho y lo que falta.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación — con tu prompt del SaaS de trading</p>
+        <ul>
+          <li>El sistema <b>no intenta hacerlo todo</b>: propone un temario con N clases.</li>
+          <li>La <b>clase 1 se entrega viva y funcionando</b> (por ejemplo, precios en vivo con gráfico).</li>
+          <li>Al pedir la clase 2, <b>se suma</b> al mismo proyecto sin romper lo anterior.</li>
+          <li>El usuario entiende en todo momento <b>dónde está</b> y cuánto falta.</li>
+        </ul>
+      </div>
+      <p class="dep">Depende de: Fase 1</p>
+    </div>
+  </section>
+
+  <!-- FASE 3 -->
+  <section class="fase" id="f3">
+    <header>
+      <span class="n">FASE 3</span>
+      <h2>El circuito del alumno</h2>
+      <span class="estado e-pend">Pendiente</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        Que una clase que exige tocar código lleve al alumno al <b>aula en vivo</b>, y que al guardar
+        su cambio quede registrado, verificado y desplegado — viendo el resultado. Con una regla
+        firme: <b>nada roto llega a producción</b>. Se puede revertir, pero no es la idea.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li>La clase declara <b>qué archivo</b> hay que tocar y <b>qué se espera</b> lograr.</li>
+        <li>El aula abre ese archivo con el contexto de la clase.</li>
+        <li>Al guardar: <b>commit</b> en la rama del alumno, con mensaje legible.</li>
+        <li><b>Verificación automática</b>: compila, arranca, la página se ve y el flujo sigue funcionando.</li>
+        <li>Si pasa → <b>desplegar</b> y mostrar el cambio en vivo. Si no pasa → explicar qué se rompió y <b>no desplegar</b>.</li>
+        <li><b>Volver atrás</b> en un clic si el alumno se arrepiente.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación — el alumno hace un cambio de verdad</p>
+        <ul>
+          <li>Se cambia un texto visible → commit, verificación, despliegue, <b>y se ve el cambio</b>.</li>
+          <li>Se introduce un error a propósito → <b>NO se despliega</b>, y se explica el motivo en lenguaje claro.</li>
+          <li>Tras el fallo, «volver atrás» deja el proyecto <b>como estaba</b>.</li>
+          <li>El historial de git muestra <b>quién hizo cada cambio</b>: agente, alumno o revisor.</li>
+        </ul>
+      </div>
+      <p class="dep">Depende de: Fase 0 (token) · Fase 1</p>
+    </div>
+  </section>
+
+  <!-- FASE 4 -->
+  <section class="fase" id="f4">
+    <header>
+      <span class="n">FASE 4</span>
+      <h2>Que se sienta vivo</h2>
+      <span class="estado e-medias">A medias</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        Construir tarda minutos. Sin acompañamiento, el usuario mira una barra y se aburre. Con él,
+        <b>se queda</b> — y entiende que su idea se está convirtiendo en software de verdad.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li><b>Porcentaje aproximado</b> bajo «Creando proyecto», calculado con las fases reales.</li>
+        <li><b>Auditoría interactiva</b> en la web, como la del escritorio.</li>
+        <li><b>Acompañamiento</b>: ofrecer la tele o la radio, o que el profesor vaya explicando qué está pasando.</li>
+        <li><b>Un solo canal coherente</b>: hoy el móvil y el escritorio escuchan producción mientras se genera en local, y por eso no avisan.</li>
+        <li>Evitar el <b>aviso triplicado</b> cuando hay tres aparatos abiertos.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación — con los tres aparatos abiertos</p>
+        <ul>
+          <li>Al generar, el porcentaje <b>avanza</b> y refleja la fase real.</li>
+          <li>El aviso de «listo» llega a los tres, <b>sin sonar tres veces</b>.</li>
+          <li>Durante la espera el usuario puede <b>ver la tele o escuchar radio</b> sin perder el hilo.</li>
+          <li>Al terminar, los tres muestran <b>el mismo resultado</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FASE 5 -->
+  <section class="fase" id="f5">
+    <header>
+      <span class="n">FASE 5</span>
+      <h2>El móvil como auditor experto</h2>
+      <span class="estado e-pend">Pendiente</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        El móvil es el aparato que siempre llevas encima: es el mejor sitio para <b>vigilar</b> lo que
+        pasa en la web y en el escritorio. Y con multimedia, para acompañar la espera desde el sofá.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li><b>Panel de auditoría</b> con fases, agentes de IA que respondieron y métricas — como el Monitor.</li>
+        <li><b>Historial</b> de lo ocurrido, no solo lo que pasa ahora.</li>
+        <li><b>Multimedia</b>: TV y radio, como en la web.</li>
+        <li><b>Avisos fiables con la app cerrada</b> (requiere notificaciones push reales).</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación</p>
+        <ul>
+          <li>Generando desde la web, el móvil <b>muestra las fases en vivo</b>.</li>
+          <li>Con la app cerrada, el aviso de «listo» <b>igual llega</b>.</li>
+          <li>Se puede escuchar radio <b>mientras</b> se sigue la construcción.</li>
+        </ul>
+      </div>
+      <p class="dep">Depende de: Fase 4</p>
+    </div>
+  </section>
+
+  <!-- FASE 6 -->
+  <section class="fase" id="f6">
+    <header>
+      <span class="n">FASE 6</span>
+      <h2>El agente experto (IA de pago)</h2>
+      <span class="estado e-pend">Pendiente · necesita clave</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        Los modelos gratuitos hacen el grueso. El experto entra <b>solo donde ellos se atascan</b>, que
+        es lo que hace viable cobrar $19 y $29. Y se <b>ve</b> en el Monitor: el usuario entiende por
+        qué paga.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li><b>Adaptador de Claude</b> enchufado a la misma cadena, con su propio rol.</li>
+        <li>Entrada en <b>tres momentos</b>: diseño de la arquitectura, rescate cuando el bucle se estanca, y repaso final de calidad.</li>
+        <li><b>Gobernado por el plan</b>: Studio en los momentos críticos, Business en todo el proceso.</li>
+        <li><b>Visible en el Monitor</b>: «entró el agente experto».</li>
+        <li><b>Tope de gasto</b> por usuario y mes, para que un cliente intensivo no se coma el margen.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación</p>
+        <ul>
+          <li>Una idea que en Free queda genérica, en Studio sale <b>notablemente mejor</b>.</li>
+          <li>El Monitor <b>muestra el momento exacto</b> en que entra el experto.</li>
+          <li>Un proyecto donde los gratuitos se estancan, <b>el experto lo rescata</b>.</li>
+          <li>El coste por generación se <b>mide</b> y respeta el tope.</li>
+        </ul>
+      </div>
+      <p class="dep">Depende de: Fase 0 (clave) · Fase 1</p>
+    </div>
+  </section>
+
+  <!-- FASE 7 -->
+  <section class="fase" id="f7">
+    <header>
+      <span class="n">FASE 7</span>
+      <h2>La prueba plan a plan</h2>
+      <span class="estado e-pend">Pendiente</span>
+    </header>
+    <div class="cuerpo">
+      <p class="porque">
+        El examen final: <b>el mismo prompt exigente en los cuatro planes</b>, comparados lado a lado.
+        Hoy no tendría sentido — los cuatro darían lo mismo.
+      </p>
+      <h3>Tareas</h3>
+      <ol class="tareas">
+        <li>Elegir el prompt definitivo (tu SaaS de trading, o facturación con nómina e inventario).</li>
+        <li>Ejecutarlo en <b>Free, Pro, Studio y Business</b>, cambiando el plan entre corridas.</li>
+        <li>Recoger evidencia de cada uno: capturas, tiempos, intentos, URL viva.</li>
+        <li>Publicar los cuatro y <b>compararlos abiertos a la vez</b>.</li>
+        <li>Documentar la diferencia real, sin adornos.</li>
+      </ol>
+      <div class="valida">
+        <p class="k">Validación — el criterio es duro a propósito</p>
+        <ul>
+          <li>Los <b>cuatro entregan una URL viva</b>. Ninguno queda roto.</li>
+          <li>Un tercero, sin saber cuál es cuál, <b>distingue el de pago del gratuito</b>.</li>
+          <li>La diferencia se explica en <b>una frase</b> que un cliente entendería.</li>
+          <li>Si Studio no se nota mejor que Pro, <b>el plan no se vende</b> — y volvemos a la Fase 6.</li>
+        </ul>
+      </div>
+      <p class="dep">Depende de: todas las anteriores</p>
+    </div>
+  </section>
+
+  <section class="fase">
+    <header><span class="n">ORDEN</span><h2>Por dónde empiezo</h2></header>
+    <div class="cuerpo">
+      <p class="porque">
+        <b>Fase 1</b>, sin esperar nada. Es la que convierte «otra app igual» en «mi idea hecha
+        software», y sin ella las demás lucen poco: de nada sirve un circuito de clases perfecto sobre
+        una aplicación que siempre es la misma.
+      </p>
+      <p class="porque">
+        Mientras la construyo, tú resuelves la <b>Fase 0</b>. Cuando ambas estén, seguimos por la 2 y
+        la 3, que ya se apoyan en dominio real y en git con respaldo.
+      </p>
+    </div>
+  </section>
+
+  <footer class="pie">
+    <span>Meta-Agente · Jamz Software</span>
+    <span>8 fases · validación por fase</span>
+    <span>29 · jul · 2026</span>
+  </footer>
+
+</article>
+</body>
+</html>
