@@ -22,20 +22,46 @@ from src.infrastructure.adapters.skeleton_landing import construir_landing
 logger = logging.getLogger(__name__)
 
 _SYSTEM = (
-    "Clasifica la idea de una app en UN tipo y devuelve SOLO un JSON válido (sin texto extra):\n"
-    "- 'crud_login': app web donde el usuario INICIA SESIÓN y gestiona una LISTA de "
-    "elementos (tareas, notas, contactos, gastos, inventario, hábitos...).\n"
-    "- 'landing': página de presentación / marketing / portafolio / informativa de un "
-    "producto, servicio, artista o negocio, SIN login ni base de datos.\n"
-    "- 'otro': cualquier otra cosa (juego, dashboard complejo, solo API, etc.).\n\n"
+    "Eres un analista que traduce la idea de una app a su MODELO DE DATOS. "
+    "Devuelve SOLO un JSON válido, sin texto alrededor.\n\n"
+    "Primero elige el tipo:\n"
+    "- 'crud_login': app donde el usuario inicia sesión y gestiona registros "
+    "(catas, gastos, inventario, clientes, tareas, hábitos, citas...).\n"
+    "- 'landing': página de presentación de un producto, servicio o negocio, "
+    "SIN login ni base de datos.\n"
+    "- 'otro': juego, panel complejo en tiempo real, solo API, etc.\n\n"
+    "Si es 'crud_login', DISEÑA EL DOMINIO REAL de esa idea. No inventes campos "
+    "genéricos: piensa qué datos concretos anotaría de verdad esa persona.\n\n"
     "Forma del JSON:\n"
-    '{"tipo":"crud_login|landing|otro",'
-    ' "app_name":"<título corto>","item_label":"<elementos en plural, p.ej. tareas>",'
-    ' "field_ph":"<placeholder, p.ej. Escribe una tarea...>",'
-    ' "title":"<título de la landing>","tagline":"<frase gancho breve>","cta":"<botón, p.ej. Empezar>",'
-    ' "sections":[{"heading":"...","text":"..."}]}\n'
-    "Rellena SOLO los campos del tipo elegido (para landing incluye 3 a 5 sections). "
-    "No expliques nada, solo el JSON."
+    "{\n"
+    '  "tipo": "crud_login|landing|otro",\n'
+    '  "dominio": {\n'
+    '    "app_name": "Bitácora de Catas",\n'
+    '    "entidad": "Cata", "entidad_plural": "Catas",\n'
+    '    "tono": "cálido|frío|sobrio|vivo|neutro",\n'
+    '    "campos": [\n'
+    '      {"nombre":"cafe","etiqueta":"Café","tipo":"texto","obligatorio":true},\n'
+    '      {"nombre":"tueste","etiqueta":"Tueste","tipo":"opcion",'
+    '"opciones":["Claro","Medio","Oscuro"],"obligatorio":true},\n'
+    '      {"nombre":"puntaje","etiqueta":"Puntuación","tipo":"entero",'
+    '"minimo":1,"maximo":100,"obligatorio":true}\n'
+    "    ],\n"
+    '    "calculos": [\n'
+    '      {"etiqueta":"Puntuación media","operacion":"promedio","campo":"puntaje"},\n'
+    '      {"etiqueta":"Catas registradas","operacion":"conteo"}\n'
+    "    ]\n"
+    "  },\n"
+    '  "title":"...", "tagline":"...", "cta":"...", "sections":[{"heading":"...","text":"..."}]\n'
+    "}\n\n"
+    "Reglas del dominio:\n"
+    "- tipos válidos: texto, texto_largo, entero, decimal, fecha, opcion, booleano.\n"
+    "- entre 3 y 7 campos. Los que de verdad importan, no relleno.\n"
+    "- 'opcion' necesita al menos 2 opciones.\n"
+    "- 'calculos' solo sobre campos numéricos (o 'conteo', que no necesita campo). "
+    "Operaciones: suma, promedio, maximo, minimo, conteo.\n"
+    "- el 'tono' debe pegar con el tema (café→cálido, finanzas→frío, "
+    "corporativo→sobrio, creativo→vivo).\n"
+    "Rellena SOLO lo del tipo elegido. Para 'landing' incluye 3 a 5 sections."
 )
 
 
@@ -50,11 +76,14 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         datos = self._extraer(prompt)
         tipo = (datos or {}).get("tipo")
         if tipo == "crud_login":
+            proyecto = self._construir_por_dominio(datos)
+            if proyecto is not None:
+                return proyecto
+            # Sin dominio utilizable se cae al esqueleto de siempre: una app
+            # genérica que funciona es mejor que ninguna.
             app_name = str(datos.get("app_name") or "Mi App")[:60]
-            item_label = str(datos.get("item_label") or "elementos")[:40]
-            field_ph = str(datos.get("field_ph") or "Escribe algo...")[:60]
-            logger.info("Esqueleto: CRUD+login -> hexagonal PROBADO ('%s', ítems=%s).", app_name, item_label)
-            return construir(app_name, item_label, field_ph)
+            logger.warning("Esqueleto: sin dominio válido; se usa la plantilla básica.")
+            return construir(app_name, "elementos", "Escribe algo...")
         if tipo == "landing":
             title = str(datos.get("title") or datos.get("app_name") or "Mi Producto")[:60]
             tagline = str(datos.get("tagline") or "Algo simple y bien hecho.")[:140]
@@ -80,6 +109,34 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         return self._fallback.aplicar_stubs(project)
 
     # -- internos ------------------------------------------------------------
+    @staticmethod
+    def _construir_por_dominio(datos: dict) -> GeneratedProject | None:
+        """Construye la app A PARTIR DEL DOMINIO que diseñó el modelo.
+
+        Es lo que hace que dos ideas distintas den dos aplicaciones distintas.
+        Si el dominio viene mal formado, devuelve None y el llamador decide.
+        """
+        bruto = datos.get("dominio")
+        if not isinstance(bruto, dict) or not bruto.get("campos"):
+            return None
+        try:
+            from src.domain.dominio_app import DominioApp
+            from src.infrastructure.adapters.skeleton_dominio_armar import (
+                construir_desde_dominio,
+            )
+
+            dominio = DominioApp.model_validate(bruto).sanear()
+        except Exception as exc:  # noqa: BLE001 - un dominio inválido no tumba la generación
+            logger.warning("El dominio propuesto no era válido (%s).", exc)
+            return None
+
+        logger.info(
+            "Esqueleto POR DOMINIO: '%s' · entidad=%s · %d campos · %d cálculo(s) · tono=%s",
+            dominio.app_name, dominio.entidad, len(dominio.campos),
+            len(dominio.calculos), dominio.tono,
+        )
+        return construir_desde_dominio(dominio)
+
     @staticmethod
     def _es_esqueleto(project: GeneratedProject) -> bool:
         return any(f.path == MARCADOR for f in project.files)
