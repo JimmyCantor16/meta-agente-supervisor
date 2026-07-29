@@ -1,0 +1,14 @@
+Una aplicación web para llevar mi bitácora personal de catas de café, con login sencillo.
+
+Cada cata que registro tiene: el nombre del café, su origen (finca o región), el nivel de tueste, mis notas de sabor y una puntuación de 1 a 100.
+
+Pantallas:
+1) Login: usuario y contraseña, con enlace para crear cuenta.
+2) Registro de cuenta nueva.
+3) Mi bitácora: un campo para anotar una cata nueva y la lista de mis catas, donde puedo marcar mis favoritas y borrar las que ya no quiero.
+
+Login sencillo: usuario y contraseña guardados en el servidor, SIN correo ni OAuth. Cada persona ve únicamente sus propias catas.
+
+Estilo: cálido y artesanal, como una libreta de un tostador de especialidad. Debe verse bien en el celular.
+
+DEBE VERSE: al abrir la dirección aparece la pantalla de entrada; después, mi bitácora con las catas. Nunca entregues solo datos en crudo.
