@@ -183,6 +183,22 @@ class Settings(BaseSettings):
     )
 
     # --- Login con Google (OAuth) ---
+    github_client_id: str = Field(
+        default="",
+        description="Client ID de la app OAuth de GitHub. Vacío = login de GitHub apagado.",
+    )
+    github_client_secret: str = Field(
+        default="",
+        description="Client Secret de la app OAuth de GitHub.",
+    )
+    session_secret: str = Field(
+        default="",
+        description=(
+            "Clave con la que el backend firma las sesiones propias (login de "
+            "GitHub). Si se deja vacía se genera una al arrancar, lo que cierra "
+            "las sesiones en cada reinicio: defínela en producción."
+        ),
+    )
     google_client_id: str = Field(
         default="",
         description="Client ID de Google OAuth. Vacío = login deshabilitado.",

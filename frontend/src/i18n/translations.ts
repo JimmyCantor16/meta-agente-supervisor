@@ -143,6 +143,8 @@ const es = {
   },
   auth: {
     bridgeButton: "Entrar con Google (abre el navegador)",
+    githubButton: "Entrar con GitHub",
+    githubGoing: "Abriendo GitHub…",
     bridgeWaiting: "Esperando tu login en el navegador…",
     bridgeHint: "Completa el inicio de sesión en la ventana de tu navegador y vuelve aquí: la app te reconocerá sola.",
     desktopOpenedWeb: "Abrí la web de Meta-Agente en tu navegador. Inicia sesión con Google ahí y la app te reconocerá sola.",
@@ -626,6 +628,8 @@ const en: Translation = {
   },
   auth: {
     bridgeButton: "Sign in with Google (opens browser)",
+    githubButton: "Sign in with GitHub",
+    githubGoing: "Opening GitHub…",
     bridgeWaiting: "Waiting for your login in the browser…",
     bridgeHint: "Complete the sign-in in your browser window and come back: the app will recognize you automatically.",
     desktopOpenedWeb: "Opened the Meta-Agent web app in your browser. Sign in with Google there and the app will recognize you automatically.",

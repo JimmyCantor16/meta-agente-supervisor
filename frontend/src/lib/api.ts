@@ -377,6 +377,32 @@ export async function loginWithGoogle(credential: string): Promise<AuthUser> {
   return (await response.json()) as AuthUser;
 }
 
+// --- Login con GitHub --------------------------------------------------------
+const GITHUB_CONFIG_ENDPOINT = `${API_BASE}/api/v1/auth/github/config`;
+const GITHUB_INICIAR_ENDPOINT = `${API_BASE}/api/v1/auth/github/iniciar`;
+
+/** ¿El servidor tiene configurado el login con GitHub? Nunca lanza. */
+export async function githubDisponible(): Promise<boolean> {
+  try {
+    const r = await fetch(GITHUB_CONFIG_ENDPOINT);
+    if (!r.ok) return false;
+    return Boolean(((await r.json()) as { enabled?: boolean }).enabled);
+  } catch {
+    return false;
+  }
+}
+
+/** Devuelve la URL de GitHub a la que hay que mandar el navegador. */
+export async function iniciarLoginGitHub(): Promise<string | null> {
+  try {
+    const r = await fetch(GITHUB_INICIAR_ENDPOINT);
+    if (!r.ok) return null;
+    return ((await r.json()) as { url?: string }).url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // --- PUENTE DE SESIÓN para la app de escritorio -----------------------------
 // Google bloquea su login dentro del WebView de la app, así que la sesión nace
 // en el NAVEGADOR (origen autorizado) y viaja al escritorio por este puente:

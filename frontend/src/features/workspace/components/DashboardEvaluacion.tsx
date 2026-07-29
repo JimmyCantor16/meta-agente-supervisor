@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "../../../components/Badge";
 import { Button } from "../../../components/Button";
 import { Card } from "../../../components/Card";
+import { GitHubLoginButton } from "../../auth/GitHubLoginButton";
 import { GoogleLoginButton } from "../../auth/GoogleLoginButton";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import type { AccountStatus } from "../../auth/types";
@@ -374,7 +375,10 @@ function GenerateProjectSection({
       {!isLoggedIn ? (
         <div className="flex flex-col items-start gap-3 rounded-xl border border-brand-100 bg-brand-50 px-4 py-4">
           <p className="text-sm text-brand-700">🔐 {t.account.loginToGenerate}</p>
-          <GoogleLoginButton />
+          <div className="flex flex-wrap items-center gap-2">
+            <GoogleLoginButton />
+            <GitHubLoginButton />
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-4">

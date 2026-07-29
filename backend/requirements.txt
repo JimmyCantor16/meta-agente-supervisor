@@ -16,3 +16,8 @@ psycopg[binary]>=3.1.0
 # --- Login con Google (verificación del ID token) ---
 google-auth>=2.30.0
 requests>=2.31.0
+
+# --- Login con GitHub (intercambio de código + sesión propia firmada) ---
+# GitHub no emite un token de identidad como Google, así que el backend firma
+# su propia sesión tras verificar la identidad contra la API de GitHub.
+python-jose[cryptography]>=3.3.0

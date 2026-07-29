@@ -787,6 +787,17 @@ def get_current_user(
             detail="Inicia sesión con Google para continuar.",
         )
     token = authorization.split(" ", 1)[1].strip()
+
+    # Sesión propia (login con GitHub): la firmamos nosotros, así que se
+    # comprueba primero y sin salir a internet.
+    from src.infrastructure.entrypoints.auth_github import leer_sesion
+
+    propia = leer_sesion(token)
+    if propia is not None:
+        return account.get_or_create(
+            propia.get("sub", ""), propia.get("email", ""), propia.get("name", "")
+        )
+
     info = verify_google_token(token)  # lanza 401/400
     return account.get_or_create(info.get("sub", ""), info.get("email", ""), info.get("name", ""))
 
@@ -2066,6 +2077,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from src.infrastructure.entrypoints.auth import router as auth_router
 
     app.include_router(auth_router)
+
+    # Login con GitHub: alternativa a Google, útil porque el público objetivo
+    # (gente que va a publicar código) casi siempre ya tiene cuenta ahí.
+    from src.infrastructure.entrypoints.auth_github import router as github_router
+
+    app.include_router(github_router)
 
     # Progreso de generación EN VIVO (WebSocket): el usuario ve construirse
     # su sistema paso a paso en vez de mirar un spinner mudo.

@@ -89,6 +89,37 @@ export function AuthProvider({ children }: PropsWithChildren) {
     getAuthConfig().then(setConfig);
   }, []);
 
+  // Vuelta del login con GitHub: el servidor devuelve la sesión en el fragmento
+  // (#sesion=...) para que no quede escrita en los registros ni en el historial
+  // como parámetro. Se guarda y se limpia la barra de direcciones al instante.
+  useEffect(() => {
+    const hash = window.location.hash || "";
+    const marca = hash.match(/[#&]sesion=([^&]+)/);
+    if (!marca) return;
+    const sesion = decodeURIComponent(marca[1]);
+    window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    (async () => {
+      try {
+        const datos = JSON.parse(atob(sesion.split(".")[1] || "")) as {
+          sub?: string;
+          email?: string;
+          name?: string;
+        };
+        const usuario: AuthUser = {
+          sub: datos.sub ?? "",
+          email: datos.email ?? "",
+          name: datos.name ?? datos.email ?? "",
+          picture: "",
+        };
+        setUser(usuario);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(usuario));
+        window.localStorage.setItem(CREDENTIAL_KEY, sesion);
+      } catch {
+        /* sesión ilegible: se ignora y la persona vuelve a entrar */
+      }
+    })();
+  }, []);
+
   // Si el backend indica que la sesión expiró (401), cerramos sesión para
   // que la UI pida iniciar sesión de nuevo (login fluido).
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { LanguageToggle } from "./LanguageToggle";
+import { GitHubLoginButton } from "../features/auth/GitHubLoginButton";
 import { GoogleLoginButton } from "../features/auth/GoogleLoginButton";
 import { NotificationBell } from "../features/notifications/NotificationBell";
 import { useAuth } from "../features/auth/AuthProvider";
@@ -64,7 +65,10 @@ export function TopBar({ onMenu }: TopBarProps) {
             </button>
           </div>
         ) : (
-          <GoogleLoginButton />
+          <div className="flex items-center gap-2">
+            <GitHubLoginButton />
+            <GoogleLoginButton />
+          </div>
         )}
       </div>
     </header>
