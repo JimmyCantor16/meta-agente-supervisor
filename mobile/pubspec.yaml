@@ -37,6 +37,9 @@ dependencies:
   http: ^1.2.2
   web_socket_channel: ^3.0.1
   flutter_local_notifications: ^18.0.1
+  # Abre las emisoras en el reproductor del propio telefono: sigue sonando
+  # en segundo plano mientras el auditor vigila.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

@@ -11,6 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+import 'auditor.dart';
+import 'multimedia.dart';
 import 'package:web_socket_channel/io.dart';
 
 const _brand = Color(0xFF6366F1);
@@ -92,6 +95,8 @@ class _HomeScreenState extends State<HomeScreen>
   bool _conectado = false;
   bool _generando = false;
   final List<_Evento> _feed = [];
+  final EstadoAuditoria _auditoria = EstadoAuditoria();
+  int _pestana = 0;
   late final AnimationController _pulso =
       AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
 
@@ -150,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
           final txt = data.toString();
           if (!mounted) return;
           setState(() {
+            _auditoria.aplicar(txt);
             _feed.insert(0, _Evento(txt));
             if (_feed.length > 60) _feed.removeLast();
             // "en generación" mientras llegan pasos; termina en VIVO/retenida.
@@ -234,23 +240,50 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final paginas = [
+      // Agente: pedir una idea y ver el resultado
+      ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          _cabecera(),
+          const SizedBox(height: 16),
+          _tarjetaEstado(),
+          const SizedBox(height: 16),
+          _cajaIdea(),
+          const SizedBox(height: 12),
+          if (_error != null) _bloque(const Color(0xFF3A1214), Text(_error!, style: const TextStyle(color: Color(0xFFFF9B9B)))),
+          if (_resultado != null) _bloque(_panel, Text(_resultado!, style: const TextStyle(height: 1.45, color: Colors.white70))),
+          const SizedBox(height: 8),
+          _seccionEnVivo(),
+        ],
+      ),
+      // Auditor: lo que ocurre en la web y el escritorio, paso a paso
+      PanelAuditor(estado: _auditoria, conectado: _conectado),
+      // Multimedia: acompanar la espera
+      const PanelMultimedia(),
+    ];
+
     return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            _cabecera(),
-            const SizedBox(height: 16),
-            _tarjetaEstado(),
-            const SizedBox(height: 16),
-            _cajaIdea(),
-            const SizedBox(height: 12),
-            if (_error != null) _bloque(const Color(0xFF3A1214), Text(_error!, style: const TextStyle(color: Color(0xFFFF9B9B)))),
-            if (_resultado != null) _bloque(_panel, Text(_resultado!, style: const TextStyle(height: 1.45, color: Colors.white70))),
-            const SizedBox(height: 8),
-            _seccionEnVivo(),
-          ],
-        ),
+      body: SafeArea(child: paginas[_pestana]),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _pestana,
+        onDestinationSelected: (i) => setState(() => _pestana = i),
+        backgroundColor: const Color(0xFF161E26),
+        indicatorColor: const Color(0xFF5CC4C4).withValues(alpha: 0.2),
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.auto_awesome_outlined),
+              selectedIcon: Icon(Icons.auto_awesome),
+              label: 'Agente'),
+          NavigationDestination(
+              icon: Icon(Icons.radar_outlined),
+              selectedIcon: Icon(Icons.radar),
+              label: 'Auditor'),
+          NavigationDestination(
+              icon: Icon(Icons.play_circle_outline),
+              selectedIcon: Icon(Icons.play_circle),
+              label: 'Multimedia'),
+        ],
       ),
     );
   }
