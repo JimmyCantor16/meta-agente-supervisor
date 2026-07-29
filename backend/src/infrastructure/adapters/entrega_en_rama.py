@@ -89,6 +89,52 @@ class InformeEntrega:
         return "\n".join(lineas)
 
 
+def commit_del_alumno(
+    output_path: str, descripcion: str, autor: str = "Alumno"
+) -> str | None:
+    """Registra en git un cambio hecho por el alumno, YA VERIFICADO.
+
+    Por qué importa: los ajustes se escribían en disco y se verificaban, pero no
+    quedaban en la historia. El alumno no podía ver qué había cambiado, ni volver
+    atrás dos pasos, ni enseñar su progreso. Ahora cada cambio suyo es un commit
+    con su nombre, igual que en cualquier equipo.
+
+    Se llama SOLO cuando la verificación pasó: nada roto entra en la historia.
+    Devuelve el identificador corto del commit, o None si no se pudo registrar.
+    """
+    root = Path(output_path)
+    if not root.is_dir():
+        return None
+
+    entrega = EntregaEnRama()
+    if not (root / ".git").exists():
+        ok, _ = entrega._git(root, "init", "-b", "main")  # noqa: SLF001
+        if not ok:
+            return None
+        entrega._git(root, "commit", "--allow-empty", "-m", "inicio del proyecto")  # noqa: SLF001
+
+    # El trabajo del alumno vive en su propia rama: así se puede comparar con lo
+    # que entregó el agente y revertir sin tocar la base.
+    entrega._git(root, "checkout", "-B", "alumno")  # noqa: SLF001
+    entrega._git(root, "add", "-A")  # noqa: SLF001
+    ok, salida = entrega._git(  # noqa: SLF001
+        root,
+        "-c", f"user.name={autor}",
+        "-c", "user.email=alumno@metaagente.local",
+        "commit", "-m", f"{descripcion.strip()[:120]}\n\nCambio del alumno, verificado antes de guardar.",
+    )
+    if not ok:
+        if "nothing to commit" in salida.lower():
+            return None
+        logger.warning("No se pudo registrar el cambio del alumno: %s", salida[:200])
+        return None
+
+    ok, sha = entrega._git(root, "rev-parse", "--short", "HEAD")  # noqa: SLF001
+    corto = sha.strip() if ok else None
+    logger.info("COMMIT DEL ALUMNO %s en '%s': %s", corto, root.name, descripcion[:80])
+    return corto
+
+
 class EntregaEnRama:
     """Deja el proyecto generado en su propia rama de git, con informe."""
 

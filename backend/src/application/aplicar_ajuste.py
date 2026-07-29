@@ -172,9 +172,17 @@ class AplicarAjusteUseCase:
         if error is None:
             logger.info("Ajuste aplicado y verificado en '%s'.", nombre)
             self._registrar(nombre, base.ajuste, cambios, aplicado=True, revertido=False)
+            # El cambio queda en la HISTORIA de git, no solo en disco: así el
+            # alumno ve qué cambió, puede volver atrás y enseñar su progreso.
+            # Solo se registra si la verificación pasó: nada roto entra al historial.
+            commit = self._registrar_en_git(str(raiz), base.ajuste)
             return base.model_copy(update={
                 "explicacion": explicacion, "concepto": concepto, "cambios": cambios,
                 "aplicado": True, "verificado": True,
+                "detalle": (
+                    f"Cambio guardado en la historia del proyecto (commit {commit})."
+                    if commit else None
+                ),
             })
 
         # Falló: se deshace y se dice la verdad.
@@ -189,6 +197,17 @@ class AplicarAjusteUseCase:
                 "así que se revirtió y el proyecto quedó como estaba.\n\n" + error
             ),
         })
+
+    @staticmethod
+    def _registrar_en_git(raiz: str, descripcion: str) -> str | None:
+        """Deja el cambio del alumno en la historia. Nunca bloquea el ajuste."""
+        try:
+            from src.infrastructure.adapters.entrega_en_rama import commit_del_alumno
+
+            return commit_del_alumno(raiz, descripcion)
+        except Exception as exc:  # noqa: BLE001 - registrar es best-effort
+            logger.warning("No se pudo registrar el cambio en git: %s", exc)
+            return None
 
     # ------------------------------------------------------------------
     # Almacén de propuestas: lo que el alumno revisa queda guardado en disco
