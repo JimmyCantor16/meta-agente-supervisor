@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 
-from src.domain.entities import GeneratedProject
+from src.domain.entities import GeneratedFile, GeneratedProject
 from src.domain.ports import ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import MultiModelLLM
 from src.infrastructure.adapters.skeleton_fullstack import MARCADOR, construir
@@ -29,7 +29,12 @@ _SYSTEM = (
     "(catas, gastos, inventario, clientes, tareas, hábitos, citas...).\n"
     "- 'landing': página de presentación de un producto, servicio o negocio, "
     "SIN login ni base de datos.\n"
-    "- 'otro': juego, panel complejo en tiempo real, solo API, etc.\n\n"
+    "- 'por_clases': la idea es DEMASIADO GRANDE para una sola entrega — pide "
+    "varios módulos, tiempo real, gráficos avanzados, motores de cálculo o "
+    "integraciones externas (un SaaS de trading, un ERP con facturación, nómina "
+    "e inventario, una red social completa). NO intentes hacerlo todo: propón "
+    "un TEMARIO por clases y describe el dominio de la PRIMERA.\n"
+    "- 'otro': cualquier otra cosa (un juego, solo una API...).\n\n"
     "Si es 'crud_login', DISEÑA EL DOMINIO REAL de esa idea. No inventes campos "
     "genéricos: piensa qué datos concretos anotaría de verdad esa persona.\n\n"
     "Forma del JSON:\n"
@@ -51,7 +56,18 @@ _SYSTEM = (
     '      {"etiqueta":"Catas registradas","operacion":"conteo"}\n'
     "    ]\n"
     "  },\n"
-    '  "title":"...", "tagline":"...", "cta":"...", "sections":[{"heading":"...","text":"..."}]\n'
+    '  "title":"...", "tagline":"...", "cta":"...", "sections":[{"heading":"...","text":"..."}],\n'
+    '  "temario": {\n'
+    '    "titulo":"Plataforma de Trading",\n'
+    '    "resumen":"Qué será cuando esté completo, en dos frases.",\n'
+    '    "motivo":"Por qué se hace por partes, dicho con honestidad.",\n'
+    '    "clases":[\n'
+    '      {"numero":1,"titulo":"Motor de precios en vivo",'
+    '"entregable":"Ver los precios actualizándose y guardarlos",'
+    '"porque":"Sin datos no hay nada que analizar despues"},\n'
+    '      {"numero":2,"titulo":"...","entregable":"...","porque":"..."}\n'
+    "    ]\n"
+    "  }\n"
     "}\n\n"
     "Reglas del dominio:\n"
     "- tipos válidos: texto, texto_largo, entero, decimal, fecha, opcion, booleano.\n"
@@ -60,7 +76,11 @@ _SYSTEM = (
     "- 'calculos' solo sobre campos numéricos (o 'conteo', que no necesita campo). "
     "Operaciones: suma, promedio, maximo, minimo, conteo.\n"
     "- el 'tono' debe pegar con el tema (café→cálido, finanzas→frío, "
-    "corporativo→sobrio, creativo→vivo).\n"
+    "corporativo→sobrio, creativo→vivo).\n\n"
+    "Si el tipo es 'por_clases': rellena 'temario' con 4 a 8 clases (cada una "
+    "debe dejar algo USABLE por sí solo, no un andamio a medias) Y rellena "
+    "'dominio' con lo que se construye en la CLASE 1, siguiendo las mismas "
+    "reglas de arriba.\n"
     "Rellena SOLO lo del tipo elegido. Para 'landing' incluye 3 a 5 sections."
 )
 
@@ -84,6 +104,16 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
             app_name = str(datos.get("app_name") or "Mi App")[:60]
             logger.warning("Esqueleto: sin dominio válido; se usa la plantilla básica.")
             return construir(app_name, "elementos", "Escribe algo...")
+        if tipo == "por_clases":
+            proyecto = self._construir_primera_clase(datos)
+            if proyecto is not None:
+                return proyecto
+            logger.warning("Idea grande sin temario utilizable; se intenta como CRUD.")
+            proyecto = self._construir_por_dominio(datos)
+            if proyecto is not None:
+                return proyecto
+            return self._fallback.generate(prompt, language)
+
         if tipo == "landing":
             title = str(datos.get("title") or datos.get("app_name") or "Mi Producto")[:60]
             tagline = str(datos.get("tagline") or "Algo simple y bien hecho.")[:140]
@@ -136,6 +166,46 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
             len(dominio.calculos), dominio.tono,
         )
         return construir_desde_dominio(dominio)
+
+    @staticmethod
+    def _construir_primera_clase(datos: dict) -> GeneratedProject | None:
+        """Para ideas grandes: entrega la CLASE 1 funcionando, más el temario.
+
+        Es la respuesta honesta a un encargo que no cabe en una entrega. En vez
+        de un amasijo a medias de todo, algo que funciona hoy y un camino claro
+        de lo que falta.
+        """
+        bruto = datos.get("temario")
+        if not isinstance(bruto, dict) or not bruto.get("clases"):
+            return None
+        try:
+            from src.domain.temario import Temario
+
+            temario = Temario.model_validate(bruto).sanear()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("El temario propuesto no era válido (%s).", exc)
+            return None
+        if temario.total < 2:
+            return None  # si no son varias clases, no hacía falta trocearlo
+
+        # La clase 1 se construye como cualquier app por dominio.
+        proyecto = SkeletonProjectGenerator._construir_por_dominio(datos)
+        if proyecto is None:
+            return None
+
+        primera = temario.clases[0]
+        proyecto.files.append(
+            GeneratedFile(path="PLAN-DE-CLASES.md", content=temario.como_markdown())
+        )
+        proyecto.summary = (
+            f"Clase 1 de {temario.total}: {primera.titulo}. "
+            f"{proyecto.summary} El plan completo está en PLAN-DE-CLASES.md."
+        )
+        logger.info(
+            "IDEA GRANDE: temario de %d clases. Se entrega la clase 1 «%s» funcionando.",
+            temario.total, primera.titulo,
+        )
+        return proyecto
 
     @staticmethod
     def _es_esqueleto(project: GeneratedProject) -> bool:

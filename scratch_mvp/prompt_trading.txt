@@ -1,0 +1,13 @@
+Necesito un SaaS completo de Simulación y Monitoreo de Precios Financieros y Crypto en Tiempo Real con Detección de Arbitraje y Backtesting.
+
+Frontend con motor de gráficos para renderizar velas (candlesticks), indicadores técnicos (SMA, EMA, RSI) y libro de órdenes interactivo.
+
+Motor de datos por WebSockets que genere precios en tiempo real para 5 pares (BTC/USD, ETH/USD, SOL/USD) actualizándose cada 300ms.
+
+Motor de arbitraje en vivo: comparar precios entre 3 exchanges simulados (Binance, Coinbase, Kraken) y disparar alertas cuando detecte discrepancias mayores al 0.5%.
+
+Módulo de backtesting de estrategias: configurar monto inicial, stop-loss, take-profit e indicador cruzado, y ejecutar una simulación histórica que devuelva Win Rate, Max Drawdown, Sharpe Ratio y Profit/Loss total.
+
+Panel de gestión de riesgo con reglas personalizables tipo "notificar si BTC cae más de 2% en 1 minuto".
+
+Diseño profesional estilo Bloomberg/TradingView, modo oscuro, acentos neón, animaciones al actualizar precios, menú lateral colapsable y manejo de desconexiones.
