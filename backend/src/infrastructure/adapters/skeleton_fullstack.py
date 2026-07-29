@@ -119,12 +119,51 @@ def _application_services() -> str:
     return '''"""Casos de uso: dependen SOLO de puertos (inyección por constructor)."""
 from __future__ import annotations
 
+import re
+
 from backend.domain.entities import Item, User
 from backend.domain.ports import ItemRepository, PasswordHasher, TokenService, UserRepository
 
 
 class AuthError(Exception):
     """Credenciales inválidas o usuario ya existente."""
+
+
+class ValidacionError(Exception):
+    """Los datos que llegaron no cumplen las reglas mínimas."""
+
+
+# Reglas de cuenta. Sin esto, un registro con usuario "1" y clave "1" pasaba
+# sin más: funciona, pero no es algo que se pueda enseñar a nadie.
+MIN_USUARIO = 3
+MAX_USUARIO = 30
+MIN_CLAVE = 8
+
+
+def validar_credenciales(username: str, password: str) -> tuple[str, str]:
+    """Comprueba usuario y contraseña, y devuelve los valores ya limpios.
+
+    Raises:
+        ValidacionError: con un mensaje que la persona pueda entender y actuar.
+    """
+    usuario = (username or "").strip()
+    clave = password or ""
+
+    if len(usuario) < MIN_USUARIO:
+        raise ValidacionError(f"El usuario debe tener al menos {MIN_USUARIO} caracteres.")
+    if len(usuario) > MAX_USUARIO:
+        raise ValidacionError(f"El usuario no puede pasar de {MAX_USUARIO} caracteres.")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", usuario):
+        raise ValidacionError("El usuario solo admite letras, números, punto, guion y guion bajo.")
+    if len(clave) < MIN_CLAVE:
+        raise ValidacionError(f"La contraseña debe tener al menos {MIN_CLAVE} caracteres.")
+    if clave.isdigit() or clave.isalpha():
+        raise ValidacionError("La contraseña debe combinar letras y números.")
+    if clave.lower() in {"12345678", "password", "contrasena", "contraseña", "qwertyui"}:
+        raise ValidacionError("Esa contraseña es demasiado común. Elige otra.")
+    if clave.lower() == usuario.lower():
+        raise ValidacionError("La contraseña no puede ser igual al usuario.")
+    return usuario, clave
 
 
 class AuthService:
@@ -134,9 +173,10 @@ class AuthService:
         self._tokens = tokens
 
     def register(self, username: str, password: str) -> User:
-        if self._users.by_username(username):
-            raise AuthError("El usuario ya existe")
-        return self._users.create(username, self._hasher.hash(password))
+        usuario, clave = validar_credenciales(username, password)
+        if self._users.by_username(usuario):
+            raise AuthError("Ese usuario ya está registrado")
+        return self._users.create(usuario, self._hasher.hash(clave))
 
     def login(self, username: str, password: str) -> str:
         hashed = self._users.hashed_password(username)
@@ -344,7 +384,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.application.services import AuthError, AuthService, ItemService
+from backend.application.services import AuthError, AuthService, ItemService, ValidacionError
 from backend.domain.entities import User
 from backend.infrastructure.db import SessionLocal
 from backend.infrastructure.repositories import SqlItemRepository, SqlUserRepository
@@ -409,7 +449,8 @@ def current_user(token: str = Depends(_oauth2), auth: AuthService = Depends(get_
 def register(body: Credentials, auth: AuthService = Depends(get_auth)):
     try:
         user = auth.register(body.username, body.password)
-    except AuthError as exc:
+    except (ValidacionError, AuthError) as exc:
+        # 400 con el motivo EXACTO: quien se registra debe saber qué corregir.
         raise HTTPException(status_code=400, detail=str(exc))
     return UserOut(id=user.id, username=user.username)
 
@@ -563,13 +604,14 @@ export function AuthView(onLogged) {
   el.innerHTML = `
     <h1></h1>
     <p class="sub"></p>
-    <input class="u" placeholder="Usuario" autocomplete="username">
-    <input class="p" type="password" placeholder="Contraseña" autocomplete="current-password">
+    <input class="u" placeholder="Usuario" autocomplete="username" minlength="3" maxlength="30">
+    <input class="p" type="password" placeholder="Contraseña" autocomplete="current-password" minlength="8">
+    <p class="pista">Usuario: 3 caracteres o más. Contraseña: 8 o más, con letras y números.</p>
     <div class="row">
       <button class="in">Entrar</button>
       <button class="up ghost">Crear cuenta</button>
     </div>
-    <p class="msg"></p>`;
+    <p class="msg" role="status" aria-live="polite"></p>`;
   // textContent (no innerHTML): el nombre viene de la idea del usuario y no
   // debe poder inyectar HTML en la página.
   el.querySelector("h1").textContent = window.__APP__.name;
@@ -579,12 +621,17 @@ export function AuthView(onLogged) {
 
   el.querySelector(".up").onclick = async () => {
     const r = await register(u.value, p.value);
-    msg.textContent = r.ok ? "Cuenta creada. Ahora entra." : ((await r.json().catch(() => ({}))).detail || "No se pudo registrar.");
+    const d = await r.json().catch(() => ({}));
+    // El motivo exacto del servidor, para que se pueda corregir. Verde si salió
+    // bien, ámbar si hay algo que arreglar: el color también informa.
+    msg.textContent = r.ok ? "Cuenta creada. Ya puedes entrar." : (d.detail || "No se pudo registrar.");
+    msg.className = r.ok ? "msg ok" : "msg error";
   };
   el.querySelector(".in").onclick = async () => {
     const r = await login(u.value, p.value);
     if (r.ok) { setToken((await r.json()).access_token); onLogged(); }
-    else { msg.textContent = "Usuario o contraseña incorrectos."; }
+    else { msg.textContent = "Usuario o contraseña incorrectos.";
+    msg.className = "msg error"; }
   };
   return el;
 }
@@ -695,6 +742,9 @@ button.small{padding:.4rem .8rem;font-size:.85rem}
 .row{display:flex;gap:.6rem}
 .row button{flex:1}
 .msg{color:var(--mut);font-size:.9rem;margin:.8rem 0 0;min-height:1.1em}
+.msg.ok{color:var(--ok)}
+.msg.error{color:#f59e0b}
+.pista{color:var(--mut);font-size:.78rem;margin:-.2rem 0 .8rem;line-height:1.4}
 .board-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
 .add{display:flex;gap:.6rem;margin-bottom:1rem}
 .add input{margin:0}

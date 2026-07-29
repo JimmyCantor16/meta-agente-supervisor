@@ -323,13 +323,19 @@ export async function improveProject(
  * Lista los proyectos generados (para la galería). Nunca lanza: devuelve [].
  */
 export async function listProjects(): Promise<ProjectSummary[]> {
-  try {
-    const response = await fetch(PROJECTS_ENDPOINT);
-    if (!response.ok) return [];
-    return (await response.json()) as ProjectSummary[];
-  } catch {
-    return [];
+  // Manda la sesión: el endpoint la exige desde que se cerró la fuga por la que
+  // cualquiera podía enumerar los proyectos de todos. Sin ella devolvía 401 y
+  // este método lo tragaba como «no hay proyectos», así que la galería aparecía
+  // vacía SIN decir por qué y con ella se caían profesor, taller y aula.
+  const response = await fetch(PROJECTS_ENDPOINT, { headers: authHeaders() });
+  if (response.status === 401) {
+    handleAuthExpiry(401);
+    throw new ApiError("Inicia sesión para ver tus proyectos.", 401);
   }
+  if (!response.ok) {
+    throw new ApiError("No se pudieron cargar tus proyectos.", response.status);
+  }
+  return (await response.json()) as ProjectSummary[];
 }
 
 /** Obtiene la config de login (si está habilitado y el Client ID). Nunca lanza. */
