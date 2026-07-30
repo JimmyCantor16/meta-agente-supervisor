@@ -41,6 +41,30 @@ interface Auditoria {
 // pueda comprobarlo uno por uno.
 const AUDITORIA: Auditoria[] = [
   {
+    fecha: "29 jul · 20:40",
+    titulo: "Un solo canal para los tres aparatos · DESPLEGADO, puedes probar",
+    detalle:
+      "El escritorio y el móvil escuchaban producción mientras generabas en tu máquina: por eso no avisaban. Ahora el navegador que lo ve reenvía cada paso al canal compartido. Y hay turno de aviso: suena en uno, se guarda en los tres. Pruébalo con los tres abiertos, generando desde la web.",
+  },
+  {
+    fecha: "29 jul · 20:40",
+    titulo: "El alumno queda en git, y puede volver atrás · DESPLEGADO",
+    detalle:
+      "La clase dice qué archivo tocar y qué deberías ver; el aula lo abre. Al guardar, si arranca queda como commit con tu nombre; si no arranca NO entra en la historia. El botón Deshacer vuelve al último punto bueno y no puede borrar la entrega del agente.",
+  },
+  {
+    fecha: "29 jul · 20:40",
+    titulo: "Agente experto listo, esperando la clave · MECÁNICA PROBADA",
+    detalle:
+      "Entra en diseño, rescate y repaso según el plan (Studio en los críticos, Business también en el diseño), se anuncia en el Monitor y tiene tope de gasto mensual. Con EXPERTO_SIMULADO=true se prueba entero sin gastar: Business añade campos y un cálculo que Free no tiene.",
+  },
+  {
+    fecha: "29 jul · 20:40",
+    titulo: "Dos bugs encontrados al probar, arreglados",
+    detalle:
+      "La URL final se llevaba el «!» del mensaje, así que el enlace Abrir no abría nada (estaba en las tres apps). Y un cálculo que llegaba como «tipo: promedio» salía como SUMA etiquetada «Promedio»: un número mal etiquetado es peor que no tenerlo.",
+  },
+  {
     fecha: "28 jul · 19:41",
     titulo: "Bitácora de Catas publicada",
     detalle:
