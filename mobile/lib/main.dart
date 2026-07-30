@@ -109,6 +109,13 @@ class _HomeScreenState extends State<HomeScreen>
     // conexión (el sistema corta los sockets ociosos y la píldora se quedaba
     // diciendo "EN VIVO" sobre un canal muerto).
     WidgetsBinding.instance.addObserver(this);
+    // El historial vive en el teléfono: lo que auditaste ayer sigue ahí hoy,
+    // aunque la app se haya cerrado.
+    _auditoria.alArchivar = () => HistorialAuditoria.guardar(_auditoria.historial);
+    HistorialAuditoria.cargar().then((corridas) {
+      if (!mounted || corridas.isEmpty) return;
+      setState(() => _auditoria.historial.addAll(corridas));
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _conectarWs());
   }
 

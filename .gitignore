@@ -40,3 +40,8 @@ Thumbs.db
 mobile/android/key.properties
 *.jks
 *.keystore
+
+# Documento interno de visión: NO se versiona.
+docs/vision-meta-agente.html
+# Bitácoras de compilación de los experimentos (ruido, no código).
+scratch_mvp/*.log

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { canalDeEscucha, espejarEvento, urlDelTexto } from "../../lib/canal";
 
 // Monitor EN VIVO del pipeline de generación: se conecta al mismo WebSocket de
 // progreso del backend y traduce cada mensaje a un estado estructurado (fases,
@@ -66,20 +67,9 @@ function estadoInicial(): MonitorState {
   };
 }
 
-function esEscritorio(): boolean {
-  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
-}
-function wsUrl(): string {
-  // Escritorio: se conecta al backend COMPARTIDO en producción, para ver en vivo
-  // lo mismo que la web y el móvil (los 3 en el mismo canal). Para desarrollo
-  // local del escritorio, apunta a ws://localhost:8000.
-  if (esEscritorio()) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
-  const host = window.location.host;
-  // En Render el proxy del sitio estático NO reenvía WebSocket → directo al backend.
-  if (host.endsWith(".onrender.com")) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
-  const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${host}/api/v1/ws/progreso`;
-}
+// El canal (y el reenvío cuando la generación pasa en tu propia máquina) vive en
+// `lib/canal.ts`, compartido con las notificaciones: un solo sitio donde decidir
+// qué escucha cada aparato evita que la web y el escritorio miren a distinto lado.
 
 /** Aplica un mensaje del WS al estado (heurística por el contenido traducido). */
 function aplicar(s: MonitorState, txt: string): MonitorState {
@@ -141,12 +131,11 @@ function aplicar(s: MonitorState, txt: string): MonitorState {
     set("reparar", "run");
   }
   if (/VIVO en (http)/i.test(txt)) {
-    const m = txt.match(/https?:\/\/\S+/);
     s.fases = s.fases.map((f) => (f.estado === "run" || f.estado === "idle" ? { ...f, estado: f.id === "arrancar" ? "ok" : f.estado } : f));
     set("verificar", "ok");
     set("arrancar", "ok");
     s.resultado = "exito";
-    s.url = m ? m[0] : null;
+    s.url = urlDelTexto(txt);
     s.fin = Date.now();
     tipo = "ok";
   }
@@ -200,7 +189,8 @@ export function useMonitor(): MonitorState {
     const conectar = () => {
       window.clearTimeout(retry); // evita dos bucles de reconexión a la vez
       try {
-        ws = new WebSocket(wsUrl());
+        const canal = canalDeEscucha();
+        ws = new WebSocket(canal.url);
         ws.onopen = () => {
           intentos = 0;
           setEstado((s) => ({ ...s, conectado: true }));
@@ -208,6 +198,7 @@ export function useMonitor(): MonitorState {
         ws.onmessage = (e: MessageEvent) => {
           const txt = String(e.data || "");
           if (/^👋/.test(txt)) return; // saludo de bienvenida
+          if (canal.esLocal) espejarEvento(txt);
           setEstado((s) => aplicar({ ...s, conectado: true }, txt));
         };
         ws.onclose = () => {

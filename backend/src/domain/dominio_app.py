@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 #: Tipos que sabemos construir de punta a punta (columna, validación y control
 #: de formulario). Deliberadamente cortos: cada tipo nuevo hay que saber
@@ -87,6 +87,20 @@ class Calculo(BaseModel):
     etiqueta: str = Field(..., description="Cómo se muestra. P. ej. 'Total gastado'.")
     operacion: TipoCalculo = "suma"
     campo: str = Field(default="", description="Sobre qué campo se calcula (vacío para 'conteo').")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _aceptar_tipo(cls, datos: object) -> object:
+        """Acepta `tipo` como sinónimo de `operacion`.
+
+        Los modelos dicen «tipo» con muchísima frecuencia. Sin esto, un cálculo
+        que llegaba como {"tipo": "promedio"} caía al valor por omisión y salía
+        una SUMA con la etiqueta «Promedio de kilos». Un número mal etiquetado es
+        peor que no tenerlo: se toman decisiones con él.
+        """
+        if isinstance(datos, dict) and "operacion" not in datos and datos.get("tipo"):
+            datos = {**datos, "operacion": datos["tipo"]}
+        return datos
 
     @field_validator("campo", mode="before")
     @classmethod

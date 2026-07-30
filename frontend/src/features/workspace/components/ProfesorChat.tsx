@@ -11,7 +11,7 @@ import {
   relanzarMVP,
   verificarClase,
 } from "../../../lib/api";
-import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat } from "../types";
+import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat, MisionClase } from "../types";
 
 /**
  * El módulo profesor como CURSO INTERACTIVO por chat.
@@ -21,7 +21,14 @@ import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat } from "../ty
  * que aprendió (quiz sobre su código, un cambio, su repo o su URL vivos). Es
  * lo que ningún chatbot gratis hace: enseña TU sistema y revisa TU tarea.
  */
-export function ProfesorChat({ projectName }: { projectName: string }) {
+export function ProfesorChat({
+  projectName,
+  onIrAlAula,
+}: {
+  projectName: string;
+  /** Lleva al alumno al aula con el archivo de la clase ya abierto. */
+  onIrAlAula?: (m: MisionClase) => void;
+}) {
   const { t, lang } = useLanguage();
   const g = t.curso;
 
@@ -275,6 +282,7 @@ export function ProfesorChat({ projectName }: { projectName: string }) {
             <SuperarClase
               curso={curso}
               clase={clase}
+              onIrAlAula={onIrAlAula}
               yaHecha={completadas.has(clase.numero)}
               onSuperada={(actualizado) => {
                 setCurso(actualizado);
@@ -483,11 +491,13 @@ function SuperarClase({
   clase,
   yaHecha,
   onSuperada,
+  onIrAlAula,
 }: {
   curso: CursoResult;
   clase: ClaseCurso;
   yaHecha: boolean;
   onSuperada: (c: CursoResult) => void;
+  onIrAlAula?: (m: MisionClase) => void;
 }) {
   const { t, lang } = useLanguage();
   const g = t.curso;
@@ -502,6 +512,7 @@ function SuperarClase({
 
   const criterio = clase.criterio;
   const esQuiz = criterio.tipo === "quiz" && criterio.quiz.length > 0;
+  const esCambio = criterio.tipo === "cambio";
   const esTexto = ["reflexion", "cambio"].includes(criterio.tipo);
   const esUrl = criterio.tipo === "url_publicada";
   const esRepo = criterio.tipo === "repo_git";
@@ -566,6 +577,36 @@ function SuperarClase({
           {g.ocultar} ▴
         </button>
       </div>
+
+      {/* Clase que exige tocar código: el aula es el sitio donde se hace, así
+          que se le dice qué archivo y qué debería ver, y se le lleva allí. */}
+      {esCambio && onIrAlAula && (
+        <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/70 p-3">
+          <p className="text-sm font-bold text-brand-800">🛠️ {g.tocaCodigo}</p>
+          {criterio.archivo && (
+            <p className="mt-1 font-mono text-xs text-brand-700">{criterio.archivo}</p>
+          )}
+          {criterio.resultado_esperado && (
+            <p className="mt-1.5 text-xs leading-snug text-slate-600">
+              <span className="font-semibold">{g.deberiasVer}:</span> {criterio.resultado_esperado}
+            </p>
+          )}
+          <button
+            onClick={() =>
+              onIrAlAula({
+                numero: clase.numero,
+                titulo: clase.titulo,
+                archivo: criterio.archivo,
+                resultadoEsperado: criterio.resultado_esperado,
+                pista: criterio.pista,
+              })
+            }
+            className="mt-2.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-700"
+          >
+            {g.irAlAula} →
+          </button>
+        </div>
+      )}
 
       {esQuiz && (
         <div className="space-y-3">

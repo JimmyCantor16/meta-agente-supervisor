@@ -650,6 +650,29 @@ export async function compilarProyecto(
   return (await r.json()) as EstadoProyecto;
 }
 
+/**
+ * Deshace el último cambio del alumno y vuelve a arrancar el proyecto.
+ *
+ * Solo deshace cambios suyos: la entrega original del agente es el suelo del que
+ * parte. Si no queda nada suyo, el servidor responde 400 con esa explicación.
+ */
+export async function revertirProyecto(projectName: string): Promise<EstadoProyecto> {
+  let r: Response;
+  try {
+    r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(projectName)}/revertir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as EstadoProyecto;
+}
+
 async function cursoPost<T>(ruta: string, cuerpo: unknown): Promise<T> {
   let r: Response;
   try {

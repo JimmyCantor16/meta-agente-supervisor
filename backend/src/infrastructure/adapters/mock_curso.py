@@ -21,6 +21,24 @@ def _norm(texto: str) -> str:
     return "".join(c for c in (texto or "").lower() if c.isalnum() or c == " ").strip()
 
 
+#: Dónde suele vivir el título que el alumno va a cambiar en su primera clase.
+_PORTADA = ("index.html", "App.jsx", "app.js", "main.py", "web.py", "server.js")
+
+
+def _archivo_de_portada(files) -> str:
+    """El archivo donde está la primera cosa visible del proyecto.
+
+    Se elige de los archivos REALES: una ruta inventada haría que el aula
+    abriera un error justo cuando se le pide al alumno tocar código.
+    """
+    rutas = [getattr(f, "path", "") for f in (files or [])]
+    for nombre in _PORTADA:
+        for ruta in rutas:
+            if ruta.endswith(nombre):
+                return ruta
+    return next((r for r in rutas if r.endswith((".html", ".js", ".py"))), "")
+
+
 def _parece_pregunta_examen(clase, mensaje: str) -> bool:
     """True si el mensaje del alumno se parece a una pregunta del examen."""
     m = _norm(mensaje)
@@ -68,8 +86,15 @@ class MockGeneradorSyllabus(GeneradorSyllabusPort):
              "Todo texto que ves vive en un archivo. Cambiar uno es tu primer paso como dev.",
              "Cambia el título principal de tu página.",
              "editar y ver el resultado",
-             CriterioSuperacion(tipo=TipoCriterio.REFLEXION,
-                                descripcion="Cuéntame qué texto cambiaste y qué pasó.")),
+             # Clase de CAMBIO con archivo declarado: el aula le abre ESE archivo
+             # y le dice qué debería ver distinto. Sin eso, «cambia un texto» deja
+             # al alumno delante de 23 archivos sin saber cuál.
+             CriterioSuperacion(
+                 tipo=TipoCriterio.CAMBIO_APLICADO,
+                 descripcion="Cambia el título y guarda: si arranca, queda como tu commit.",
+                 archivo=_archivo_de_portada(files),
+                 resultado_esperado="El título que se lee arriba en la página debe ser el nuevo.",
+                 pista="Busca el texto entre <h1> y </h1>, o el que aparece más grande arriba.")),
             ("Los datos de tu sistema", "Entender las semillas: los datos de ejemplo.",
              "Tu sistema arranca con datos de prueba (las 'semillas'). Así se ve lleno desde el día 1.",
              "Encuentra dónde están los datos de ejemplo de tu proyecto.",

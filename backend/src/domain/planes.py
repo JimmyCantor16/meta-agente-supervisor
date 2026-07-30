@@ -35,6 +35,26 @@ class Plan:
     def usa_ia_experta(self) -> bool:
         return self.ia_experta != "no"
 
+    def entra_experto_en(self, momento: str) -> bool:
+        """Si el agente de pago participa en ese momento de la construcción.
+
+        La graduación es lo que hace que los planes se distingan de verdad:
+        Studio paga el juicio donde más se nota (salir de un atasco y el repaso
+        final); Business paga además el diseño, que es donde se decide si la
+        aplicación va a parecer pensada o genérica.
+        """
+        if self.ia_experta == "total":
+            return True
+        if self.ia_experta == "critico":
+            return momento in ("rescate", "repaso")
+        return False
+
+    #: Tope de gasto mensual del experto para este plan, en dólares. Sin tope, un
+    #: cliente intensivo se come el margen del plan él solo.
+    @property
+    def tope_experto_usd(self) -> float:
+        return {"critico": 4.0, "total": 9.0}.get(self.ia_experta, 0.0)
+
     def proyectos_ilimitados(self) -> bool:
         return self.proyectos == ILIMITADO
 

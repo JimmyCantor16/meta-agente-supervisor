@@ -32,6 +32,10 @@ _FUENTES = (
     "src.application.aplicar_ajuste",
     "src.application.mejorar_proyecto",
     "src.infrastructure.adapters.multimodel_llm",
+    # El agente experto (IA de pago): quien paga tiene derecho a VER en qué
+    # momento entró y qué hizo. Si no se ve, no se distingue de no tenerlo.
+    "src.application.experto",
+    "src.infrastructure.adapters.skeleton_generator",
 )
 
 # Los mensajes técnicos se traducen a pasos que un no-programador entiende.
@@ -52,6 +56,19 @@ _AMIGABLES = (
     (
         re.compile(r"ENTREGA LISTA PARA REVISION en la rama '(.+?)'", re.I),
         "📬 REVISIÓN PENDIENTE · el agente entregó su trabajo en la rama «{0}» con su informe",
+    ),
+    # --- Agente experto (IA de pago): se anuncia su entrada y lo que resolvió ---
+    (
+        re.compile(r"ENTRÓ EL AGENTE EXPERTO: (.+)", re.I),
+        "🧠 Entró el AGENTE EXPERTO: {0}",
+    ),
+    (
+        re.compile(r"Experto en el diseño: (.+)", re.I),
+        "🧠 El experto reforzó el modelo de datos: {0}",
+    ),
+    (
+        re.compile(r"Experto NO entra en '(\w+)'", re.I),
+        "· El experto no participa en «{0}» con tu plan.",
     ),
     # --- Cerebro IA: qué proveedor gratis respondió / cuál falló (fallback) ---
     (re.compile(r"OK con '(.+?)' \[rol=(.+?)\]", re.I), "🤖 IA «{0}» respondió (rol {1})"),
@@ -93,6 +110,36 @@ class _Difusor(logging.Handler):
                 loop.call_soon_threadsafe(cola.put_nowait, texto)
             except RuntimeError:
                 self._suscriptores.pop(cola, None)
+
+
+    def difundir(self, texto: str) -> int:
+        """Empuja un texto YA formado a los sockets, sin pasar por logging.
+
+        Lo usa el reenvío entre canales: cuando generas contra el backend de tu
+        portátil, el móvil no puede verlo (no alcanza tu localhost). El navegador
+        que sí lo ve reenvía cada paso aquí, al backend compartido, y entonces
+        los tres aparatos cuentan la misma historia.
+        """
+        enviados = 0
+        for cola, loop in list(self._suscriptores.items()):
+            try:
+                loop.call_soon_threadsafe(cola.put_nowait, texto)
+                enviados += 1
+            except RuntimeError:
+                self._suscriptores.pop(cola, None)
+        return enviados
+
+
+def sanear_evento(texto: str) -> str | None:
+    """Limpia un evento que llega de fuera antes de repartirlo.
+
+    Viene de un cliente autenticado, pero autenticado no es lo mismo que
+    confiable: se recorta, se quita todo carácter de control y se descartan los
+    saltos de línea (el canal es una línea por paso).
+    """
+    limpio = "".join(c for c in (texto or "") if c == " " or (c.isprintable() and c not in "\r\n"))
+    limpio = limpio.strip()[:200]
+    return limpio or None
 
 
 def _traducir(mensaje: str) -> str | None:

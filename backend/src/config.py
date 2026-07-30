@@ -182,6 +182,26 @@ class Settings(BaseSettings):
         description="Si es True, usa un evaluador falso en vez de llamar a DeepSeek.",
     )
 
+    # --- Agente experto (IA de pago de los planes Studio y Business) ---
+    # Sin clave, el experto queda inerte: el sistema funciona igual, solo con los
+    # modelos gratuitos. Encenderlo es pegar la clave aquí.
+    anthropic_api_key: str = Field(
+        default="",
+        description="Clave de Anthropic. Vacío = el agente experto está apagado.",
+    )
+    experto_modelo: str = Field(
+        default="claude-opus-4-8",
+        description="Modelo del agente experto. Baja a claude-haiku-4-5 para abaratar.",
+    )
+    experto_simulado: bool = Field(
+        default=False,
+        description="True = usa el experto SIMULADO (prueba la mecánica sin gastar).",
+    )
+    experto_carpeta_gasto: str = Field(
+        default="data/gasto-experto",
+        description="Dónde se lleva la cuenta del gasto mensual por usuario.",
+    )
+
     # --- Login con Google (OAuth) ---
     github_client_id: str = Field(
         default="",

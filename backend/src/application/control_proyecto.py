@@ -102,12 +102,18 @@ class ControlProyectoUseCase:
         self._runner.stop(slug)
         return _estado_dict(False, None)
 
-    def compilar(self, project_name: str, path: str, contenido: str) -> dict:
+    def compilar(
+        self, project_name: str, path: str, contenido: str, autor: str = "Alumno"
+    ) -> dict:
         """Guarda el archivo editado y REINICIA el proyecto para verlo en vivo.
 
         Escribe en la fuente (generated/<slug>) y también en la copia que sirve el
         runner (/tmp/exec-<slug>), para que el reinicio sea rápido (conserva las
         dependencias ya instaladas) y el cambio se vea al instante.
+
+        Si arranca, el cambio queda como un commit a nombre del alumno. Si no
+        arranca, se guarda en disco pero NO se commitea: la historia solo
+        contiene puntos que funcionaban, y por eso volver atrás es seguro.
         """
         slug = slugify(project_name)
         ruta = self._dir(project_name)
@@ -136,11 +142,84 @@ class ControlProyectoUseCase:
                 logger.warning("Verify durante compilar falló: %s", exc)
             url = self._runner.start(str(ruta), slug)
         if not url:
+            # Nada roto entra en la historia: el archivo queda guardado en disco
+            # para que el alumno lo siga corrigiendo, pero SIN commit. Así
+            # «volver atrás» siempre lleva a un punto que funcionaba.
             raise AuditError(
                 "Guardé tu cambio, pero no pude volver a arrancarlo. Revisa que el "
                 "código no tenga un error y reintenta."
             )
-        return _estado_dict(True, url)
+
+        # Arrancó: el cambio del alumno merece quedar en la historia, con su
+        # nombre. Es lo que convierte «toqué un archivo» en «hice un cambio».
+        sha = self._registrar(str(ruta), f"cambio en {path}", autor)
+        estado = _estado_dict(True, url)
+        estado["commit"] = sha
+        return estado
+
+    def revertir(self, project_name: str) -> dict:
+        """Deshace el último cambio del alumno y vuelve a arrancar.
+
+        Equivocarse es parte de aprender; quedarse encerrado con un proyecto
+        roto, no. Solo deshace cambios del alumno: la entrega del agente es el
+        suelo del que parte y borrarla lo dejaría sin proyecto.
+        """
+        from src.infrastructure.adapters.entrega_en_rama import revertir_ultimo_del_alumno
+
+        slug = slugify(project_name)
+        ruta = self._dir(project_name)
+
+        descripcion, archivos = revertir_ultimo_del_alumno(str(ruta))
+        if descripcion is None:
+            raise AuditError(
+                "No hay ningún cambio tuyo que deshacer: lo último que hay es la "
+                "entrega original del proyecto."
+            )
+
+        # Reflejar la vuelta atrás en la copia que se sirve, o el navegador
+        # seguiría mostrando el código viejo aunque en disco ya no esté.
+        espejo = Path(tempfile.gettempdir()) / f"exec-{slug}"
+        if espejo.exists():
+            for rel in archivos:
+                try:
+                    origen = _ruta_segura(ruta, rel)
+                    copia = _ruta_segura(espejo, rel)
+                except AuditError:
+                    continue
+                try:
+                    if origen.is_file():
+                        copia.parent.mkdir(parents=True, exist_ok=True)
+                        copia.write_text(origen.read_text(encoding="utf-8"), encoding="utf-8")
+                    elif copia.is_file():
+                        copia.unlink()  # el archivo lo había creado el cambio deshecho
+                except OSError as exc:
+                    logger.warning("No se pudo reflejar la vuelta atrás en '%s': %s", rel, exc)
+
+        logger.info("Deshecho en '%s': %s", slug, descripcion[:80])
+        self._runner.stop(slug)
+        url = self._runner.start(str(ruta), slug)
+        if not url and self._verifier is not None:
+            try:
+                self._verifier.verify(str(ruta))
+            except Exception as exc:  # noqa: BLE001 - verify es best-effort aquí
+                logger.warning("Verify durante revertir falló: %s", exc)
+            url = self._runner.start(str(ruta), slug)
+
+        estado = _estado_dict(bool(url), url)
+        estado["deshecho"] = descripcion
+        estado["archivos"] = archivos
+        return estado
+
+    @staticmethod
+    def _registrar(raiz: str, descripcion: str, autor: str) -> str | None:
+        """Guarda el cambio en git. Nunca rompe el guardado si git no está."""
+        try:
+            from src.infrastructure.adapters.entrega_en_rama import commit_del_alumno
+
+            return commit_del_alumno(raiz, descripcion, autor=autor or "Alumno")
+        except Exception as exc:  # noqa: BLE001 - sin git, el cambio sigue guardado
+            logger.warning("No se pudo registrar el cambio en git: %s", exc)
+            return None
 
 
 def _estado_dict(corriendo: bool, url: str | None) -> dict:

@@ -58,7 +58,9 @@ Devuelve EXCLUSIVAMENTE un JSON válido (sin markdown):
         "descripcion": "Cómo se supera la clase, en cristiano",
         "quiz": [ {"pregunta":"...", "opciones":["a","b","c"], "correcta":1} ],
         "aciertos_minimos": 2,
-        "pista": "Ayuda breve si se atasca"
+        "pista": "Ayuda breve si se atasca",
+        "archivo": "SOLO si tipo=cambio: la ruta EXACTA del archivo a modificar, copiada de la lista de archivos",
+        "resultado_esperado": "SOLO si tipo=cambio: qué debe verse diferente en la pantalla al lograrlo"
       }
     }
   ]
@@ -81,6 +83,10 @@ REGLAS:
 - Los quiz preguntan sobre EL PROYECTO DEL ALUMNO (sus archivos, sus datos), no teoría genérica. 3 opciones, una correcta.
 - "tipo" SIEMPRE uno de: quiz, cambio, repo_git, url_publicada, reflexion.
 - Clase 7 = repo_git; una clase de publicar = url_publicada. Sin falta.
+- En TODA clase de tipo "cambio": "archivo" debe ser una ruta EXACTA de la lista
+  de archivos de arriba (no la inventes) y "resultado_esperado" debe describir un
+  cambio VISIBLE en pantalla. El aula le abre ese archivo al alumno; si la ruta no
+  existe, se queda mirando 23 archivos sin saber cuál tocar.
 - Tono del profesor paciente: celebra, motiva, cero jerga sin explicar.
 - Todo en el idioma indicado.
 """
@@ -117,7 +123,9 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 
-        clases = self._sanear_clases(data.get("clases") or [], num_clases)
+        clases = self._sanear_clases(
+            data.get("clases") or [], num_clases, rutas_reales=[f.path for f in files]
+        )
         if not clases:
             raise AuditError("El diseñador de cursos no devolvió clases válidas.")
         return Syllabus(
@@ -128,7 +136,29 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
             clases=clases,
         )
 
-    def _sanear_clases(self, brutas: list, num: int) -> list[Clase]:
+    @staticmethod
+    def _archivo_real(propuesto: str, rutas_reales: list[str]) -> str:
+        """Comprueba que el archivo que pide la clase EXISTA de verdad.
+
+        El modelo se inventa rutas con facilidad («src/App.jsx» en un proyecto
+        que no tiene src). Si el aula abriera una ruta inventada, el alumno vería
+        un error justo en el momento en que se le pide tocar código. Mejor sin
+        archivo — el aula abre el principal — que con uno falso.
+        """
+        limpio = (propuesto or "").strip().replace("\\", "/").lstrip("./")
+        if not limpio:
+            return ""
+        if limpio in rutas_reales:
+            return limpio
+        # A veces acierta el nombre y falla la carpeta: se acepta si es único.
+        hoja = limpio.rsplit("/", 1)[-1]
+        coincidencias = [r for r in rutas_reales if r.rsplit("/", 1)[-1] == hoja]
+        return coincidencias[0] if len(coincidencias) == 1 else ""
+
+    def _sanear_clases(
+        self, brutas: list, num: int, rutas_reales: list[str] | None = None
+    ) -> list[Clase]:
+        rutas_reales = rutas_reales or []
         clases: list[Clase] = []
         for i, c in enumerate(brutas[:num], start=1):
             try:
@@ -160,6 +190,8 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
                         quiz=quiz,
                         aciertos_minimos=max(1, min(int(crit.get("aciertos_minimos", 2) or 2), len(quiz) or 1)),
                         pista=str(crit.get("pista") or "").strip()[:300],
+                        archivo=self._archivo_real(str(crit.get("archivo") or ""), rutas_reales),
+                        resultado_esperado=str(crit.get("resultado_esperado") or "").strip()[:300],
                     ),
                 ))
             except (ValueError, TypeError, KeyError) as exc:

@@ -125,6 +125,23 @@ export interface CriterioClase {
   quiz: PreguntaQuizDTO[];
   aciertos_minimos: number;
   pista: string;
+  /** Archivo que el aula abre para esta clase. Vacío si no hay que tocar código. */
+  archivo: string;
+  /** Qué debería verse distinto cuando el cambio esté bien hecho. */
+  resultado_esperado: string;
+}
+
+/**
+ * Lo que la clase le encarga al aula: qué archivo abrir y qué debería verse
+ * distinto al lograrlo. Es la pieza que convierte «modifica el código» en una
+ * tarea concreta que el alumno puede intentar sin perderse.
+ */
+export interface MisionClase {
+  numero: number;
+  titulo: string;
+  archivo: string;
+  resultadoEsperado: string;
+  pista: string;
 }
 
 export interface ClaseCurso {
@@ -209,6 +226,12 @@ export interface EstadoProyecto {
   corriendo: boolean;
   url: string | null;
   puerto: number | null;
+  /** Commit con que quedó guardado el cambio del alumno (solo si arrancó). */
+  commit?: string | null;
+  /** Qué cambio se deshizo, al volver atrás. */
+  deshecho?: string | null;
+  /** Archivos que la vuelta atrás devolvió a como estaban. */
+  archivos?: string[];
 }
 
 export interface SecretosInfo {

@@ -120,7 +120,7 @@ def commit_del_alumno(
     ok, salida = entrega._git(  # noqa: SLF001
         root,
         "-c", f"user.name={autor}",
-        "-c", "user.email=alumno@metaagente.local",
+        "-c", f"user.email={CORREO_ALUMNO}",
         "commit", "-m", f"{descripcion.strip()[:120]}\n\nCambio del alumno, verificado antes de guardar.",
     )
     if not ok:
@@ -133,6 +133,49 @@ def commit_del_alumno(
     corto = sha.strip() if ok else None
     logger.info("COMMIT DEL ALUMNO %s en '%s': %s", corto, root.name, descripcion[:80])
     return corto
+
+
+#: Firma con la que se guardan los cambios del alumno. Se usa para decidir qué
+#: se puede deshacer: lo que hizo él sí, lo que entregó el agente no.
+CORREO_ALUMNO = "alumno@metaagente.local"
+
+
+def revertir_ultimo_del_alumno(output_path: str) -> tuple[str | None, list[str]]:
+    """Deshace el último cambio del alumno. Devuelve (qué se deshizo, archivos).
+
+    Por qué existe: equivocarse es parte de aprender, y sin una salida clara el
+    alumno se queda con un proyecto que dejó de funcionar y sin saber cómo
+    volver. Con esto, retroceder es un botón.
+
+    Solo deshace commits SUYOS: la entrega del agente es el suelo del que se
+    parte, y borrarla dejaría al alumno sin proyecto. Si el último commit no es
+    suyo, devuelve (None, []) y quien llama lo explica.
+    """
+    root = Path(output_path)
+    if not (root / ".git").exists():
+        return None, []
+
+    entrega = EntregaEnRama()
+    ok, autor = entrega._git(root, "log", "-1", "--format=%ae")  # noqa: SLF001
+    if not ok or autor.strip() != CORREO_ALUMNO:
+        return None, []
+
+    ok, descripcion = entrega._git(root, "log", "-1", "--format=%s")  # noqa: SLF001
+    if not ok:
+        return None, []
+
+    # Qué archivos toca el commit: hay que reflejarlos en la copia que se sirve,
+    # o el navegador seguiría mostrando el código viejo.
+    ok, listado = entrega._git(root, "show", "--name-only", "--format=", "HEAD")  # noqa: SLF001
+    archivos = [linea.strip() for linea in listado.splitlines() if linea.strip()] if ok else []
+
+    ok, salida = entrega._git(root, "reset", "--hard", "HEAD~1")  # noqa: SLF001
+    if not ok:
+        logger.warning("No se pudo deshacer el cambio del alumno: %s", salida[:200])
+        return None, []
+
+    logger.info("DESHECHO el cambio del alumno en '%s': %s", root.name, descripcion.strip()[:80])
+    return descripcion.strip(), archivos
 
 
 class EntregaEnRama:

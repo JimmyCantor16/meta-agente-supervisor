@@ -19,7 +19,15 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 
 from src.infrastructure.entrypoints.limite_ritmo import limitar_por_ip
+from src.infrastructure.entrypoints.progreso import DIFUSOR, sanear_evento
+from src.infrastructure.entrypoints.avisos import reclamar_aviso
 from src.application.account_service import AccountService
+from src.application.experto import ServicioExperto
+from src.application.experto_contexto import usar_experto
+from src.domain.experto import AgenteExpertoPort, MomentoExperto, RegistroGastoPort
+from src.infrastructure.adapters.claude_experto import ClaudeAgenteExperto
+from src.infrastructure.adapters.gasto_experto import RegistroGastoArchivo
+from src.infrastructure.adapters.mock_experto import MockAgenteExperto
 from src.application.aplicar_ajuste import AplicarAjusteUseCase
 from src.application.audit_project import AuditProjectUseCase
 from src.application.mejorar_proyecto import MejorarProyectoUseCase
@@ -497,6 +505,44 @@ def get_generate_use_case(
 
 
 @lru_cache
+def get_agente_experto() -> AgenteExpertoPort:
+    """Provee el agente experto: real, simulado o inerte.
+
+    Inerte es el estado por defecto y es correcto: sin clave el producto entero
+    funciona con los modelos gratuitos, y encenderlo es pegar la clave.
+    """
+    settings = get_settings()
+    if settings.experto_simulado:
+        logger.warning("EXPERTO_SIMULADO=true -> agente experto SIMULADO (sin coste).")
+        return MockAgenteExperto()
+    if not settings.anthropic_api_key:
+        logger.info("Sin ANTHROPIC_API_KEY: el agente experto queda apagado.")
+    return ClaudeAgenteExperto(
+        api_key=settings.anthropic_api_key, modelo=settings.experto_modelo
+    )
+
+
+@lru_cache
+def get_registro_gasto() -> RegistroGastoPort:
+    """Provee el registro de gasto mensual del experto."""
+    return RegistroGastoArchivo(get_settings().experto_carpeta_gasto)
+
+
+def servicio_experto_de(user: UserAccount, cuentas: AccountService) -> ServicioExperto:
+    """Arma el servicio del experto para ESTE usuario, con su plan y su tope.
+
+    El plan se resuelve por el servicio de cuentas y no aquí: es la única fuente
+    que sabe que un plan solicitado pero no pagado no cuenta.
+    """
+    return ServicioExperto(
+        experto=get_agente_experto(),
+        gastos=get_registro_gasto(),
+        usuario=user.sub or user.email or "anonimo",
+        plan_id=cuentas.plan_de(user).id,
+    )
+
+
+@lru_cache
 def get_project_reader() -> ProjectReaderPort:
     """Provee el lector de proyectos (filesystem)."""
     return FileSystemProjectReader(get_settings().generated_dir)
@@ -881,6 +927,115 @@ def evaluate_prompt(
     )
 
 
+class EventoReenviado(BaseModel):
+    """Un paso del progreso que un aparato vio y los demás no."""
+
+    texto: str = Field(min_length=1, max_length=400)
+
+
+@router.post(
+    "/eventos/reenviar",
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["progreso"],
+    summary="Reenvía un paso del progreso al canal compartido (para que los 3 aparatos lo vean).",
+)
+def reenviar_evento(
+    evento: EventoReenviado,
+    current_user: UserAccount = Depends(get_current_user),
+    _limite: None = Depends(limitar_por_ip),
+) -> dict[str, int]:
+    """Un solo canal para los tres aparatos.
+
+    El problema que resuelve: cuando generas contra el backend de tu portátil,
+    el móvil no puede verlo — no alcanza tu `localhost`. El navegador que sí lo
+    está viendo reenvía cada paso aquí, al backend compartido, y desde ahí el
+    escritorio y el móvil reciben lo mismo, en el mismo momento.
+
+    Exige sesión: el canal es de lectura pública, así que si escribir fuera
+    anónimo cualquiera podría inventarse el progreso de otro.
+    """
+    texto = sanear_evento(evento.texto)
+    if not texto:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Evento vacío.")
+    entregados = DIFUSOR.difundir(texto)
+    logger.debug("Evento reenviado por %s a %d oyentes.", current_user.email, entregados)
+    return {"entregados": entregados}
+
+
+class ExpertoResponse(BaseModel):
+    """Qué hace el agente experto para ESTE usuario, y cuánto le queda."""
+
+    disponible: bool
+    plan: str
+    plan_nombre: str
+    momentos: list[str]
+    tope_usd: float
+    gastado_usd: float
+    restante_usd: float
+    explicacion: str
+
+
+@router.get(
+    "/experto",
+    response_model=ExpertoResponse,
+    tags=["experto"],
+    summary="En qué momentos entra el agente experto para este usuario, y su gasto del mes.",
+)
+def estado_experto(
+    user: UserAccount = Depends(get_current_user),
+    cuentas: AccountService = Depends(get_account_service),
+) -> ExpertoResponse:
+    """Lo que el usuario que paga tiene derecho a ver: dónde entra y cuánto queda."""
+    servicio = servicio_experto_de(user, cuentas)
+    momentos = [m.value for m in MomentoExperto if servicio.plan.entra_experto_en(m.value)]
+    gasto = servicio.resumen_gasto()
+    disponible = get_agente_experto().disponible
+    if not disponible:
+        explicacion = "El agente experto no está configurado en este servidor."
+    elif not momentos:
+        explicacion = (
+            f"El plan {servicio.plan.nombre} construye con los modelos incluidos. "
+            "Studio añade experto donde la construcción se atasca; Business, también en el diseño."
+        )
+    else:
+        explicacion = "Entra en: " + ", ".join(momentos) + "."
+    return ExpertoResponse(
+        disponible=disponible,
+        plan=servicio.plan.id,
+        plan_nombre=servicio.plan.nombre,
+        momentos=momentos,
+        tope_usd=gasto["tope_usd"],
+        gastado_usd=gasto["gastado_usd"],
+        restante_usd=gasto["restante_usd"],
+        explicacion=explicacion,
+    )
+
+
+class TurnoAvisoRequest(BaseModel):
+    """Petición de turno para hacer sonar un aviso del sistema."""
+
+    clave: str = Field(min_length=1, max_length=200)
+    cliente: str = Field(min_length=1, max_length=80)
+
+
+@router.post(
+    "/eventos/aviso",
+    tags=["progreso"],
+    summary="Pide el turno para sonar: evita que el mismo aviso suene en los 3 aparatos.",
+)
+def turno_de_aviso(
+    peticion: TurnoAvisoRequest,
+    current_user: UserAccount = Depends(get_current_user),  # noqa: ARG001 - solo autentica
+) -> dict[str, bool]:
+    """Reparte el aviso sonoro entre los aparatos conectados.
+
+    Con la web, el escritorio y el móvil abiertos, el mismo acontecimiento
+    llegaba a los tres y sonaba tres veces. Ahora el primero que lo reclama
+    suena; los demás lo muestran dentro de la app, en silencio.
+    """
+    return {"avisar": reclamar_aviso(peticion.clave, peticion.cliente)}
+
+
 @router.post(
     "/feedback",
     status_code=status.HTTP_200_OK,
@@ -945,7 +1100,11 @@ def generate_project(
     # así que un prompt que siempre falla permitía gastar IA sin límite.
     account.record_generation(user)
     try:
-        project, output_path = use_case.execute(prompt_final, request.language)
+        # El agente experto de ESTE usuario queda disponible mientras se
+        # construye: si su plan lo incluye, entra en el diseño del modelo de
+        # datos, que es donde se decide si la app parecerá pensada o genérica.
+        with usar_experto(servicio_experto_de(user, account)):
+            project, output_path = use_case.execute(prompt_final, request.language)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except ProjectGenerationError as exc:
@@ -1276,6 +1435,10 @@ class CriterioDTO(BaseModel):
     quiz: list[dict] = Field(default_factory=list)
     aciertos_minimos: int = 2
     pista: str = ""
+    #: Archivo que el aula debe abrir para esta clase, y qué debería verse
+    #: distinto al lograrlo. Vacíos cuando la clase no exige tocar código.
+    archivo: str = ""
+    resultado_esperado: str = ""
 
 
 class ClaseDTO(BaseModel):
@@ -1334,6 +1497,8 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
                     quiz=[{"pregunta": q.pregunta, "opciones": q.opciones} for q in c.criterio.quiz],
                     aciertos_minimos=c.criterio.aciertos_minimos,
                     pista=c.criterio.pista,
+                    archivo=c.criterio.archivo,
+                    resultado_esperado=c.criterio.resultado_esperado,
                 ),
             )
             for c in syllabus.clases
@@ -1698,6 +1863,13 @@ class EstadoProyectoResponse(BaseModel):
     corriendo: bool
     url: str | None = None
     puerto: int | None = None
+    #: Identificador corto del commit con que quedó guardado el cambio del
+    #: alumno. Nulo si no hubo cambio (encender/apagar) o si git no está.
+    commit: str | None = None
+    #: Qué cambio se deshizo, al volver atrás.
+    deshecho: str | None = None
+    #: Archivos que la vuelta atrás devolvió a su estado anterior.
+    archivos: list[str] = Field(default_factory=list)
 
 
 @router.get(
@@ -1763,12 +1935,39 @@ def compilar_proyecto(
     use_case: ControlProyectoUseCase = Depends(get_control_proyecto_use_case),
     user: UserAccount = Depends(get_current_user),
 ) -> EstadoProyectoResponse:
-    """Fase 2 del aula en vivo: editar → Compilar → ver el cambio al instante."""
+    """Fase 2 del aula en vivo: editar → Compilar → ver el cambio al instante.
+
+    Si arranca, el cambio queda como commit del alumno (con su nombre). Si no
+    arranca, se guarda en disco pero no entra en la historia.
+    """
     try:
-        return EstadoProyectoResponse(**use_case.compilar(project_name, request.path, request.contenido))
+        return EstadoProyectoResponse(
+            **use_case.compilar(
+                project_name, request.path, request.contenido, autor=user.name or "Alumno"
+            )
+        )
     except AuditError as exc:
         msg = str(exc)
         code = 404 if "no existe" in msg.lower() else 400 if "no se puede" in msg.lower() or "fuera del" in msg.lower() else 502
+        raise HTTPException(status_code=code, detail=msg) from exc
+
+
+@router.post(
+    "/projects/{project_name}/revertir",
+    response_model=EstadoProyectoResponse,
+    summary="Deshace el último cambio del alumno y vuelve a arrancar.",
+)
+def revertir_proyecto(
+    project_name: str,
+    use_case: ControlProyectoUseCase = Depends(get_control_proyecto_use_case),
+    user: UserAccount = Depends(get_current_user),  # noqa: ARG001 - solo autentica
+) -> EstadoProyectoResponse:
+    """Volver atrás en un clic: deshace SOLO cambios del alumno, nunca la entrega."""
+    try:
+        return EstadoProyectoResponse(**use_case.revertir(project_name))
+    except AuditError as exc:
+        msg = str(exc)
+        code = 404 if "no existe" in msg.lower() else 400 if "no hay ningún" in msg.lower() else 502
         raise HTTPException(status_code=code, detail=msg) from exc
 
 

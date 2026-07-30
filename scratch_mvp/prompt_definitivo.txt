@@ -1,0 +1,23 @@
+Necesito un sistema de gestión para una distribuidora pequeña de café que hoy
+trabaja con cuadernos y WhatsApp. Tiene tres problemas que se pisan entre sí y no
+sabe cuál resolver primero.
+
+Facturación: vende a 40 tiendas de barrio, cada una con su propio precio pactado
+y su plazo de pago. Necesita emitir la factura, saber quién debe, cuánto y desde
+cuándo, y que el sistema avise de lo que ya está vencido.
+
+Nómina: siete empleados. Cuatro con sueldo fijo, tres cobran por entrega
+realizada. Cada quincena hay que calcular lo que se le paga a cada uno,
+descontar los anticipos que pidieron durante el mes, y dejar el soporte firmado.
+
+Inventario: compra el café verde por bultos, lo tuesta —y ahí pierde peso, entre
+un 14% y un 18%— y lo vende empacado en libras. Necesita saber cuánto tiene de
+verdad en bodega, cuánto se perdió en el tueste de cada lote, y a qué costo real
+le queda la libra vendida.
+
+Lo que espero: que el sistema me diga cuánto estoy ganando de verdad por cada
+libra, no solo cuánto vendí. Y que la persona que lo va a usar todos los días no
+tenga que aprender nada raro: hoy usa un cuaderno.
+
+Empieza por lo que más duele. Prefiero una parte funcionando de verdad que las
+tres a medias.

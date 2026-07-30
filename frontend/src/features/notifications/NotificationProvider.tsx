@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { PropsWithChildren } from "react";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import { canalDeEscucha, esEscritorio, espejarEvento, meTocaAvisar, urlDelTexto } from "../../lib/canal";
 
 // Sistema de notificaciones en tiempo real (per-device): centro de avisos con
 // historial + toasts + AVISO NATIVO del sistema operativo (Notification API, que
@@ -33,6 +34,9 @@ interface NotifInput {
   body: string;
   kind?: NotifKind;
   url?: string | null;
+  /** Identifica el acontecimiento para que suene en UN solo aparato. Si se
+   *  omite, suena siempre (avisos propios de este aparato). */
+  clave?: string;
 }
 
 interface NotificationContextValue {
@@ -72,10 +76,6 @@ function newId(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
-/** True si corremos DENTRO de la app de escritorio (Tauri), no en el navegador. */
-function esEscritorio(): boolean {
-  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
-}
 
 /**
  * Dispara un aviso NATIVO del sistema (ventana emergente de Windows):
@@ -107,16 +107,17 @@ async function avisoNativo(title: string, body: string): Promise<void> {
   }
 }
 
-/** URL del WebSocket de eventos del backend (mismo canal de progreso en vivo). */
-function wsProgresoUrl(): string {
-  // Escritorio (Tauri): se conecta al backend COMPARTIDO en producción, para
-  // recibir los mismos avisos que la web y el móvil (los 3 al tiempo).
-  if (esEscritorio()) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
-  // Render: el proxy estático no reenvía WebSocket → directo al backend.
-  if (window.location.host.endsWith(".onrender.com")) return "wss://metaagente-backend.onrender.com/api/v1/ws/progreso";
-  // Navegador local: mismo origen (nginx hace de proxy al backend).
-  const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}/api/v1/ws/progreso`;
+/** Clave que identifica un acontecimiento, para repartir el aviso sonoro.
+ *
+ * No usa el texto entero porque la URL o el número de intento cambian entre
+ * aparatos; el tipo de acontecimiento más el minuto bastan para reconocerlo. */
+function claveDeAviso(txt: string): string {
+  const tipo = /VIVO|🚀/i.test(txt)
+    ? "listo"
+    : /REVISIÓN PENDIENTE|REVISION PENDIENTE/i.test(txt)
+      ? "revision"
+      : "fallo";
+  return `${tipo}:${Math.floor(Date.now() / 60000)}`;
 }
 
 export function NotificationProvider({ children }: PropsWithChildren) {
@@ -171,7 +172,14 @@ export function NotificationProvider({ children }: PropsWithChildren) {
 
     // Aviso NATIVO del sistema (ventana emergente de Windows), aunque la ventana
     // esté detrás / estés viendo TV. Escritorio → Tauri; navegador → Notification.
-    void avisoNativo(n.title, n.body);
+    //
+    // Con los tres aparatos abiertos solo suena UNO: el primero que reclama el
+    // turno. Los otros dos igual lo guardan en el centro de avisos, así que
+    // vuelvas a donde vuelvas, la noticia está.
+    void (async () => {
+      if (input.clave && !(await meTocaAvisar(input.clave))) return;
+      await avisoNativo(n.title, n.body);
+    })();
   }, []);
 
   const markAllRead = useCallback(() => {
@@ -207,20 +215,24 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     const conectar = () => {
       window.clearTimeout(retry);
       try {
-        ws = new WebSocket(wsProgresoUrl());
+        const canal = canalDeEscucha();
+        ws = new WebSocket(canal.url);
         ws.onopen = () => {
           intentos = 0;
         };
         ws.onmessage = (e: MessageEvent) => {
           const txt = String(e.data || "");
           const tt = tRef.current;
+          // Si esto está pasando en TU máquina, el móvil no puede verlo: se lo
+          // reenviamos al backend compartido para que los tres vayan al día.
+          if (canal.esLocal) espejarEvento(txt);
           if (/VIVO|🚀/i.test(txt)) {
-            const m = txt.match(/https?:\/\/\S+/);
             notifyRef.current({
               title: tt.notif.generatedTitle,
               body: txt.replace(/^🚀\s*/, ""),
               kind: "success",
-              url: m ? m[0] : null,
+              url: urlDelTexto(txt),
+              clave: claveDeAviso(txt),
             });
           } else if (/REVISIÓN PENDIENTE|REVISION PENDIENTE/i.test(txt)) {
             // El agente entregó su trabajo en una rama: hay algo que revisar.
@@ -229,9 +241,15 @@ export function NotificationProvider({ children }: PropsWithChildren) {
               title: tt.notif.reviewTitle,
               body: rama ? tt.notif.reviewBody(rama[1]) : txt,
               kind: "info",
+              clave: claveDeAviso(txt),
             });
           } else if (/RETENIDA|no se entrega/i.test(txt)) {
-            notifyRef.current({ title: tt.notif.genErrorTitle, body: tt.notif.genErrorBody, kind: "error" });
+            notifyRef.current({
+              title: tt.notif.genErrorTitle,
+              body: tt.notif.genErrorBody,
+              kind: "error",
+              clave: claveDeAviso(txt),
+            });
           }
         };
         ws.onclose = () => {

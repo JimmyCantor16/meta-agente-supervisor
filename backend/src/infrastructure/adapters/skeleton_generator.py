@@ -149,6 +149,12 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         bruto = datos.get("dominio")
         if not isinstance(bruto, dict) or not bruto.get("campos"):
             return None
+
+        # Momento DISEÑO: si el plan del usuario incluye agente experto, este es
+        # el punto donde más se nota. Un modelo de datos pobre da una aplicación
+        # genérica por muy bien escrito que esté el código que lo rodea.
+        bruto = SkeletonProjectGenerator._mejorar_con_experto(bruto)
+
         try:
             from src.domain.dominio_app import DominioApp
             from src.infrastructure.adapters.skeleton_dominio_armar import (
@@ -166,6 +172,32 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
             len(dominio.calculos), dominio.tono,
         )
         return construir_desde_dominio(dominio)
+
+    @staticmethod
+    def _mejorar_con_experto(dominio: dict) -> dict:
+        """Pasa el modelo de datos por el agente experto, si el plan lo incluye.
+
+        Devuelve el dominio mejorado, o el mismo de entrada si no hay experto o
+        si no aportó nada. Nunca lanza: pagar por experto no puede convertirse en
+        una forma de que la construcción falle.
+        """
+        try:
+            from src.application.experto_contexto import experto_actual
+            from src.domain.experto import MomentoExperto
+
+            servicio = experto_actual()
+            if servicio is None:
+                return dominio
+            aporte = servicio.intervenir(MomentoExperto.DISENO, {"dominio": dominio})
+            if aporte is None:
+                return dominio
+            mejorado = aporte.datos.get("dominio")
+            if isinstance(mejorado, dict) and mejorado.get("campos"):
+                logger.info("Experto en el diseño: %s", aporte.resumen)
+                return mejorado
+        except Exception as exc:  # noqa: BLE001 - el experto es un extra, no un requisito
+            logger.warning("El experto no pudo mejorar el diseño: %s", exc)
+        return dominio
 
     @staticmethod
     def _construir_primera_clase(datos: dict) -> GeneratedProject | None:

@@ -369,6 +369,16 @@ class CriterioSuperacion(BaseModel):
     quiz: list[PreguntaQuiz] = Field(default_factory=list)
     aciertos_minimos: int = Field(default=2, description="Para tipo quiz.")
     pista: str = Field(default="", description="Ayuda si el alumno se atasca.")
+    #: Archivo concreto que hay que tocar, relativo a la raíz del proyecto.
+    #: Sin esto, «modifica el código» dejaba al alumno mirando 23 archivos sin
+    #: saber por dónde empezar; con esto el aula le abre el correcto.
+    archivo: str = Field(default="", description="Ruta del archivo a modificar.")
+    #: Qué se debe ver distinto al terminar. Es la diferencia entre «cambia
+    #: algo» y saber si lo lograste.
+    resultado_esperado: str = Field(
+        default="",
+        description="Qué debería verse diferente cuando el cambio esté bien hecho.",
+    )
 
 
 class Clase(BaseModel):

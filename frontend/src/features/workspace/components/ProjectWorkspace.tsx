@@ -6,6 +6,7 @@ import { AuditSubsection, TeacherSubsection } from "./DashboardEvaluacion";
 import { MetasProceso } from "./MetasProceso";
 import { ProfesorChat } from "./ProfesorChat";
 import { SistemaEnVivo } from "./SistemaEnVivo";
+import type { MisionClase } from "../types";
 
 /**
  * Vista de un proyecto YA generado, abierto desde la galería.
@@ -23,6 +24,9 @@ export function ProjectWorkspace({
 }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState<"curso" | "aula" | "metas" | "taller">("curso");
+  // El encargo de la clase que exige tocar código. Vive aquí porque el profesor
+  // lo entrega y el aula lo recibe, y son pestañas hermanas.
+  const [mision, setMision] = useState<MisionClase | null>(null);
 
   return (
     <div className="space-y-5">
@@ -73,9 +77,15 @@ export function ProjectWorkspace({
       <SistemaEnVivo projectName={projectName} />
 
       {tab === "curso" ? (
-        <ProfesorChat projectName={projectName} />
+        <ProfesorChat
+          projectName={projectName}
+          onIrAlAula={(m) => {
+            setMision(m);
+            setTab("aula");
+          }}
+        />
       ) : tab === "aula" ? (
-        <AulaEnVivo projectName={projectName} />
+        <AulaEnVivo projectName={projectName} mision={mision} />
       ) : tab === "metas" ? (
         <MetasProceso projectName={projectName} />
       ) : (
