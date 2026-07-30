@@ -43,13 +43,20 @@ class MockAgenteExperto(AgenteExpertoPort):
 
     # -- los tres momentos ---------------------------------------------------
     def _disenar(self, contexto: dict) -> AporteExperto:
-        """Mejora el dominio que propusieron los modelos gratuitos.
+        """Replantea la respuesta y mejora el dominio que propusieron los gratuitos.
 
-        Lo que hace es lo que un ingeniero hace de verdad al revisar un modelo de
-        datos pobre: añade la fecha (sin ella no se puede ordenar ni filtrar
-        nada) y, si hay algún número, añade el promedio — porque un total sin
-        promedio no responde «¿vamos bien?».
+        Hace dos cosas, en orden de importancia:
+
+        Primero mira si el encargo pedía **varios subsistemas** y los modelos
+        gratuitos lo aplanaron a un solo CRUD. Ese es el error caro: el cliente
+        pidió tres cosas y recibió una, sin que nadie se lo dijera.
+
+        Después, lo que hace un ingeniero al revisar un modelo pobre: añade la
+        fecha (sin ella no se puede ordenar ni ver evolución) y, si hay algún
+        número, el promedio — porque un total sin promedio no responde
+        «¿vamos bien?».
         """
+        replanteo = self._detectar_aplanamiento(contexto)
         dominio = dict(contexto.get("dominio") or {})
         campos = list(dominio.get("campos") or [])
         if not campos:
@@ -89,7 +96,7 @@ class MockAgenteExperto(AgenteExpertoPort):
                 })
                 añadidos.append(f"promedio de {campo}")
 
-        if not añadidos:
+        if not añadidos and not replanteo:
             return AporteExperto(
                 momento=MomentoExperto.DISENO,
                 resumen="El modelo de datos ya estaba bien planteado.",
@@ -98,13 +105,85 @@ class MockAgenteExperto(AgenteExpertoPort):
 
         dominio["campos"] = campos
         dominio["calculos"] = calculos
+        datos: dict = {"dominio": dominio}
+        partes: list[str] = []
+        if replanteo:
+            datos.update(replanteo["datos"])
+            partes.append(replanteo["resumen"])
+        if añadidos:
+            partes.append("modelo reforzado: " + ", ".join(añadidos))
+
         return AporteExperto(
             momento=MomentoExperto.DISENO,
-            resumen="Modelo de datos reforzado: " + ", ".join(añadidos),
-            datos={"dominio": dominio},
+            resumen=" · ".join(partes),
+            datos=datos,
             coste_usd=_COSTE[MomentoExperto.DISENO],
             modelo="experto-simulado",
         )
+
+    #: Palabras que delatan un subsistema propio dentro de un mismo encargo.
+    #: Cada grupo es un área que en la vida real se construye aparte.
+    _AREAS = {
+        "facturación": ("factur", "cobr", "cartera", "cuenta por cobrar"),
+        "nómina": ("nómina", "nomina", "sueldo", "quincena", "empleado", "anticipo"),
+        "inventario": ("inventario", "bodega", "stock", "existencia", "lote"),
+        "compras": ("compra", "proveedor", "orden de compra"),
+        "reportes": ("reporte", "informe", "tablero", "dashboard"),
+    }
+
+    def _detectar_aplanamiento(self, contexto: dict) -> dict | None:
+        """¿El encargo pedía varios subsistemas y se respondió con uno solo?
+
+        Es el fallo que más caro sale: el cliente pide facturación, nómina e
+        inventario, y recibe un CRUD de facturas sin que nadie mencione que
+        faltan dos terceras partes. La respuesta honesta es un plan por clases
+        que diga qué se entrega hoy y en qué orden viene el resto.
+        """
+        if contexto.get("tipo_propuesto") != "crud_login":
+            return None  # ya se planteó por clases o es otra cosa
+
+        texto = str(contexto.get("prompt") or "").lower()
+        areas = [
+            nombre for nombre, pistas in self._AREAS.items()
+            if any(p in texto for p in pistas)
+        ]
+        if len(areas) < 2:
+            return None  # un solo asunto: el CRUD es la respuesta correcta
+
+        dominio = contexto.get("dominio") or {}
+        nombre = str(dominio.get("app_name") or "Tu sistema")
+        clases = [
+            {
+                "numero": i,
+                "titulo": area.capitalize(),
+                "entregable": f"Gestionar {area} de principio a fin, funcionando por sí solo.",
+                "porque": (
+                    "Es lo que más duele hoy, así que va primero."
+                    if i == 1
+                    else f"Se apoya en lo anterior: sin eso, {area} no cuadra."
+                ),
+            }
+            for i, area in enumerate(areas, 1)
+        ]
+        return {
+            "resumen": (
+                f"replanteado: el encargo pedía {len(areas)} subsistemas "
+                f"({', '.join(areas)}) y se respondía con uno solo"
+            ),
+            "datos": {
+                "tipo": "por_clases",
+                "temario": {
+                    "titulo": nombre,
+                    "resumen": f"Sistema completo para {', '.join(areas)}.",
+                    "motivo": (
+                        "Son tres cosas distintas que en la vida real se construyen "
+                        "aparte. Entregarlas todas a medias no le sirve a nadie: "
+                        "mejor una funcionando de verdad y las demás con fecha."
+                    ),
+                    "clases": clases,
+                },
+            },
+        }
 
     def _rescatar(self, contexto: dict) -> AporteExperto:
         """Saca la construcción del bucle en que los gratuitos se atascaron."""

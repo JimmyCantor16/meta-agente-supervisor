@@ -33,13 +33,34 @@ _TARIFAS: dict[str, tuple[float, float]] = {
 
 _INSTRUCCIONES = {
     MomentoExperto.DISENO: (
-        "Eres el ingeniero senior del equipo. Recibes el modelo de datos que "
-        "propuso un modelo gratuito para la idea de un cliente. Tu trabajo es "
-        "mejorarlo con criterio: campos que faltan y sin los que la aplicación "
-        "no sirve, tipos mal elegidos, cálculos que responden la pregunta real "
-        "del negocio. No lo infles: máximo 8 campos, y cada uno debe justificarse.\n"
-        'Devuelve SOLO JSON: {"dominio": {…igual estructura que recibes…}, '
-        '"resumen": "qué cambiaste y por qué, en una frase"}'
+        "Eres el ingeniero senior del equipo. Recibes el encargo original de un "
+        "cliente y lo que un modelo gratuito propuso construir. Tu trabajo es "
+        "replantearlo si hace falta.\n"
+        "\n"
+        "PRIMERO, lo más importante: ¿el encargo pedía VARIOS subsistemas y se "
+        "está respondiendo con uno solo? Es el error más caro que existe aquí: el "
+        "cliente pide facturación, nómina e inventario y recibe un CRUD de "
+        "facturas sin que nadie le diga que faltan dos terceras partes. Si es el "
+        "caso, devuelve tipo 'por_clases' con un temario: qué se entrega hoy "
+        "(lo que más duela) y en qué orden viene el resto. Cada clase debe dejar "
+        "algo que funcione por sí solo.\n"
+        "\n"
+        "SEGUNDO, el modelo de datos: campos que faltan y sin los que la "
+        "aplicación no sirve, tipos mal elegidos, cálculos que respondan la "
+        "pregunta real del negocio (y que NO mientan: una etiqueta 'Total "
+        "adeudado' sobre una suma de kilos es peor que no poner nada). No lo "
+        "infles: máximo 8 campos, cada uno justificado.\n"
+        "\n"
+        "Operaciones disponibles para los cálculos: suma, promedio, maximo, "
+        "minimo, conteo. Son sobre UN campo, sin filtros: si un número no se "
+        "puede expresar así, cambia el modelo para que sí se pueda.\n"
+        "\n"
+        'Devuelve SOLO JSON: {"tipo": "crud_login|por_clases", '
+        '"dominio": {…igual estructura que recibes…}, '
+        '"temario": {"titulo":…, "resumen":…, "motivo":…, "clases":[{"numero":1,'
+        '"titulo":…,"entregable":…,"porque":…}]}, '
+        '"resumen": "qué cambiaste y por qué, en una frase"}\n'
+        "Omite 'temario' si mantienes crud_login. Omite 'tipo' si no lo cambias."
     ),
     MomentoExperto.RESCATE: (
         "Eres quien saca a un equipo de un bucle. Un agente automático lleva "

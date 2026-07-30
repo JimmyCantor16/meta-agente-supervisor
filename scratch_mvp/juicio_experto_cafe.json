@@ -1,8 +1,34 @@
 {
   "diseno": {
     "modelo": "claude-opus-5 (revisión en sesión)",
-    "resumen": "Corregí dos números que mentían y añadí el costo, sin el cual su pregunta principal —cuánto gano por libra— no tiene respuesta.",
+    "resumen": "Esto no era una app, eran tres. Entrego facturación funcionando, con los números arreglados, y las otras dos con fecha en vez de ausentes.",
     "datos": {
+      "tipo": "por_clases",
+      "temario": {
+        "titulo": "Cartera y Margen del Café",
+        "resumen": "El sistema completo para la distribuidora: cobrar a tiempo, pagar bien a los siete empleados, y saber cuánto café hay de verdad y a qué costo.",
+        "motivo": "Pidió tres cosas que en la vida real se construyen aparte, y él mismo dijo que prefiere una funcionando de verdad a las tres a medias. Empezamos por la cartera porque es lo que duele hoy: hay dinero en la calle y no sabe de quién ni desde cuándo. El inventario va después porque de él sale el costo real por libra; la nómina al final porque es la que menos se rompe si sigue en el cuaderno un mes más.",
+        "clases": [
+          {
+            "numero": 1,
+            "titulo": "Cartera y margen por libra",
+            "entregable": "Registrar cada entrega con su valor y su costo, ver quién le debe, y saber cuánto gana de verdad por libra.",
+            "porque": "Es lo que más duele: tiene plata en la calle sin control, y no sabe si está ganando."
+          },
+          {
+            "numero": 2,
+            "titulo": "Inventario y pérdida de tueste",
+            "entregable": "Registrar cada bulto de café verde, cuánto salió tostado y empacado, y que el sistema calcule solo la merma y el costo real por libra.",
+            "porque": "Aquí el sistema empieza a calcular el costo en vez de que usted lo meta a mano. Va después de la cartera porque necesita saber a qué precio vende para que el margen signifique algo."
+          },
+          {
+            "numero": 3,
+            "titulo": "Nómina de la quincena",
+            "entregable": "Calcular la quincena de los siete: sueldo fijo o por entrega, menos los anticipos del mes, con su soporte para firmar.",
+            "porque": "Es la que puede esperar: son siete personas y la cuenta hoy sale, aunque a mano. Va al final porque para pagar por entrega hace falta que las entregas ya estén en el sistema, y eso lo trae la clase 1."
+          }
+        ]
+      },
       "dominio": {
         "app_name": "Cartera y Margen del Café",
         "entidad": "Factura",
@@ -110,7 +136,7 @@
         "La pregunta que hizo el cliente era «cuánto gano de verdad por libra». Ese número ya está en el resumen y es lo primero que debe ver al entrar, no un dato más de la lista.",
         "Falta la vista de cartera: quién debe, cuánto y desde cuándo. Con fecha de venta y plazo ya se puede calcular el vencido, pero hoy hay que hacerlo de cabeza.",
         "La pérdida de tueste (14-18%) todavía no vive en el sistema: hoy el usuario tiene que meter el costo ya calculado a mano. Es la clase siguiente, y sin ella el costo por libra depende de que no se equivoque con la calculadora.",
-        "Nómina e inventario quedaron fuera de esta entrega. Eso está BIEN —se pidió empezar por lo que más duele— pero tiene que estar escrito y planificado, no simplemente ausente."
+        "Nómina e inventario quedan para las clases 2 y 3, con su orden y su motivo escritos en el plan. Eso está BIEN —se pidió empezar por lo que más duele— siempre que el cliente vea el camino completo y no crea que se le olvidaron."
       ]
     }
   }

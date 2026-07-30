@@ -63,8 +63,12 @@ _AMIGABLES = (
         "🧠 Entró el AGENTE EXPERTO: {0}",
     ),
     (
+        re.compile(r"El experto REPLANTEÓ la respuesta: de '(\w+)' a '(\w+)'", re.I),
+        "🧠 El experto REPLANTEÓ el encargo: esto no era «{0}», es «{1}».",
+    ),
+    (
         re.compile(r"Experto en el diseño: (.+)", re.I),
-        "🧠 El experto reforzó el modelo de datos: {0}",
+        "🧠 El experto revisó el diseño: {0}",
     ),
     (
         re.compile(r"Experto NO entra en '(\w+)'", re.I),

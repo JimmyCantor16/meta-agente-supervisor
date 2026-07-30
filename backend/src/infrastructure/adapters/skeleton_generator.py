@@ -94,6 +94,12 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
 
     def generate(self, prompt: str, language: str = "es") -> GeneratedProject:
         datos = self._extraer(prompt)
+        # Momento DISEÑO del agente experto. Va aquí, ANTES de decidir qué se
+        # construye, porque el error más caro de los modelos gratuitos no es
+        # elegir mal un campo: es aplanar un encargo de tres subsistemas a un
+        # solo CRUD y dejar dos fuera sin decirlo. Corregir eso exige poder
+        # replantear la respuesta entera, no solo retocar el modelo de datos.
+        datos = self._replantear_con_experto(datos, prompt)
         tipo = (datos or {}).get("tipo")
         if tipo == "crud_login":
             proyecto = self._construir_por_dominio(datos)
@@ -149,12 +155,6 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         bruto = datos.get("dominio")
         if not isinstance(bruto, dict) or not bruto.get("campos"):
             return None
-
-        # Momento DISEÑO: si el plan del usuario incluye agente experto, este es
-        # el punto donde más se nota. Un modelo de datos pobre da una aplicación
-        # genérica por muy bien escrito que esté el código que lo rodea.
-        bruto = SkeletonProjectGenerator._mejorar_con_experto(bruto)
-
         try:
             from src.domain.dominio_app import DominioApp
             from src.infrastructure.adapters.skeleton_dominio_armar import (
@@ -173,31 +173,100 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         )
         return construir_desde_dominio(dominio)
 
-    @staticmethod
-    def _mejorar_con_experto(dominio: dict) -> dict:
-        """Pasa el modelo de datos por el agente experto, si el plan lo incluye.
+    #: Lo que el experto tiene permitido decidir. Cualquier otra cosa se ignora:
+    #: un tipo inventado dejaría la construcción sin camino.
+    _TIPOS_VALIDOS = ("crud_login", "por_clases", "landing", "otro")
 
-        Devuelve el dominio mejorado, o el mismo de entrada si no hay experto o
-        si no aportó nada. Nunca lanza: pagar por experto no puede convertirse en
-        una forma de que la construcción falle.
+    @staticmethod
+    def _replantear_con_experto(datos: dict | None, prompt: str) -> dict | None:
+        """Deja que el agente experto replantee la respuesta, si el plan lo incluye.
+
+        Puede cambiar tres cosas, y en este orden de importancia:
+
+          1. **El tipo de respuesta.** Es su potestad más valiosa: convertir «un
+             CRUD» en «tres clases con su orden» cuando el encargo pedía varios
+             subsistemas. Ningún retoque del modelo de datos arregla eso.
+          2. **El temario**, si decide que la respuesta honesta es por clases.
+          3. **El modelo de datos**, que es donde se decide si la aplicación va a
+             parecer pensada o genérica.
+
+        Devuelve los datos replanteados, o los mismos de entrada si no hay
+        experto o si no aportó nada. Nunca lanza: pagar por experto no puede
+        convertirse en una forma de que la construcción falle.
         """
+        if not isinstance(datos, dict):
+            return datos
         try:
             from src.application.experto_contexto import experto_actual
             from src.domain.experto import MomentoExperto
 
             servicio = experto_actual()
             if servicio is None:
-                return dominio
-            aporte = servicio.intervenir(MomentoExperto.DISENO, {"dominio": dominio})
+                return datos
+
+            aporte = servicio.intervenir(
+                MomentoExperto.DISENO,
+                {
+                    # El encargo original: sin él, el experto no puede juzgar si
+                    # los modelos gratuitos dejaron algo fuera.
+                    "prompt": prompt[:4000],
+                    "tipo_propuesto": datos.get("tipo"),
+                    "dominio": datos.get("dominio"),
+                    "temario": datos.get("temario"),
+                },
+            )
             if aporte is None:
-                return dominio
-            mejorado = aporte.datos.get("dominio")
-            if isinstance(mejorado, dict) and mejorado.get("campos"):
-                logger.info("Experto en el diseño: %s", aporte.resumen)
-                return mejorado
+                return datos
+
+            replanteado = dict(datos)
+
+            dominio = aporte.datos.get("dominio")
+            if isinstance(dominio, dict) and dominio.get("campos"):
+                replanteado["dominio"] = dominio
+
+            temario = aporte.datos.get("temario")
+            if isinstance(temario, dict) and temario.get("clases"):
+                replanteado["temario"] = temario
+
+            tipo = str(aporte.datos.get("tipo") or "").strip().lower()
+            if tipo and tipo != datos.get("tipo"):
+                cambio = SkeletonProjectGenerator._tipo_aceptable(tipo, replanteado)
+                if cambio:
+                    logger.info(
+                        "El experto REPLANTEÓ la respuesta: de '%s' a '%s'.",
+                        datos.get("tipo"), tipo,
+                    )
+                    replanteado["tipo"] = tipo
+                else:
+                    logger.warning(
+                        "El experto pidió tipo '%s' pero sin lo necesario para sostenerlo; "
+                        "se mantiene '%s'.", tipo, datos.get("tipo"),
+                    )
+
+            logger.info("Experto en el diseño: %s", aporte.resumen)
+            return replanteado
         except Exception as exc:  # noqa: BLE001 - el experto es un extra, no un requisito
-            logger.warning("El experto no pudo mejorar el diseño: %s", exc)
-        return dominio
+            logger.warning("El experto no pudo replantear el diseño: %s", exc)
+            return datos
+
+    @staticmethod
+    def _tipo_aceptable(tipo: str, datos: dict) -> bool:
+        """Si el tipo que pide el experto se puede sostener con lo que hay.
+
+        Cambiar el tipo sin lo que ese tipo necesita sería peor que no cambiarlo:
+        pedir «por clases» sin temario acaba en la rama de emergencia y el
+        usuario recibe algo peor que antes de pagar.
+        """
+        if tipo not in SkeletonProjectGenerator._TIPOS_VALIDOS:
+            return False
+        if tipo == "por_clases":
+            temario = datos.get("temario")
+            clases = temario.get("clases") if isinstance(temario, dict) else None
+            return bool(isinstance(clases, list) and len(clases) >= 2 and datos.get("dominio"))
+        if tipo == "crud_login":
+            dominio = datos.get("dominio")
+            return bool(isinstance(dominio, dict) and dominio.get("campos"))
+        return True
 
     @staticmethod
     def _construir_primera_clase(datos: dict) -> GeneratedProject | None:

@@ -92,12 +92,13 @@ números dicen la verdad.</p>
   </div>
   <div class="col b">
     <h3>Business · $29</h3>
-    <p class="nombre">Cartera y Margen del Café</p>
+    <p class="nombre">Cartera y Margen del Café — <span class="nuevo">clase 1 de 3</span></p>
     <p class="campos">cliente · fecha_emision · dias_plazo · libras · valor · <span class="nuevo">costo</span> · <span class="nuevo">margen_libra</span> · pagado</p>
     <ul>
       <li><b>8 campos</b>, con costo y margen</li>
       <li><b>4 números</b>, todos correctos</li>
       <li>El primero es <b>justo el que pidió</b></li>
+      <li><b class="nuevo">24 archivos</b>: el extra es el plan de las 3 clases</li>
     </ul>
   </div>
 </div>
@@ -165,20 +166,40 @@ números dicen la verdad.</p>
 </div>
 
 <div class="hallazgo gordo">
-  <h4>Y el fallo más grande, que el experto NO pudo arreglar</h4>
+  <h4>Y el fallo más grande: había respondido a un tercio del encargo</h4>
   <p>El encargo describe <b>tres subsistemas</b> —facturación, nómina, inventario— y pide explícitamente
   empezar por uno. El modelo gratuito lo aplanó a <b>un solo CRUD de facturas</b> y dejó fuera nómina e
-  inventario <b>sin decirlo</b>. Debería haber respondido con un plan por clases.</p>
-  <p>El experto entra en el diseño del <b>modelo de datos</b>, pero no puede volver a decidir el
-  <b>tipo</b> de respuesta. Es un hueco real de la Fase 6, encontrado justamente por hacer esta prueba:
-  el experto debería poder decir «esto no es una app, son tres, y aquí está el orden».</p>
+  inventario <b>sin decirlo</b>. El cliente creería que se le olvidaron.</p>
+  <p>Esto <b>no se podía arreglar</b> en la primera corrida: el experto solo tocaba el modelo de datos.
+  Ahora sí puede <b>replantear la respuesta entera</b> — es su potestad más valiosa, y la que de verdad
+  justifica los $29.</p>
+</div>
+
+<h2>El replanteo, que es lo que se paga</h2>
+<div class="envoltura">
+<table>
+  <tr><th></th><th>Free</th><th>Business</th></tr>
+  <tr><td>Qué tipo de respuesta</td><td>un CRUD de facturas</td><td class="v">tres clases, con orden y motivo</td></tr>
+  <tr><td>Nómina</td><td class="x">ausente, sin mención</td><td class="v">clase 3, con el por qué va al final</td></tr>
+  <tr><td>Inventario y merma</td><td class="x">ausente, sin mención</td><td class="v">clase 2, de donde sale el costo real</td></tr>
+  <tr><td>Qué recibe hoy</td><td>facturas con números falsos</td><td class="v">cartera y margen funcionando</td></tr>
+  <tr><td>Qué sabe del futuro</td><td class="x">nada</td><td class="v"><code>PLAN-DE-CLASES.md</code></td></tr>
+</table>
+</div>
+<div class="hallazgo" style="border-left-color:var(--cyan)">
+  <h4>Y la potestad tiene freno</h4>
+  <p>El experto no puede cambiar el tipo sin traer lo que ese tipo necesita: pedir «por clases» sin
+  temario, o pedir un tipo inventado, se <b>rechaza</b> y se mantiene lo que había. Un replanteo a medias
+  dejaría al cliente <b>peor que antes de pagar</b>, y eso sería la peor manera posible de estrenar
+  un plan de $29.</p>
 </div>
 
 <div class="veredicto">
-  <p><b>Sí se nota, y se explica en una frase:</b> el plan gratuito entrega una aplicación que funciona
-  con números que mienten; el de pago entrega una que responde la pregunta por la que el cliente pagó.</p>
-  <p>Los dos compilan, los dos arrancan, los dos tienen 23 archivos. Un tercero que abra ambos no
-  distinguiría por el aspecto — distinguiría al mirar el resumen. Eso es exactamente lo que hay que
+  <p><b>Sí se nota, y se explica en una frase:</b> el plan gratuito responde a un tercio del encargo con
+  números que mienten; el de pago responde el encargo completo — una parte funcionando y las otras dos
+  con fecha — y sus números dicen la verdad.</p>
+  <p>Los dos compilan y los dos arrancan. Un tercero que abra ambos no distinguiría por el aspecto:
+  distinguiría al mirar el resumen y al preguntar «¿y la nómina?». Eso es exactamente lo que hay que
   poder vender.</p>
 </div>
 

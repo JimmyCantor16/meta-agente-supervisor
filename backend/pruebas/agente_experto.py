@@ -4,11 +4,15 @@ Lo que se comprueba es exactamente lo que hace vendible el plan:
   · Free y Pro NO usan experto; Studio en los momentos críticos; Business en todo.
   · Cuando entra, MEJORA algo comprobable (el modelo de datos gana campos y cálculo).
   · El gasto se mide y el TOPE corta: un cliente intensivo no se come el margen.
+  · Puede REPLANTEAR el encargo — convertir «un CRUD» en «tres clases con su
+    orden» cuando el cliente pidió varios subsistemas — y no puede abusar de esa
+    potestad: un tipo sin lo que ese tipo necesita se rechaza.
   · Sin clave, el experto queda inerte y el sistema sigue funcionando.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -105,7 +109,46 @@ def main() -> int:
     assert not puede, "¡el tope no cortó!"
     assert resumen["gastado_usd"] >= tope, "cortó antes de agotar el tope"
 
-    sep("5. SIN CLAVE, EL EXPERTO QUEDA INERTE (y el sistema sigue)")
+    sep("5. EL EXPERTO PUEDE REPLANTEAR EL ENCARGO (su potestad más valiosa)")
+    from src.infrastructure.adapters.skeleton_generator import SkeletonProjectGenerator
+
+    ENCARGO_TRIPLE = (
+        "Necesito un sistema para mi distribuidora: facturación a 40 tiendas con "
+        "su precio pactado, nómina de siete empleados con anticipos, e inventario "
+        "de bodega con la pérdida del tueste."
+    )
+    aplanado = {"tipo": "crud_login", "dominio": dict(DOMINIO_POBRE)}
+
+    for plan_id in ("free", "business"):
+        servicio = ServicioExperto(
+            MockAgenteExperto(), RegistroGastoMemoria(), usuario=f"r-{plan_id}", plan_id=plan_id
+        )
+        from src.application.experto_contexto import usar_experto
+
+        with usar_experto(servicio):
+            salida = SkeletonProjectGenerator._replantear_con_experto(
+                json.loads(json.dumps(aplanado)), ENCARGO_TRIPLE
+            )
+        clases = (salida.get("temario") or {}).get("clases") or []
+        print(f"\n{plan_id:9}: tipo → {salida.get('tipo')}"
+              + (f" · {len(clases)} clases: {', '.join(c['titulo'] for c in clases)}" if clases else ""))
+        if plan_id == "free":
+            assert salida["tipo"] == "crud_login", "Free no debería replantear nada"
+        else:
+            assert salida["tipo"] == "por_clases", "Business debía detectar los 3 subsistemas"
+            assert len(clases) >= 2, "un replanteo por clases sin clases no sirve"
+
+    print("\nY no se puede abusar de la potestad:")
+    print("  pedir «por_clases» sin temario  →",
+          SkeletonProjectGenerator._tipo_aceptable("por_clases", {"dominio": {"campos": [1]}}))
+    print("  pedir un tipo inventado         →",
+          SkeletonProjectGenerator._tipo_aceptable("magia", {"dominio": {"campos": [1]}}))
+    assert not SkeletonProjectGenerator._tipo_aceptable("por_clases", {"dominio": {"campos": [1]}})
+    assert not SkeletonProjectGenerator._tipo_aceptable("magia", {"dominio": {"campos": [1]}})
+    print("  (ambos rechazados: cambiar el tipo sin lo que ese tipo necesita")
+    print("   dejaría al cliente PEOR que antes de pagar)")
+
+    sep("6. SIN CLAVE, EL EXPERTO QUEDA INERTE (y el sistema sigue)")
     inerte = ClaudeAgenteExperto(api_key="")
     servicio = ServicioExperto(inerte, RegistroGastoMemoria(), usuario="u", plan_id="business")
     puede, motivo = servicio.puede_intervenir(MomentoExperto.DISENO)
