@@ -13,6 +13,7 @@ import secrets
 from src.domain.dominio_app import DominioApp
 from src.domain.entities import GeneratedFile, GeneratedProject
 from src.infrastructure.adapters import skeleton_dominio as be
+from src.infrastructure.adapters.skeleton_dominio import _CLAVE_DEMO, _USUARIO_DEMO
 from src.infrastructure.adapters import skeleton_dominio_front as fe
 from src.infrastructure.adapters.skeleton_fullstack import (
     MARCADOR,
@@ -52,8 +53,18 @@ def _campos_js(d: DominioApp) -> str:
 
 
 def _index_html(d: DominioApp) -> str:
+    # La cuenta de demostración solo se ofrece si hay datos que mostrar: un
+    # «Ver una demostración» que lleva a una lista vacía es peor que no tenerlo.
+    demo = (
+        {"usuario": _USUARIO_DEMO, "clave": _CLAVE_DEMO} if d.ejemplos else {}
+    )
     datos = json.dumps(
-        {"name": d.app_name, "entidad": d.entidad, "plural": d.entidad_plural},
+        {
+            "name": d.app_name,
+            "entidad": d.entidad,
+            "plural": d.entidad_plural,
+            "demo": demo,
+        },
         ensure_ascii=False,
     ).replace("</", "<\\/")
     return f"""<!doctype html>
@@ -155,7 +166,21 @@ def _readme(d: DominioApp) -> str:
         "Backend **hexagonal** (dominio / aplicación / infraestructura) y frontend por\n"
         "componentes que se dibuja a partir del dominio.\n\n"
         f"## Qué guarda cada {d.entidad.lower()}\n\n{campos}\n\n"
-        "## Correr\n\n"
+        + (
+            "## Para enseñárselo a alguien\n\n"
+            f"La aplicación arranca con **{len(d.ejemplos)} {d.entidad_plural.lower()} de "
+            "ejemplo** ya dentro, para que quien abra el enlace vea un sistema en uso en "
+            "vez de una pantalla en blanco.\n\n"
+            "En la pantalla de entrada hay un botón **«Ver una demostración»**: entra sin "
+            "registrarse y puede mirar todo. Los datos son inventados.\n\n"
+            f"| | |\n|---|---|\n| Usuario | `{_USUARIO_DEMO}` |\n"
+            f"| Contraseña | `{_CLAVE_DEMO}` |\n\n"
+            "Quien quiera guardar lo suyo crea su cuenta: cada usuario ve solo sus "
+            f"{d.entidad_plural.lower()}, nunca los de otro.\n\n"
+            if d.ejemplos
+            else ""
+        )
+        + "## Correr\n\n"
         "```\npip install -r backend/requirements.txt\nuvicorn backend.main:app\n```\n\n"
         "Abre http://localhost:8000\n"
     )

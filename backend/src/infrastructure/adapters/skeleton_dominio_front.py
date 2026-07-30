@@ -175,11 +175,33 @@ export function AuthView(onLogged) {
       <button class="in">Entrar</button>
       <button class="up ghost">Crear cuenta</button>
     </div>
-    <p class="msg" role="status" aria-live="polite"></p>`;
+    <p class="msg" role="status" aria-live="polite"></p>
+    <div class="mirar"></div>`;
 
   el.querySelector("h1").textContent = window.__APP__.name;
   el.querySelector(".sub").textContent =
     "Entra o crea tu cuenta para gestionar tus " + window.__APP__.plural.toLowerCase() + ".";
+
+  // Modo visita. Es lo que permite ENSEÑAR el sistema: quien recibe el enlace
+  // entra en un clic, con datos dentro, y entiende de qué va antes de decidir
+  // si se registra. Sin esto, un desconocido choca contra un formulario y se va.
+  const demo = window.__APP__.demo;
+  if (demo && demo.usuario) {
+    const caja = el.querySelector(".mirar");
+    caja.innerHTML = `
+      <hr>
+      <p class="ayuda">¿Solo quieres mirar? Entra a la cuenta de ejemplo, que ya
+      tiene ${window.__APP__.plural.toLowerCase()} dentro. Lo que crees ahí no se
+      mezcla con tu cuenta.</p>
+      <button class="ver ghost">Ver una demostración</button>`;
+    caja.querySelector(".ver").onclick = async () => {
+      msg.textContent = "Entrando a la demostración…";
+      msg.className = "msg";
+      const r = await login(demo.usuario, demo.clave);
+      if (r.ok) { setToken((await r.json()).access_token); onLogged(); }
+      else { msg.textContent = "La demostración no está disponible."; msg.className = "msg error"; }
+    };
+  }
 
   const u = el.querySelector(".u"), p = el.querySelector(".p"), msg = el.querySelector(".msg");
 

@@ -300,7 +300,16 @@ class {d.clase}Service:
 '''
 
 
+#: Credenciales de la cuenta de demostración. Fijas y visibles a propósito: se
+#: enseñan en la propia pantalla de entrada y en el README, porque su razón de
+#: ser es que un desconocido pueda mirar el sistema. No protegen nada — los
+#: datos que hay dentro son inventados.
+_USUARIO_DEMO = "demo"
+_CLAVE_DEMO = "demo1234"
+
+
 def _db(d: DominioApp) -> str:
+    ejemplos = d.ejemplos
     columnas = []
     for c in d.campos:
         tipo = _COLUMNA[c.tipo]
@@ -336,6 +345,43 @@ class {d.clase}Model(Base):
 
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
+
+
+#: Cuenta de demostración. Existe para que quien reciba el enlace pueda MIRAR
+#: el sistema en un clic, con datos dentro, sin registrarse. Sin esto, un
+#: contacto abre una pantalla de login y un listado vacío: parece roto.
+USUARIO_DEMO = "{_USUARIO_DEMO}"
+CLAVE_DEMO = "{_CLAVE_DEMO}"
+
+_EJEMPLOS = {ejemplos!r}
+
+
+def sembrar_demostracion(hasher) -> bool:
+    """Crea la cuenta de demostración con datos dentro. True si sembró algo.
+
+    Se ejecuta en cada arranque pero solo actúa una vez: si la cuenta ya existe,
+    no toca nada. Así el usuario puede añadir y borrar sus propios registros sin
+    que un reinicio le devuelva los de ejemplo encima.
+    """
+    if not _EJEMPLOS:
+        return False
+    sesion = SessionLocal()
+    try:
+        demo = sesion.query(UserModel).filter(UserModel.username == USUARIO_DEMO).first()
+        if demo is not None:
+            return False
+        demo = UserModel(username=USUARIO_DEMO, hashed_password=hasher.hash(CLAVE_DEMO))
+        sesion.add(demo)
+        sesion.flush()  # necesitamos su id para que los registros sean suyos
+        for fila in _EJEMPLOS:
+            sesion.add({d.clase}Model(owner_id=demo.id, **fila))
+        sesion.commit()
+        return True
+    except Exception:  # noqa: BLE001 - sin datos de ejemplo la app sigue sirviendo
+        sesion.rollback()
+        return False
+    finally:
+        sesion.close()
 '''
 
 
@@ -572,10 +618,14 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.infrastructure.db import create_tables
+from backend.infrastructure.db import create_tables, sembrar_demostracion
+from backend.infrastructure.security import BcryptHasher
 from backend.infrastructure.web import router
 
 create_tables()
+# Datos de ejemplo la primera vez: quien reciba el enlace ve un sistema EN USO,
+# con números de verdad en el resumen, en vez de una pantalla en blanco.
+sembrar_demostracion(BcryptHasher())
 
 app = FastAPI(title="MVP")
 app.include_router(router)

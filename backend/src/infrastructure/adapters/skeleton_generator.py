@@ -54,6 +54,11 @@ _SYSTEM = (
     '    "calculos": [\n'
     '      {"etiqueta":"Puntuación media","operacion":"promedio","campo":"puntaje"},\n'
     '      {"etiqueta":"Catas registradas","operacion":"conteo"}\n'
+    "    ],\n"
+    '    "ejemplos": [\n'
+    '      {"cafe":"Finca La Esperanza, Huila","tueste":"Medio","puntaje":87},\n'
+    '      {"cafe":"Nariño lavado, lote 12","tueste":"Claro","puntaje":91},\n'
+    '      {"cafe":"Sierra Nevada honey","tueste":"Oscuro","puntaje":78}\n'
     "    ]\n"
     "  },\n"
     '  "title":"...", "tagline":"...", "cta":"...", "sections":[{"heading":"...","text":"..."}],\n'
@@ -76,7 +81,19 @@ _SYSTEM = (
     "- 'calculos' solo sobre campos numéricos (o 'conteo', que no necesita campo). "
     "Operaciones: suma, promedio, maximo, minimo, conteo.\n"
     "- el 'tono' debe pegar con el tema (café→cálido, finanzas→frío, "
-    "corporativo→sobrio, creativo→vivo).\n\n"
+    "corporativo→sobrio, creativo→vivo).\n"
+    "- 'ejemplos': OBLIGATORIO, entre 6 y 12 registros. Es la parte que más se "
+    "nota y la que más se descuida. Una aplicación que abre VACÍA no parece "
+    "pobre, parece ROTA — y con cero registros todos los cálculos valen cero, "
+    "así que nadie ve el trabajo del diseño.\n"
+    "  · Que se lean como REALES: nombres, lugares y cantidades del oficio de "
+    "verdad («Finca La Esperanza, Huila», no «Cliente 1»). Nada de «Ejemplo A», "
+    "«Lorem», «Prueba 1» ni valores todos iguales.\n"
+    "  · VARIADOS: que al mirar la lista se entienda de qué va el negocio y que "
+    "los promedios y totales del resumen den números creíbles.\n"
+    "  · Una clave por cada campo, con el MISMO 'nombre' que arriba. Las fechas "
+    "en formato AAAA-MM-DD y repartidas en las últimas semanas. Los números sin "
+    "símbolos de moneda ni unidades: solo la cifra.\n\n"
     "Si el tipo es 'por_clases': rellena 'temario' con 4 a 8 clases (cada una "
     "debe dejar algo USABLE por sí solo, no un andamio a medias) Y rellena "
     "'dominio' con lo que se construye en la CLASE 1, siguiendo las mismas "

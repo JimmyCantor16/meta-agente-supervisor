@@ -39,6 +39,13 @@ TipoCalculo = Literal["suma", "promedio", "maximo", "minimo", "conteo"]
 
 _IDENT = re.compile(r"^[a-z][a-z0-9_]{0,29}$")
 
+_ACENTOS = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+
+
+def _sin_acentos(texto: str) -> str:
+    """Para comparar textos que el modelo escribe con o sin tilde, indistintamente."""
+    return (texto or "").translate(_ACENTOS).strip().lower()
+
 
 def _a_identificador(texto: str) -> str:
     """Convierte cualquier etiqueta en un nombre de columna válido."""
@@ -109,6 +116,91 @@ class Calculo(BaseModel):
         return _a_identificador(texto) if texto else ""
 
 
+#: Cuántos registros de ejemplo se aceptan. Con menos de tres la lista sigue
+#: pareciendo vacía; con más de doce, el modelo empieza a repetirse y la primera
+#: pantalla pide desplazarse antes de haber entendido nada.
+MAXIMO_EJEMPLOS = 12
+
+
+def _valor_de_ejemplo(campo: Campo, bruto: object) -> object | None:
+    """Convierte un valor de ejemplo al tipo de su campo. None si no se puede.
+
+    Es estricto a propósito: un ejemplo mal tipado no da un dato raro, **impide
+    arrancar** la aplicación (un texto donde va un número rompe el INSERT y el
+    usuario recibe un sistema que no abre). Mejor un ejemplo menos.
+    """
+    if bruto is None:
+        return None
+    texto = str(bruto).strip()
+    if not texto:
+        return None
+
+    if campo.tipo == "booleano":
+        return texto.lower() in ("true", "1", "sí", "si", "yes", "verdadero")
+
+    if campo.tipo in ("entero", "decimal"):
+        # Los modelos escriben «$ 1.250,50», «1,250.50» o «12 kg»: hay que
+        # rescatar el número Y acertar con el separador decimal. Equivocarse aquí
+        # no da un número feo, da uno CIEN VECES MAYOR — y ese número acaba en el
+        # resumen, que es justo donde el usuario confía.
+        limpio = re.sub(r"[^\d,.\-]", "", texto)
+        corte = max(limpio.rfind(","), limpio.rfind("."))
+        if corte == -1:
+            numerico = limpio
+        else:
+            decimales = limpio[corte + 1 :]
+            # Tres dígitos después del último separador = miles (1.850 / 1,850).
+            # Es la convención en dinero; con dos o uno, es la parte decimal.
+            if len(decimales) == 3 and decimales.isdigit():
+                numerico = re.sub(r"[,.]", "", limpio)
+            else:
+                numerico = re.sub(r"[,.]", "", limpio[:corte]) + "." + decimales
+        try:
+            numero = float(numerico)
+        except ValueError:
+            return None
+        if campo.minimo is not None and numero < campo.minimo:
+            return None
+        if campo.maximo is not None and numero > campo.maximo:
+            return None
+        return int(numero) if campo.tipo == "entero" else round(numero, 2)
+
+    if campo.tipo == "fecha":
+        # Se exige AAAA-MM-DD: es lo que entiende el <input type="date">, y una
+        # fecha en otro formato se vería como texto crudo en la pantalla.
+        return texto[:10] if re.fullmatch(r"\d{4}-\d{2}-\d{2}", texto[:10]) else None
+
+    if campo.tipo == "opcion":
+        # Debe ser una de las opciones declaradas, comparando sin acentos ni caja.
+        for opcion in campo.opciones:
+            if _sin_acentos(opcion) == _sin_acentos(texto):
+                return opcion
+        return None
+
+    return texto[:2000] if campo.tipo == "texto_largo" else texto[:200]
+
+
+def _sanear_ejemplos(brutos: list, campos: list[Campo]) -> list[dict]:
+    """Deja solo los ejemplos que la aplicación puede guardar de verdad.
+
+    Se descarta un ejemplo entero si le falta algún campo obligatorio: media
+    fila daría una pantalla con huecos, que se lee como error del sistema.
+    """
+    obligatorios = [c for c in campos if c.obligatorio]
+    limpios: list[dict] = []
+    for bruto in brutos or []:
+        if not isinstance(bruto, dict) or len(limpios) >= MAXIMO_EJEMPLOS:
+            continue
+        fila: dict = {}
+        for campo in campos:
+            valor = _valor_de_ejemplo(campo, bruto.get(campo.nombre))
+            if valor is not None:
+                fila[campo.nombre] = valor
+        if all(c.nombre in fila for c in obligatorios) and fila:
+            limpios.append(fila)
+    return limpios
+
+
 class DominioApp(BaseModel):
     """Lo que hay que saber para construir la aplicación de esta idea."""
 
@@ -119,6 +211,20 @@ class DominioApp(BaseModel):
     calculos: list[Calculo] = Field(default_factory=list)
     #: Sugerencia de paleta acorde al dominio (el diseño también responde a la idea).
     tono: str = Field(default="neutro", description="cálido | frío | sobrio | vivo | neutro")
+    #: Registros de ejemplo, uno por diccionario, con las claves de `campos`.
+    #:
+    #: Por qué es tan importante como el modelo de datos: una aplicación que abre
+    #: VACÍA no se ve pobre, se ve ROTA. Y con cero registros todos los números
+    #: del resumen valen cero, así que un modelo de datos brillante y uno
+    #: chapucero se ven idénticos. Sin ejemplos, el trabajo de diseño es
+    #: invisible justo cuando el usuario le enseña su sistema a alguien.
+    #:
+    #: Sin tipar a propósito. Con `list[dict]`, un solo ejemplo mal formado
+    #: —una cadena en vez de un objeto, algo que los modelos hacen a menudo—
+    #: hacía fallar la validación del dominio ENTERO y el usuario se quedaba sin
+    #: aplicación por un dato de adorno. Aquí se acepta cualquier cosa y es
+    #: `sanear()` quien decide qué sobrevive.
+    ejemplos: list = Field(default_factory=list)
 
     @property
     def tabla(self) -> str:
@@ -167,7 +273,14 @@ class DominioApp(BaseModel):
             if c.operacion == "conteo" or c.campo in numericos
         ][:4]
 
-        return self.model_copy(update={"campos": limpios[:8], "calculos": calculos})
+        campos_finales = limpios[:8]
+        return self.model_copy(
+            update={
+                "campos": campos_finales,
+                "calculos": calculos,
+                "ejemplos": _sanear_ejemplos(self.ejemplos, campos_finales),
+            }
+        )
 
 
 #: Dominio de respaldo: si el modelo falla del todo, esto al menos funciona.
