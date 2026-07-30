@@ -1,0 +1,193 @@
+<title>Free vs Business · el mismo encargo</title>
+<style>
+  :root{
+    --fondo:#0A0E13; --panel:#131B24; --panel2:#0E151C; --linea:#243240;
+    --tinta:#E4EBF2; --tinta2:#7F909F; --tinta3:#566674;
+    --bien:#3FE08A; --mal:#F0645A; --cyan:#5CC4C4; --ambar:#E9A24C;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{--fondo:#F5F8FA; --panel:#FFF; --panel2:#EEF3F7; --linea:#D5DEE6;
+      --tinta:#101A22; --tinta2:#586977; --tinta3:#8395A3;
+      --bien:#0F8A54; --mal:#B3261E; --cyan:#0D7A7A; --ambar:#96590A;}
+  }
+  :root[data-theme="dark"]{--fondo:#0A0E13; --panel:#131B24; --panel2:#0E151C; --linea:#243240;
+    --tinta:#E4EBF2; --tinta2:#7F909F; --tinta3:#566674;
+    --bien:#3FE08A; --mal:#F0645A; --cyan:#5CC4C4; --ambar:#E9A24C;}
+  :root[data-theme="light"]{--fondo:#F5F8FA; --panel:#FFF; --panel2:#EEF3F7; --linea:#D5DEE6;
+    --tinta:#101A22; --tinta2:#586977; --tinta3:#8395A3;
+    --bien:#0F8A54; --mal:#B3261E; --cyan:#0D7A7A; --ambar:#96590A;}
+
+  body{background:var(--fondo); color:var(--tinta); font:15px/1.65 var(--ui); margin:0; padding:2.5rem 1.25rem 5rem}
+  .lienzo{max-width:960px; margin:0 auto}
+  .rotulo{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--tinta3); margin:0 0 .8rem}
+  h1{font-family:var(--mono); font-size:clamp(1.4rem,4vw,2.1rem); line-height:1.15; margin:0 0 .8rem; text-wrap:balance}
+  h1 em{font-style:normal; color:var(--bien)}
+  .bajada{color:var(--tinta2); max-width:66ch; margin:0 0 2.2rem}
+  .bajada code{font-family:var(--mono); font-size:.85em; background:var(--panel); border:1px solid var(--linea); padding:.05rem .3rem; border-radius:2px}
+
+  h2{font-family:var(--mono); font-size:.68rem; letter-spacing:.2em; text-transform:uppercase; color:var(--tinta3); margin:2.4rem 0 .9rem}
+
+  .duo{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
+  @media (max-width:720px){ .duo{grid-template-columns:1fr} }
+  .col{border:1px solid var(--linea); background:var(--panel); border-radius:3px; padding:1.1rem 1.15rem}
+  .col.f{border-top:2px solid var(--tinta3)}
+  .col.b{border-top:2px solid var(--bien)}
+  .col h3{font-family:var(--mono); font-size:.82rem; letter-spacing:.14em; text-transform:uppercase; margin:0 0 .2rem}
+  .col.f h3{color:var(--tinta2)} .col.b h3{color:var(--bien)}
+  .col .nombre{font-size:1rem; font-weight:600; margin:.15rem 0 .9rem}
+  .col ul{margin:0; padding-left:1.15rem; display:grid; gap:.3rem}
+  .col li{font-size:.88rem; color:var(--tinta2)}
+  .col li b{color:var(--tinta); font-weight:600}
+  .campos{font-family:var(--mono); font-size:.76rem; color:var(--tinta2); line-height:1.9; word-break:break-word}
+  .nuevo{color:var(--bien)}
+
+  table{border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums}
+  .envoltura{overflow-x:auto; border:1px solid var(--linea); border-radius:3px; background:var(--panel)}
+  th,td{padding:.6rem .8rem; text-align:left; border-bottom:1px solid var(--linea); font-size:.88rem; vertical-align:top}
+  th{font-family:var(--mono); font-size:.64rem; letter-spacing:.14em; text-transform:uppercase; color:var(--tinta3); white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  td code{font-family:var(--mono); font-size:.8rem}
+  .v{color:var(--bien); font-weight:600} .x{color:var(--mal); font-weight:600}
+
+  .hallazgo{border:1px solid var(--linea); border-left:2px solid var(--mal); background:var(--panel); border-radius:0 3px 3px 0; padding:1.1rem 1.2rem; margin-bottom:.8rem}
+  .hallazgo.gordo{border-left-color:var(--ambar)}
+  .hallazgo h4{margin:0 0 .3rem; font-size.95rem; font-size:.98rem}
+  .hallazgo p{margin:.35rem 0 0; color:var(--tinta2); font-size:.9rem; max-width:70ch}
+  .hallazgo p b{color:var(--tinta)}
+
+  .veredicto{border:1px solid var(--bien); background:color-mix(in srgb, var(--bien) 8%, transparent); border-radius:3px; padding:1.3rem 1.4rem; margin:2.4rem 0 1rem}
+  .veredicto p{margin:0; font-size:1.02rem; max-width:70ch}
+  .veredicto p+p{margin-top:.7rem; color:var(--tinta2); font-size:.92rem}
+
+  .pie{margin-top:2.5rem; padding-top:1.2rem; border-top:1px solid var(--linea); color:var(--tinta3); font-size:.83rem}
+  .pie code{font-family:var(--mono)}
+  @media (prefers-reduced-motion: no-preference){
+    .col,.hallazgo,.veredicto{opacity:0; transform:translateY(10px); animation:sube .5s ease forwards}
+    @keyframes sube{to{opacity:1;transform:none}}
+    .col.b{animation-delay:.1s}
+  }
+</style>
+
+<div class="lienzo">
+<p class="rotulo">Fase 7 · corrida del 29 jul 2026 · juicio experto delegado</p>
+<h1>El mismo encargo, dos planes.<br>La diferencia <em>no es cosmética</em>.</h1>
+<p class="bajada">Encargo: una distribuidora de café con facturación, nómina e inventario con pérdida de
+tueste. Construyeron los <b>modelos gratuitos de verdad</b>; en Business entró el experto en el momento
+del diseño. Ambos proyectos: 23 archivos, <b>0 errores de compilación</b>. La diferencia está en si los
+números dicen la verdad.</p>
+
+<h2>Lo que produjo cada uno</h2>
+<div class="duo">
+  <div class="col f">
+    <h3>Free · $0</h3>
+    <p class="nombre">Gestión de Facturación Café</p>
+    <p class="campos">cliente · precio_pactado · plazo_pago_dias · fecha_emision · fecha_vencimiento · cantidad_libras · pagado</p>
+    <ul>
+      <li><b>7 campos</b>, ninguno para el costo</li>
+      <li><b>2 números</b> en el resumen, y <b>los dos están mal</b></li>
+      <li>Sin respuesta a la pregunta del cliente</li>
+    </ul>
+  </div>
+  <div class="col b">
+    <h3>Business · $29</h3>
+    <p class="nombre">Cartera y Margen del Café</p>
+    <p class="campos">cliente · fecha_emision · dias_plazo · libras · valor · <span class="nuevo">costo</span> · <span class="nuevo">margen_libra</span> · pagado</p>
+    <ul>
+      <li><b>8 campos</b>, con costo y margen</li>
+      <li><b>4 números</b>, todos correctos</li>
+      <li>El primero es <b>justo el que pidió</b></li>
+    </ul>
+  </div>
+</div>
+
+<h2>Los números del resumen, uno por uno</h2>
+<div class="envoltura">
+<table>
+  <tr><th>Plan</th><th>Etiqueta que ve el usuario</th><th>Lo que calcula de verdad</th><th></th></tr>
+  <tr>
+    <td>Free</td><td>Total adeudado</td>
+    <td><code>sum(cantidad_libras)</code></td>
+    <td class="x">suma LIBRAS y las presenta como pesos</td>
+  </tr>
+  <tr>
+    <td>Free</td><td>Facturas vencidas</td>
+    <td><code>len(registros)</code></td>
+    <td class="x">cuenta TODAS, no las vencidas</td>
+  </tr>
+  <tr>
+    <td>Business</td><td>Ganancia promedio por libra</td>
+    <td><code>round(sum(margen_libra)/len(...), 2)</code></td>
+    <td class="v">correcto · es la pregunta del cliente</td>
+  </tr>
+  <tr>
+    <td>Business</td><td>Total facturado</td>
+    <td><code>sum(valor)</code></td><td class="v">correcto</td>
+  </tr>
+  <tr>
+    <td>Business</td><td>Costo del café entregado</td>
+    <td><code>sum(costo)</code></td><td class="v">correcto</td>
+  </tr>
+  <tr>
+    <td>Business</td><td>Libras entregadas</td>
+    <td><code>sum(libras)</code></td><td class="v">correcto</td>
+  </tr>
+</table>
+</div>
+
+<h2>Lo que encontró el experto en el trabajo de la IA gratis</h2>
+
+<div class="hallazgo">
+  <h4>Sumaba libras y las llamaba dinero</h4>
+  <p>«Total adeudado» agregaba <code>cantidad_libras</code>. El número que el dueño mira para saber
+  cuánto le deben eran <b>kilos de café</b>. No es un número impreciso: es un número que <b>no significa nada</b>
+  y que parece significar algo.</p>
+</div>
+
+<div class="hallazgo">
+  <h4>«Facturas vencidas» contaba todas las facturas</h4>
+  <p>El sistema no tiene cálculos con filtro, así que <code>conteo</code> cuenta todas las filas. El
+  modelo gratuito puso la etiqueta «vencidas» encima de un número que nunca lo fue.</p>
+</div>
+
+<div class="hallazgo">
+  <h4>Faltaba el costo: la pregunta principal no tenía respuesta</h4>
+  <p>El encargo decía, textual: <b>«que el sistema me diga cuánto estoy ganando de verdad por cada libra,
+  no solo cuánto vendí»</b>. No había ni un campo de costo, así que el margen era <b>incalculable</b>.
+  Lo que más se pidió fue lo único que no estaba.</p>
+</div>
+
+<div class="hallazgo">
+  <h4>El precio pactado colgaba de la factura, no de la tienda</h4>
+  <p>El encargo dice que cada tienda tiene <b>su</b> precio pactado. Modelado por factura, hay que
+  reescribirlo en cada venta y nada impide contradecirse entre dos facturas de la misma tienda.</p>
+</div>
+
+<div class="hallazgo gordo">
+  <h4>Y el fallo más grande, que el experto NO pudo arreglar</h4>
+  <p>El encargo describe <b>tres subsistemas</b> —facturación, nómina, inventario— y pide explícitamente
+  empezar por uno. El modelo gratuito lo aplanó a <b>un solo CRUD de facturas</b> y dejó fuera nómina e
+  inventario <b>sin decirlo</b>. Debería haber respondido con un plan por clases.</p>
+  <p>El experto entra en el diseño del <b>modelo de datos</b>, pero no puede volver a decidir el
+  <b>tipo</b> de respuesta. Es un hueco real de la Fase 6, encontrado justamente por hacer esta prueba:
+  el experto debería poder decir «esto no es una app, son tres, y aquí está el orden».</p>
+</div>
+
+<div class="veredicto">
+  <p><b>Sí se nota, y se explica en una frase:</b> el plan gratuito entrega una aplicación que funciona
+  con números que mienten; el de pago entrega una que responde la pregunta por la que el cliente pagó.</p>
+  <p>Los dos compilan, los dos arrancan, los dos tienen 23 archivos. Un tercero que abra ambos no
+  distinguiría por el aspecto — distinguiría al mirar el resumen. Eso es exactamente lo que hay que
+  poder vender.</p>
+</div>
+
+<p class="pie">
+  Encargo en <code>scratch_mvp/prompt_definitivo.txt</code> ·
+  propuesta cruda de los modelos gratuitos en <code>propuesta_gratis.json</code> ·
+  juicio del experto en <code>juicio_experto_cafe.json</code> ·
+  evidencia en <code>comparacion_cafe.json</code>.
+  Reproducible: mismo archivo de juicio, mismo resultado.
+  Con la clave de Anthropic el mismo circuito corre sin intervención humana.
+</p>
+</div>

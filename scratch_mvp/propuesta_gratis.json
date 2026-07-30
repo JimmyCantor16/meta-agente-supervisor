@@ -1,0 +1,81 @@
+{
+  "tipo": "crud_login",
+  "dominio": {
+    "app_name": "Gestión de Facturación Café",
+    "entidad": "Factura",
+    "entidad_plural": "Facturas",
+    "tono": "sobrio",
+    "campos": [
+      {
+        "nombre": "cliente",
+        "etiqueta": "Cliente",
+        "tipo": "texto",
+        "obligatorio": true
+      },
+      {
+        "nombre": "precio_pactado",
+        "etiqueta": "Precio pactado por libra",
+        "tipo": "decimal",
+        "obligatorio": true
+      },
+      {
+        "nombre": "plazo_pago_dias",
+        "etiqueta": "Plazo de pago (días)",
+        "tipo": "entero",
+        "obligatorio": true
+      },
+      {
+        "nombre": "fecha_emision",
+        "etiqueta": "Fecha de emisión",
+        "tipo": "fecha",
+        "obligatorio": true
+      },
+      {
+        "nombre": "fecha_vencimiento",
+        "etiqueta": "Fecha de vencimiento",
+        "tipo": "fecha",
+        "obligatorio": true
+      },
+      {
+        "nombre": "cantidad_libras",
+        "etiqueta": "Cantidad vendida (libras)",
+        "tipo": "decimal",
+        "obligatorio": true
+      },
+      {
+        "nombre": "pagado",
+        "etiqueta": "¿Pagado?",
+        "tipo": "booleano",
+        "obligatorio": true
+      }
+    ],
+    "calculos": [
+      {
+        "etiqueta": "Total adeudado",
+        "operacion": "suma",
+        "campo": "cantidad_libras"
+      },
+      {
+        "etiqueta": "Facturas vencidas",
+        "operacion": "conteo"
+      }
+    ]
+  },
+  "title": "Gestión de Facturación para Distribuidora de Café",
+  "tagline": "Controla tus ventas, pagos y vencimientos sin complicaciones.",
+  "cta": "Comienza a facturar y controlar tus cobros hoy mismo",
+  "sections": [
+    {
+      "heading": "Control de Clientes y Precios",
+      "text": "Registra cada cliente con su precio pactado y plazo de pago personalizado."
+    },
+    {
+      "heading": "Emisión y Seguimiento de Facturas",
+      "text": "Genera facturas fácilmente y lleva el control de lo que se ha pagado y lo que está pendiente."
+    },
+    {
+      "heading": "Alertas de Vencimientos",
+      "text": "Recibe avisos automáticos de facturas vencidas para gestionar cobros a tiempo."
+    }
+  ]
+}

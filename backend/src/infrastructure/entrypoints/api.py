@@ -26,6 +26,7 @@ from src.application.experto import ServicioExperto
 from src.application.experto_contexto import usar_experto
 from src.domain.experto import AgenteExpertoPort, MomentoExperto, RegistroGastoPort
 from src.infrastructure.adapters.claude_experto import ClaudeAgenteExperto
+from src.infrastructure.adapters.experto_delegado import ExpertoDeArchivo
 from src.infrastructure.adapters.gasto_experto import RegistroGastoArchivo
 from src.infrastructure.adapters.mock_experto import MockAgenteExperto
 from src.application.aplicar_ajuste import AplicarAjusteUseCase
@@ -512,6 +513,11 @@ def get_agente_experto() -> AgenteExpertoPort:
     funciona con los modelos gratuitos, y encenderlo es pegar la clave.
     """
     settings = get_settings()
+    # El juicio delegado manda sobre todo lo demás: si alguien se tomó el trabajo
+    # de escribirlo, es porque quiere ESE juicio y no el de un modelo.
+    if settings.experto_archivo:
+        logger.warning("EXPERTO_ARCHIVO -> juicio delegado desde %s", settings.experto_archivo)
+        return ExpertoDeArchivo(settings.experto_archivo)
     if settings.experto_simulado:
         logger.warning("EXPERTO_SIMULADO=true -> agente experto SIMULADO (sin coste).")
         return MockAgenteExperto()

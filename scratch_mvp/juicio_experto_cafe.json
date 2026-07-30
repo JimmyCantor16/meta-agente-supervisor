@@ -1,0 +1,117 @@
+{
+  "diseno": {
+    "modelo": "claude-opus-5 (revisión en sesión)",
+    "resumen": "Corregí dos números que mentían y añadí el costo, sin el cual su pregunta principal —cuánto gano por libra— no tiene respuesta.",
+    "datos": {
+      "dominio": {
+        "app_name": "Cartera y Margen del Café",
+        "entidad": "Factura",
+        "entidad_plural": "Facturas",
+        "tono": "calido",
+        "campos": [
+          {
+            "nombre": "cliente",
+            "etiqueta": "Tienda",
+            "tipo": "texto",
+            "obligatorio": true,
+            "ayuda": "El nombre de la tienda de barrio, como usted la llama."
+          },
+          {
+            "nombre": "fecha_emision",
+            "etiqueta": "Fecha de la venta",
+            "tipo": "fecha",
+            "obligatorio": true,
+            "ayuda": "Cuándo se entregó. De aquí sale desde cuándo le deben."
+          },
+          {
+            "nombre": "dias_plazo",
+            "etiqueta": "Plazo acordado (días)",
+            "tipo": "entero",
+            "obligatorio": true,
+            "minimo": 0,
+            "maximo": 180,
+            "ayuda": "Los días que le dio esta tienda para pagar."
+          },
+          {
+            "nombre": "libras",
+            "etiqueta": "Libras entregadas",
+            "tipo": "decimal",
+            "obligatorio": true,
+            "minimo": 0,
+            "ayuda": "Café empacado que salió, en libras."
+          },
+          {
+            "nombre": "valor",
+            "etiqueta": "Valor de la factura",
+            "tipo": "decimal",
+            "obligatorio": true,
+            "minimo": 0,
+            "ayuda": "Lo que esta tienda debe pagar por esta entrega, en pesos."
+          },
+          {
+            "nombre": "costo",
+            "etiqueta": "Costo real del café entregado",
+            "tipo": "decimal",
+            "obligatorio": true,
+            "minimo": 0,
+            "ayuda": "Lo que a usted le costó ese café ya tostado y empacado, incluyendo lo que se perdió en el tueste."
+          },
+          {
+            "nombre": "margen_libra",
+            "etiqueta": "Ganancia por libra",
+            "tipo": "decimal",
+            "obligatorio": true,
+            "minimo": 0,
+            "ayuda": "El valor menos el costo, dividido entre las libras. Es el número que le dice si el negocio va bien."
+          },
+          {
+            "nombre": "pagado",
+            "etiqueta": "¿Ya la pagaron?",
+            "tipo": "booleano",
+            "obligatorio": false,
+            "ayuda": "Márquela el día que le paguen. Lo que no esté marcado es su cartera."
+          }
+        ],
+        "calculos": [
+          {
+            "etiqueta": "Ganancia promedio por libra",
+            "operacion": "promedio",
+            "campo": "margen_libra"
+          },
+          {
+            "etiqueta": "Total facturado",
+            "operacion": "suma",
+            "campo": "valor"
+          },
+          {
+            "etiqueta": "Costo del café entregado",
+            "operacion": "suma",
+            "campo": "costo"
+          },
+          {
+            "etiqueta": "Libras entregadas",
+            "operacion": "suma",
+            "campo": "libras"
+          },
+          {
+            "etiqueta": "Facturas registradas",
+            "operacion": "conteo",
+            "campo": ""
+          }
+        ]
+      }
+    }
+  },
+  "repaso": {
+    "modelo": "claude-opus-5 (revisión en sesión)",
+    "resumen": "Cuatro cosas que separan esto de una demo: el número que pidió, la cartera, la pérdida de tueste y las dos partes que se quedaron fuera.",
+    "datos": {
+      "mejoras": [
+        "La pregunta que hizo el cliente era «cuánto gano de verdad por libra». Ese número ya está en el resumen y es lo primero que debe ver al entrar, no un dato más de la lista.",
+        "Falta la vista de cartera: quién debe, cuánto y desde cuándo. Con fecha de venta y plazo ya se puede calcular el vencido, pero hoy hay que hacerlo de cabeza.",
+        "La pérdida de tueste (14-18%) todavía no vive en el sistema: hoy el usuario tiene que meter el costo ya calculado a mano. Es la clase siguiente, y sin ella el costo por libra depende de que no se equivoque con la calculadora.",
+        "Nómina e inventario quedaron fuera de esta entrega. Eso está BIEN —se pidió empezar por lo que más duele— pero tiene que estar escrito y planificado, no simplemente ausente."
+      ]
+    }
+  }
+}

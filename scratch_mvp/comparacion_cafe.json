@@ -1,0 +1,61 @@
+{
+  "free": {
+    "archivos": 23,
+    "errores_sintaxis": [],
+    "campos": [
+      "cliente",
+      "precio_pactado",
+      "plazo_pago_dias",
+      "fecha_emision",
+      "fecha_vencimiento",
+      "cantidad_libras",
+      "pagado"
+    ],
+    "numeros": [
+      [
+        "Total adeudado",
+        "sum(valores) if valores else 0"
+      ],
+      [
+        "Facturas vencidas",
+        "len(registros)"
+      ]
+    ],
+    "validaciones": 0,
+    "app_name": "Gestión de Facturación Café"
+  },
+  "business": {
+    "archivos": 23,
+    "errores_sintaxis": [],
+    "campos": [
+      "cliente",
+      "fecha_emision",
+      "dias_plazo",
+      "libras",
+      "valor",
+      "costo",
+      "margen_libra",
+      "pagado"
+    ],
+    "numeros": [
+      [
+        "Ganancia promedio por libra",
+        "round(sum(valores) / len(valores), 2) if valores else 0"
+      ],
+      [
+        "Total facturado",
+        "sum(valores) if valores else 0"
+      ],
+      [
+        "Costo del café entregado",
+        "sum(valores) if valores else 0"
+      ],
+      [
+        "Libras entregadas",
+        "sum(valores) if valores else 0"
+      ]
+    ],
+    "validaciones": 0,
+    "app_name": "Cartera y Margen del Café"
+  }
+}

@@ -197,6 +197,13 @@ class Settings(BaseSettings):
         default=False,
         description="True = usa el experto SIMULADO (prueba la mecánica sin gastar).",
     )
+    # Experto DELEGADO: el juicio lo escribe una persona en un JSON. Permite
+    # responder «¿se nota la diferencia entre planes?» antes de tener clave, con
+    # un juicio de verdad y además reproducible.
+    experto_archivo: str = Field(
+        default="",
+        description="Ruta a un JSON con el juicio del experto. Tiene prioridad sobre la clave.",
+    )
     experto_carpeta_gasto: str = Field(
         default="data/gasto-experto",
         description="Dónde se lleva la cuenta del gasto mensual por usuario.",
