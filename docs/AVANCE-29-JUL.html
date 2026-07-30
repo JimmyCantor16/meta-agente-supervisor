@@ -1,0 +1,317 @@
+<title>Avance · 29 jul 2026</title>
+<style>
+  :root{
+    --fondo:#080C11; --panel:#111922; --panel2:#0D141B; --linea:#22303C;
+    --tinta:#E3EBF2; --tinta2:#7E8F9E; --tinta3:#556673;
+    --led:#3FE08A; --cyan:#5CC4C4; --ambar:#E9A24C; --rojo:#F0645A;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --fondo:#F4F7FA; --panel:#FFFFFF; --panel2:#EDF2F7; --linea:#D6DEE7;
+      --tinta:#111A22; --tinta2:#5A6B79; --tinta3:#8496A4;
+      --led:#118D57; --cyan:#0E7C7C; --ambar:#9A5B0B; --rojo:#B3261E;
+    }
+  }
+  :root[data-theme="dark"]{
+    --fondo:#080C11; --panel:#111922; --panel2:#0D141B; --linea:#22303C;
+    --tinta:#E3EBF2; --tinta2:#7E8F9E; --tinta3:#556673;
+    --led:#3FE08A; --cyan:#5CC4C4; --ambar:#E9A24C; --rojo:#F0645A;
+  }
+  :root[data-theme="light"]{
+    --fondo:#F4F7FA; --panel:#FFFFFF; --panel2:#EDF2F7; --linea:#D6DEE7;
+    --tinta:#111A22; --tinta2:#5A6B79; --tinta3:#8496A4;
+    --led:#118D57; --cyan:#0E7C7C; --ambar:#9A5B0B; --rojo:#B3261E;
+  }
+
+  body{
+    background:var(--fondo); color:var(--tinta); font:15px/1.65 var(--ui);
+    margin:0; padding:2.5rem 1.25rem 5rem;
+    background-image:
+      linear-gradient(var(--linea) 1px, transparent 1px),
+      linear-gradient(90deg, var(--linea) 1px, transparent 1px);
+    background-size:44px 44px, 44px 44px;
+    background-position:-1px -1px;
+  }
+  @media (prefers-color-scheme: light){ body{background-blend-mode:normal} }
+  .lienzo{max-width:940px; margin:0 auto}
+
+  /* --- Cabecera: lectura de máquina --- */
+  header{margin-bottom:2.5rem}
+  .rotulo{
+    font-family:var(--mono); font-size:.68rem; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--tinta3); display:flex; align-items:center; gap:.6rem; margin-bottom:.9rem;
+  }
+  .led{
+    width:9px; height:9px; border-radius:50%; background:var(--led);
+    box-shadow:0 0 0 0 var(--led); animation:latir 2s ease-out infinite;
+  }
+  @keyframes latir{
+    0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--led) 60%, transparent)}
+    70%{box-shadow:0 0 0 9px transparent}
+    100%{box-shadow:0 0 0 0 transparent}
+  }
+  h1{
+    font-family:var(--mono); font-size:clamp(1.5rem,4.4vw,2.35rem); line-height:1.12;
+    margin:0 0 .7rem; letter-spacing:-.01em; text-wrap:balance;
+  }
+  h1 em{color:var(--led); font-style:normal}
+  .bajada{color:var(--tinta2); max-width:64ch; margin:0}
+
+  /* --- Tira de fases --- */
+  .tira{
+    border:1px solid var(--linea); background:var(--panel); border-radius:3px;
+    padding:1.1rem 1.2rem; margin:2.2rem 0 2.8rem;
+  }
+  .tira h2{
+    font-family:var(--mono); font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--tinta3); margin:0 0 1rem;
+  }
+  .fase{display:grid; grid-template-columns:4.2rem 1fr 5.5rem; gap:.9rem; align-items:center; padding:.42rem 0}
+  .fase .n{font-family:var(--mono); font-size:.74rem; color:var(--tinta3); letter-spacing:.08em}
+  .fase .nombre{font-size:.9rem}
+  .barra{height:5px; background:var(--panel2); border-radius:99px; overflow:hidden; margin-top:.3rem}
+  .barra i{display:block; height:100%; width:0; border-radius:99px; animation:llenar 1.3s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes llenar{ to{ width:var(--w) } }
+  .fase .pct{font-family:var(--mono); font-size:.76rem; text-align:right; color:var(--tinta2)}
+  .ok i{background:var(--led)} .ok .pct{color:var(--led)}
+  .medio i{background:var(--ambar)} .medio .pct{color:var(--ambar)}
+  .nada i{background:var(--tinta3)} .nada .pct{color:var(--tinta3)}
+
+  /* --- Bloques entregados --- */
+  .bloque{
+    border:1px solid var(--linea); background:var(--panel); border-radius:3px;
+    padding:1.3rem 1.35rem; margin-bottom:1.1rem;
+    opacity:0; transform:translateY(14px); animation:entrar .55s ease forwards;
+  }
+  @keyframes entrar{ to{ opacity:1; transform:none } }
+  .bloque h3{
+    font-size:1.05rem; margin:0 0 .15rem; display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;
+  }
+  .marca{
+    font-family:var(--mono); font-size:.6rem; letter-spacing:.16em; text-transform:uppercase;
+    padding:.16rem .45rem; border-radius:2px; border:1px solid currentColor;
+  }
+  .m-ok{color:var(--led)} .m-medio{color:var(--ambar)} .m-bug{color:var(--rojo)}
+  .bloque p{margin:.5rem 0 0; color:var(--tinta2); max-width:70ch}
+  .bloque p b{color:var(--tinta)}
+  .probar{
+    margin:1rem 0 0; padding:.85rem 1rem; background:var(--panel2);
+    border-left:2px solid var(--cyan); border-radius:0 2px 2px 0;
+  }
+  .probar .k{
+    font-family:var(--mono); font-size:.62rem; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--cyan); display:block; margin-bottom:.45rem;
+  }
+  .probar ol{margin:0; padding-left:1.25rem; display:grid; gap:.3rem}
+  .probar li{color:var(--tinta2); font-size:.9rem}
+  .probar code, code.en{
+    font-family:var(--mono); font-size:.83em; background:var(--fondo);
+    border:1px solid var(--linea); padding:.06rem .3rem; border-radius:2px; color:var(--tinta);
+  }
+
+  /* --- Terminal con la salida real --- */
+  .terminal{
+    border:1px solid var(--linea); background:var(--panel2); border-radius:3px;
+    margin:2.2rem 0; overflow:hidden;
+  }
+  .terminal .barra-sup{
+    border-bottom:1px solid var(--linea); padding:.5rem .9rem;
+    font-family:var(--mono); font-size:.62rem; letter-spacing:.16em; text-transform:uppercase; color:var(--tinta3);
+  }
+  .terminal pre{
+    margin:0; padding:1rem 1.1rem; overflow-x:auto;
+    font-family:var(--mono); font-size:.78rem; line-height:1.75; color:var(--tinta2);
+  }
+  .terminal .v{color:var(--led)} .terminal .x{color:var(--rojo)} .terminal .c{color:var(--cyan)}
+  .cursor{display:inline-block; width:.55em; height:1em; background:var(--led); vertical-align:-.15em; animation:parpadeo 1.1s steps(2) infinite}
+  @keyframes parpadeo{50%{opacity:0}}
+
+  /* --- Bloqueado --- */
+  .falta{border:1px solid var(--linea); border-left:2px solid var(--ambar); background:var(--panel); border-radius:0 3px 3px 0; padding:1.2rem 1.35rem}
+  .falta h2{font-family:var(--mono); font-size:.68rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ambar); margin:0 0 .9rem}
+  .falta dl{margin:0; display:grid; gap:.85rem}
+  .falta dt{font-weight:600; font-size:.94rem}
+  .falta dd{margin:.15rem 0 0; color:var(--tinta2); font-size:.9rem}
+
+  .pie{margin-top:2.5rem; padding-top:1.2rem; border-top:1px solid var(--linea); color:var(--tinta3); font-size:.84rem}
+  .pie code{color:var(--tinta2)}
+
+  @media (prefers-reduced-motion: reduce){
+    .led,.cursor{animation:none}
+    .bloque{opacity:1; transform:none; animation:none}
+    .barra i{animation:none; width:var(--w)}
+  }
+  @media (max-width:560px){
+    .fase{grid-template-columns:3.4rem 1fr 4rem; gap:.6rem}
+  }
+</style>
+
+<div class="lienzo">
+<header>
+  <p class="rotulo"><span class="led"></span> Meta-Agente · tanda del 29 jul 2026 · 09 commits arriba</p>
+  <h1>Cinco cosas de tu lista, <em>hechas</em>.<br>Dos bugs reales, encontrados al probarlas.</h1>
+  <p class="bajada">Todo lo que no dependía de ti está en <code class="en">main</code> y en producción.
+  Lo que sigue esperando son dos llaves tuyas — nada más.</p>
+</header>
+
+<div class="tira">
+  <h2>Estado de las ocho fases</h2>
+  <div class="fase ok"><span class="n">F1</span><div><span class="nombre">Dominio adaptativo</span><div class="barra"><i style="--w:100%"></i></div></div><span class="pct">100%</span></div>
+  <div class="fase ok"><span class="n">F2</span><div><span class="nombre">Ideas grandes por clases</span><div class="barra"><i style="--w:100%"></i></div></div><span class="pct">100%</span></div>
+  <div class="fase medio"><span class="n">F3</span><div><span class="nombre">Circuito del alumno</span><div class="barra"><i style="--w:85%"></i></div></div><span class="pct">85%</span></div>
+  <div class="fase ok"><span class="n">F4</span><div><span class="nombre">Que se sienta vivo</span><div class="barra"><i style="--w:100%"></i></div></div><span class="pct">100%</span></div>
+  <div class="fase medio"><span class="n">F5</span><div><span class="nombre">Móvil auditor</span><div class="barra"><i style="--w:90%"></i></div></div><span class="pct">90%</span></div>
+  <div class="fase medio"><span class="n">F6</span><div><span class="nombre">Agente experto</span><div class="barra"><i style="--w:80%"></i></div></div><span class="pct">80%</span></div>
+  <div class="fase nada"><span class="n">F7</span><div><span class="nombre">Prueba plan a plan</span><div class="barra"><i style="--w:25%"></i></div></div><span class="pct">25%</span></div>
+</div>
+
+<div class="bloque" style="animation-delay:.05s">
+  <h3>Un solo canal para los tres aparatos <span class="marca m-ok">hecho</span></h3>
+  <p>Tu queja era exacta: <b>«no se ven las notificaciones en escritorio y móvil cuando lo hace la web»</b>.
+  La causa: el escritorio y el móvil escuchaban <b>producción</b> mientras tú generabas en <b>tu máquina</b> —
+  y el teléfono no alcanza tu <code class="en">localhost</code>. Ahora el navegador que sí lo está viendo
+  reenvía cada paso al backend compartido, y los tres cuentan la misma historia.</p>
+  <p>Y para que no suene tres veces: hay <b>turno</b>. El primer aparato que reclama el acontecimiento
+  hace sonar el aviso del sistema; los otros dos lo guardan en su centro de avisos, en silencio.
+  Vuelvas a donde vuelvas, la noticia está.</p>
+  <div class="probar">
+    <span class="k">qué probar</span>
+    <ol>
+      <li>Abre la web, la app de escritorio y el móvil a la vez.</li>
+      <li>Genera algo desde la web.</li>
+      <li>Los tres deben ir contando los mismos pasos — y sonar <b>una sola vez</b>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="bloque" style="animation-delay:.12s">
+  <h3>El alumno queda en la historia de git <span class="marca m-medio">85%</span></h3>
+  <p>La clase ahora declara <b>qué archivo</b> hay que tocar y <b>qué debería verse distinto</b>. El aula
+  abre ese archivo con el encargo delante, en vez de dejarlo mirando 23 archivos.</p>
+  <p>Al guardar: si arranca, queda como <b>commit con su nombre</b>. Si no arranca, se guarda en disco pero
+  <b>no entra en la historia</b> — por eso «volver atrás» siempre lleva a un punto que funcionaba. Y el botón
+  de deshacer solo puede deshacer cambios suyos: la entrega del agente es su suelo y no se puede borrar.</p>
+  <div class="probar">
+    <span class="k">qué probar</span>
+    <ol>
+      <li>Entra al profesor y avanza hasta la clase «Tu primer cambio».</li>
+      <li>Pulsa <b>Ir al aula en vivo</b>: se abre el archivo correcto con la misión arriba.</li>
+      <li>Cambia el título y dale a <b>Compilar</b>. Verás <code class="en">✓ guardado como &lt;commit&gt;</code>.</li>
+      <li>Rompe el código a propósito y compila: <b>no</b> se guarda, y te dice por qué.</li>
+      <li>Pulsa <b>Deshacer</b>: vuelve al último punto bueno.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="bloque" style="animation-delay:.19s">
+  <h3>Historial en el auditor del móvil <span class="marca m-ok">hecho</span></h3>
+  <p>Antes solo mostraba el presente, y un auditor que solo ve el presente no audita. Ahora guarda las
+  <b>últimas 30 construcciones</b> en el teléfono, con desenlace, duración y qué modelos participaron —
+  incluidas las que se <b>cortaron a medias</b>, que son las que más dicen sobre el nivel de la IA gratis.</p>
+  <div class="probar">
+    <span class="k">qué probar</span>
+    <ol>
+      <li>Instala el APK nuevo del escritorio: <code class="en">MetaAgente-Movil.apk</code>.</li>
+      <li>Pestaña <b>Auditor</b> → abajo aparece «Historial · últimas N».</li>
+      <li>Cierra la app y vuelve: el historial sigue ahí.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="bloque" style="animation-delay:.26s">
+  <h3>El agente experto, listo y a la espera de tu clave <span class="marca m-medio">80%</span></h3>
+  <p>Entra en <b>tres momentos</b> — diseño del modelo de datos, rescate cuando el bucle se estanca, y repaso
+  final — gobernado por el plan: <b>Studio</b> en los críticos, <b>Business</b> también en el diseño. Cuando
+  entra, <b>se anuncia en el Monitor</b>: quien paga tiene derecho a ver por qué paga. Y se le mide el gasto
+  contra un tope mensual, para que un cliente intensivo no se coma el margen.</p>
+  <p>Sin clave queda <b>inerte</b> y todo sigue funcionando con los modelos gratuitos. Encenderlo es pegar la
+  clave, nada más.</p>
+  <div class="probar">
+    <span class="k">qué probar sin gastar un centavo</span>
+    <ol>
+      <li>En <code class="en">backend/.env</code> pon <code class="en">EXPERTO_SIMULADO=true</code>.</li>
+      <li><code class="en">docker compose up -d --force-recreate backend</code></li>
+      <li>Genera lo mismo con tu usuario en <b>Free</b> y luego en <b>Business</b>.</li>
+      <li>Compara: Business añade campos y un cálculo que Free no tiene, y el Monitor dice «Entró el AGENTE EXPERTO».</li>
+    </ol>
+  </div>
+</div>
+
+<div class="bloque" style="animation-delay:.33s">
+  <h3>Dos bugs que aparecieron al probar <span class="marca m-bug">arreglados</span></h3>
+  <p><b>La URL final se llevaba el signo de admiración.</b> El mensaje amable acaba en
+  <code class="en">…VIVO en http://…:5301!</code> y el <code class="en">!</code> se pegaba a la dirección:
+  el enlace «Abrir» no abría nada. El peor final posible para una construcción que sí había salido bien.
+  Estaba en <b>las tres apps</b>.</p>
+  <p><b>Un cálculo que decía «Promedio» sumaba.</b> Si llegaba como <code class="en">{"tipo":"promedio"}</code>
+  en vez de <code class="en">{"operacion":"promedio"}</code>, caía al valor por omisión y salía una <b>suma</b>
+  etiquetada «Promedio de kilos». Un número mal etiquetado es peor que no tenerlo: se toman decisiones con él.
+  Ahora el modelo acepta las dos formas.</p>
+</div>
+
+<div class="terminal">
+  <div class="barra-sup">salida real de las pruebas · backend/pruebas + mobile/test</div>
+<pre>$ python pruebas/circuito_del_alumno.py
+1. entrega del agente en la rama : agente/rutinas
+2. commit del alumno            : b0dc60d
+3. segundo commit del alumno     : 22ffce2
+
+   <span class="c">historia (quién hizo qué):</span>
+     22ffce2 Jimmy Cantor — cambio en index.html
+     b0dc60d Jimmy Cantor — cambio en index.html
+     3b51c80 Agente Meta  — entrega del agente: rutinas
+
+4. deshecho «cambio en index.html» → &lt;h1&gt;Mis rutinas&lt;/h1&gt;
+5. deshecho «cambio en index.html» → &lt;h1&gt;Título original&lt;/h1&gt;
+6. intento sobre la entrega del agente: None  <span class="v">← protegida</span>
+   la entrega del agente sigue intacta <span class="v">✓</span>
+
+$ python pruebas/agente_experto.py
+plan        precio  diseño  rescate  repaso   tope
+Free       $     0    no      no      no    $0.00
+Pro        $     9    no      no      no    $0.00
+Studio     $    19    no      <span class="v">sí</span>      <span class="v">sí</span>    $4.00
+Business   $    29    <span class="v">sí</span>      <span class="v">sí</span>      <span class="v">sí</span>    $9.00
+
+free     : sin experto → campos: 2 · cálculos: 0
+business : Modelo reforzado: fecha, notas, promedio de kilos
+           campos: <span class="v">4</span> · cálculos: <span class="v">1</span> · coste $0.20
+
+tope del plan Studio          : $4.00
+intervenciones antes de cortar: 27
+al pedir otra                 : <span class="x">Alcanzaste el tope de este mes</span>
+sin clave → disponible: False · el sistema sigue <span class="v">✓</span>
+
+$ flutter test test/auditor_test.dart
+<span class="v">00:00 +6: All tests passed!</span>
+
+$ npx tsc -b        <span class="v">sin errores</span>
+$ flutter analyze   <span class="v">No issues found!</span><span class="cursor"></span>
+</pre>
+</div>
+
+<div class="falta">
+  <h2>Lo único que sigue esperando</h2>
+  <dl>
+    <dt>Desplegar el cambio del alumno · necesita tu token de GitHub</dt>
+    <dd>El commit ya funciona. Lo que falta es el último paso del circuito: publicar y ver el cambio
+    en vivo en internet. Sin token no hay dónde publicar.</dd>
+
+    <dt>Encender el experto de verdad · necesita la clave de Anthropic</dt>
+    <dd>Toda la mecánica está probada con el simulado. Pegar la clave en <code class="en">ANTHROPIC_API_KEY</code>
+    lo convierte en real, y con eso la Fase 7 (el mismo encargo en los cuatro planes) se puede correr:
+    el arnés y el prompt definitivo ya están escritos en <code class="en">scratch_mvp/</code>.</dd>
+
+    <dt>Aviso en el móvil con la app cerrada · necesita un proyecto Firebase tuyo</dt>
+    <dd>Es gratis, pero va atado a tu cuenta de Google. Con la app abierta el aviso ya llega.</dd>
+  </dl>
+</div>
+
+<p class="pie">
+  Commits <code>a278c76</code> y <code>6074fec</code> en <code>main</code>.
+  Cuatro rutas nuevas en la API, tres módulos de dominio nuevos, dos guiones de prueba que se leen sin
+  interpretar. El plan completo, con su estado al día, en <code>docs/PLAN-FASES.html</code>.
+</p>
+</div>
