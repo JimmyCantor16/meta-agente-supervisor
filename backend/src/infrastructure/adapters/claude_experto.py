@@ -55,8 +55,16 @@ _INSTRUCCIONES = {
         "minimo, conteo. Son sobre UN campo, sin filtros: si un número no se "
         "puede expresar así, cambia el modelo para que sí se pueda.\n"
         "\n"
+        "TERCERO, y no es opcional: si cambias los campos, DEBES devolver "
+        "'ejemplos' — de 6 a 12 registros con las claves nuevas. Si no lo haces, "
+        "la aplicación se entrega VACÍA y tu mejor modelo de datos se ve peor "
+        "que el mediocre que reemplazaste: con cero registros todos los cálculos "
+        "valen cero y nadie ve nada de tu trabajo. Que se lean como reales "
+        "(nombres y lugares del oficio, no 'Cliente 1'), variados, con fechas "
+        "AAAA-MM-DD de las últimas semanas y números sin símbolos de moneda.\n"
+        "\n"
         'Devuelve SOLO JSON: {"tipo": "crud_login|por_clases", '
-        '"dominio": {…igual estructura que recibes…}, '
+        '"dominio": {…igual estructura que recibes, CON "ejemplos": [{…}]…}, '
         '"temario": {"titulo":…, "resumen":…, "motivo":…, "clases":[{"numero":1,'
         '"titulo":…,"entregable":…,"porque":…}]}, '
         '"resumen": "qué cambiaste y por qué, en una frase"}\n'

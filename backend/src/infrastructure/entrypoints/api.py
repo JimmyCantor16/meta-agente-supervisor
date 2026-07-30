@@ -27,6 +27,7 @@ from src.application.experto_contexto import usar_experto
 from src.domain.experto import AgenteExpertoPort, MomentoExperto, RegistroGastoPort
 from src.infrastructure.adapters.claude_experto import ClaudeAgenteExperto
 from src.infrastructure.adapters.experto_delegado import ExpertoDeArchivo
+from src.infrastructure.adapters.experto_llm import ExpertoLLM
 from src.infrastructure.adapters.gasto_experto import RegistroGastoArchivo
 from src.infrastructure.adapters.mock_experto import MockAgenteExperto
 from src.application.aplicar_ajuste import AplicarAjusteUseCase
@@ -521,11 +522,22 @@ def get_agente_experto() -> AgenteExpertoPort:
     if settings.experto_simulado:
         logger.warning("EXPERTO_SIMULADO=true -> agente experto SIMULADO (sin coste).")
         return MockAgenteExperto()
-    if not settings.anthropic_api_key:
-        logger.info("Sin ANTHROPIC_API_KEY: el agente experto queda apagado.")
-    return ClaudeAgenteExperto(
-        api_key=settings.anthropic_api_key, modelo=settings.experto_modelo
-    )
+    if settings.anthropic_api_key:
+        return ClaudeAgenteExperto(
+            api_key=settings.anthropic_api_key, modelo=settings.experto_modelo
+        )
+    # Sin clave de pago, todavía puede haber experto: un modelo gratuito
+    # APARTADO de la cadena de construcción (rol 'experto' en LLM_PROVIDERS).
+    # Razona peor que Claude, pero el plan gratuito no lo tiene, así que la
+    # diferencia entre planes es real y medible en vez de una promesa.
+    reservado = ExpertoLLM()
+    if reservado.disponible:
+        logger.warning(
+            "Sin ANTHROPIC_API_KEY: el experto usa el modelo RESERVADO de la cadena gratuita."
+        )
+        return reservado
+    logger.info("Sin clave ni modelo reservado: el agente experto queda apagado.")
+    return ClaudeAgenteExperto(api_key="", modelo=settings.experto_modelo)
 
 
 @lru_cache

@@ -239,6 +239,19 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
 
             dominio = aporte.datos.get("dominio")
             if isinstance(dominio, dict) and dominio.get("campos"):
+                # Red de seguridad: un modelo de datos mejor SIN datos dentro se
+                # ve peor que el mediocre que reemplaza, porque todos los
+                # cálculos valen cero. Si el experto no trajo ejemplos, se
+                # rescatan los que había — los que no encajen con los campos
+                # nuevos los descarta `sanear()` sin romper nada.
+                if not dominio.get("ejemplos"):
+                    previos = (datos.get("dominio") or {}).get("ejemplos") or []
+                    if previos:
+                        logger.warning(
+                            "El experto rehizo el modelo sin ejemplos; se reutilizan los %d "
+                            "anteriores para que la app no se entregue vacía.", len(previos),
+                        )
+                        dominio = {**dominio, "ejemplos": previos}
                 replanteado["dominio"] = dominio
 
             temario = aporte.datos.get("temario")

@@ -45,3 +45,7 @@ mobile/android/key.properties
 docs/vision-meta-agente.html
 # Bitácoras de compilación de los experimentos (ruido, no código).
 scratch_mvp/*.log
+
+# Copias del .env: NUNCA se versionan (llevan claves dentro).
+.env.*
+!.env.example
