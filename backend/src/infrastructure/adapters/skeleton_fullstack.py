@@ -33,7 +33,17 @@ MARCADOR = "backend/.esqueleto"
 # ---------------------------------------------------------------------------
 # BACKEND — arquitectura hexagonal
 # ---------------------------------------------------------------------------
-def _requirements() -> str:
+#: Driver por motor. Declararlo importa por partida doble: sin él el proyecto no
+#: conecta, y además es la señal por la que el entorno de verificación detecta
+#: qué base de datos hay que prestarle (ver `db_verificacion.motor_requerido`).
+_DRIVER = {
+    "sqlite": "",
+    "mysql": "pymysql==1.1.1\n",
+    "postgres": "psycopg[binary]==3.2.1\n",
+}
+
+
+def _requirements(motor: str = "sqlite") -> str:
     # bcrypt pineado a la última versión compatible con passlib.
     return (
         "fastapi==0.111.0\n"
@@ -44,7 +54,7 @@ def _requirements() -> str:
         "bcrypt==4.0.1\n"
         "python-jose==3.3.0\n"
         "python-multipart==0.0.9\n"
-    )
+    ) + _DRIVER.get(motor, "")
 
 
 def _domain_entities() -> str:
@@ -225,14 +235,14 @@ Base = declarative_base()
 class UserModel(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    username = Column(String(60), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
 
 
 class ItemModel(Base):
     __tablename__ = "items"
     id = Column(Integer, primary_key=True, index=True)
-    text = Column(String, nullable=False)
+    text = Column(String(500), nullable=False)
     done = Column(Boolean, default=False, nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 

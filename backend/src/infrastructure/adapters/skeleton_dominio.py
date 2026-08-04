@@ -29,12 +29,12 @@ from src.infrastructure.adapters.skeleton_fullstack import (
 
 # --- Cómo se traduce cada tipo a las cuatro capas ---------------------------
 _COLUMNA = {
-    "texto": "String",
+    "texto": "String(255)",
     "texto_largo": "Text",
     "entero": "Integer",
     "decimal": "Float",
-    "fecha": "String",   # ISO: simple, ordenable y sin líos de zona horaria
-    "opcion": "String",
+    "fecha": "String(32)",   # ISO: simple, ordenable y sin líos de zona horaria
+    "opcion": "String(120)",
     "booleano": "Boolean",
 }
 _PYTHON = {
@@ -319,12 +319,39 @@ def _db(d: DominioApp) -> str:
     return f'''"""Infraestructura: base de datos y modelos ORM."""
 from __future__ import annotations
 
+import os
+
 from sqlalchemy import (
     Boolean, Column, Float, ForeignKey, Integer, String, Text, create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-engine = create_engine("sqlite:///./app.db", connect_args={{"check_same_thread": False}})
+# La conexión se lee del ENTORNO, nunca fija en el código: así el mismo código
+# corre con SQLite en tu portátil y con el MySQL o el PostgreSQL de tu servidor
+# sin tocar una línea. Si no hay nada configurado, usa un archivo SQLite local.
+_URL = os.environ.get("DATABASE_URL") or os.environ.get("DB_URL") or "sqlite:///./app.db"
+
+# El prefijo se normaliza al driver que ESTE proyecto declara en requirements.
+# Sin esto, SQLAlchemy elige el driver por defecto de cada motor —psycopg2 para
+# `postgresql://` y MySQLdb para `mysql://`— y ninguno de los dos está
+# instalado: la aplicación muere al arrancar con `ModuleNotFoundError`.
+# Los prefijos ya explícitos se dejan intactos.
+for _viejo, _nuevo in (
+    ("postgresql+", None),
+    ("mysql+", None),
+    ("postgresql://", "postgresql+psycopg://"),
+    ("postgres://", "postgresql+psycopg://"),
+    ("mysql://", "mysql+pymysql://"),
+):
+    if _URL.startswith(_viejo):
+        if _nuevo:
+            _URL = _nuevo + _URL[len(_viejo):]
+        break
+
+# `check_same_thread` es exclusivo de SQLite: pasárselo a otro motor lo revienta.
+_opciones = {{"connect_args": {{"check_same_thread": False}}}} if _URL.startswith("sqlite") else {{"pool_pre_ping": True}}
+
+engine = create_engine(_URL, **_opciones)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -332,8 +359,8 @@ Base = declarative_base()
 class UserModel(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    username = Column(String(60), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
 
 
 class {d.clase}Model(Base):
@@ -696,74 +723,3 @@ def _index_html(d: DominioApp) -> str:
 '''
 
 
-def _styles(d: DominioApp) -> str:
-    fondo, papel, acento, tinta, tinta2, linea = _PALETAS.get(d.tono.lower(), _PALETAS["neutro"])
-    return f'''/* {d.app_name} — la paleta responde al dominio, no es una plantilla única. */
-*{{box-sizing:border-box}}
-:root{{
-  --fondo:{fondo}; --papel:{papel}; --acento:{acento};
-  --tinta:{tinta}; --tinta-2:{tinta2}; --linea:{linea};
-  --ok:#2F7D51; --alerta:#B4541F;
-}}
-body{{margin:0;min-height:100vh;display:grid;place-items:start center;padding:1.5rem;
-  background:linear-gradient(165deg,var(--fondo),#0B0B0F);color:var(--tinta);
-  font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;line-height:1.6}}
-.wrap{{width:100%;max-width:680px;padding-block:1.5rem}}
-.card{{background:var(--papel);border-radius:6px;padding:1.9rem;
-  box-shadow:0 24px 56px -22px rgba(0,0,0,.6)}}
-h1{{margin:0 0 .2rem;font-size:1.6rem;letter-spacing:-.01em;text-wrap:balance}}
-.sub{{margin:0 0 1.4rem;color:var(--tinta-2);font-size:.94rem}}
-
-label{{display:block;font-size:.82rem;font-weight:600;color:var(--tinta);margin:.7rem 0 .25rem}}
-label .req{{color:var(--alerta)}}
-input,select,textarea{{width:100%;padding:.65rem .8rem;border:1px solid var(--linea);
-  border-radius:4px;background:#fff;color:var(--tinta);font-size:.98rem;font-family:inherit}}
-textarea{{min-height:80px;resize:vertical}}
-input[type=checkbox]{{width:auto;margin-right:.5rem}}
-input:focus,select:focus,textarea:focus{{outline:none;border-color:var(--acento);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--acento) 18%,transparent)}}
-.ayuda{{font-size:.76rem;color:var(--tinta-2);margin:.2rem 0 0}}
-
-button{{padding:.68rem 1.15rem;border:0;border-radius:4px;background:var(--acento);
-  color:#fff;font-weight:600;font-size:.95rem;cursor:pointer;font-family:inherit}}
-button:hover{{filter:brightness(1.08)}}
-button.ghost{{background:transparent;border:1px solid var(--linea);color:var(--tinta-2)}}
-button.small{{padding:.35rem .7rem;font-size:.82rem}}
-.row{{display:flex;gap:.6rem;margin-top:1rem}}
-.row button{{flex:1}}
-
-.msg{{font-size:.88rem;margin:.9rem 0 0;min-height:1.1em;color:var(--tinta-2)}}
-.msg.ok{{color:var(--ok)}}
-.msg.error{{color:var(--alerta)}}
-
-.cab{{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;
-  margin-bottom:1.1rem;padding-bottom:.8rem;border-bottom:2px solid var(--tinta)}}
-
-/* Cálculos: lo que convierte una lista en un sistema de información */
-.resumen{{display:flex;flex-wrap:wrap;gap:.7rem;margin-bottom:1.2rem}}
-.dato{{flex:1;min-width:120px;background:color-mix(in srgb,var(--acento) 8%,transparent);
-  border:1px solid var(--linea);border-radius:4px;padding:.6rem .8rem}}
-.dato .v{{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--acento)}}
-.dato .e{{font-size:.72rem;color:var(--tinta-2);text-transform:uppercase;letter-spacing:.06em}}
-
-.lista{{list-style:none;margin:1.2rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}}
-.item{{background:#fff;border:1px solid var(--linea);border-left:3px solid var(--acento);
-  border-radius:4px;padding:.8rem .9rem;display:flex;gap:.8rem;align-items:flex-start}}
-.item .datos{{flex:1;display:grid;gap:.15rem;min-width:0}}
-.item .par{{font-size:.9rem}}
-.item .par b{{color:var(--tinta-2);font-weight:600;font-size:.78rem;
-  text-transform:uppercase;letter-spacing:.04em;margin-right:.4rem}}
-.item .num{{font-variant-numeric:tabular-nums}}
-.item .del{{background:transparent;border:0;color:var(--tinta-2);font-size:1.05rem;
-  cursor:pointer;padding:.1rem .35rem;border-radius:3px}}
-.item .del:hover{{color:var(--alerta);background:color-mix(in srgb,var(--alerta) 10%,transparent)}}
-
-.vacio{{text-align:center;padding:1.8rem 1rem;color:var(--tinta-2);font-size:.92rem;
-  border:1px dashed var(--linea);border-radius:4px}}
-
-@media (max-width:480px){{
-  .card{{padding:1.4rem 1.15rem}}
-  .row{{flex-direction:column}}
-}}
-@media (prefers-reduced-motion:reduce){{*{{transition:none!important}}}}
-'''

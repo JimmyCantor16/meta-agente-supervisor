@@ -4,10 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Meta-Agente · Workspace de IA</title>
+
+    <!-- Inter VARIABLE (eje 100..900). El rango continuo es lo que permite los
+         pesos intermedios del sistema (620/670); con la versión estática se
+         redondearían a 600/700 y los titulares perderían su carácter.
+         Antes la fuente se declaraba en Tailwind pero no se cargaba nunca:
+         toda la app caía al sans-serif del sistema. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Favicon en verde de marca, plano. Sin gradiente: es la regla nº1 del
+         sistema de diseño (ver tailwind.config.js). -->
     <link
       rel="icon"
       type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2310b981'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M32 12 L37 27 L52 32 L37 37 L32 52 L27 37 L12 32 L27 27 Z' fill='%23fff'/%3E%3Ccircle cx='45' cy='19' r='3.5' fill='%23fff' opacity='.85'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23027E6F'/%3E%3Cpath d='M32 12 L37 27 L52 32 L37 37 L32 52 L27 37 L12 32 L27 27 Z' fill='%23fff'/%3E%3Ccircle cx='45' cy='19' r='3.5' fill='%2300E0AC'/%3E%3C/svg%3E"
     />
   </head>
   <body>

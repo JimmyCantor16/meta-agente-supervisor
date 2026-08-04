@@ -15,11 +15,55 @@ import { searchRadio as apiSearchRadio, topRadio } from "./lib/radioBrowser";
 import { DEFAULT_CHANNELS, LEGACY_SEEDED_URLS } from "./lib/defaultChannels";
 import { DEFAULT_STATIONS, filterStations } from "./lib/defaultStations";
 import { loadCountryIptv } from "./lib/iptv";
-import type { CustomChannel, StreamItem, VideoPlacement } from "./types";
+import type { CustomChannel, StreamItem, VideoPlacement, YoutubeItem } from "./types";
+import { YOUTUBE_SUGERIDOS, consultarOEmbed, parseYoutube } from "./lib/youtube";
+
+/** Las tres fuentes del panel. */
+export type PanelTab = "tv" | "radio" | "youtube";
 
 // --- Persistencia local (navegador del usuario) ---
 const LS_CHANNELS = "mm.channels";
 const LS_VOLUME = "mm.volume";
+const LS_YT = "mm.youtube";
+
+/**
+ * Carga la API oficial del reproductor de YouTube (una sola vez).
+ *
+ * Es lo que permite que los botones del panel manden sobre el vídeo incrustado.
+ * Sin ella, el iframe es una caja negra: se vería, pero el play/pausa y el
+ * volumen del panel no lo tocarían, y habría dos juegos de controles distintos.
+ */
+let ytApi: Promise<any> | null = null;
+function loadYtApi(): Promise<any> {
+  if ((window as any).YT?.Player) return Promise.resolve((window as any).YT);
+  if (ytApi) return ytApi;
+  ytApi = new Promise((resolve, reject) => {
+    const anterior = (window as any).onYouTubeIframeAPIReady;
+    (window as any).onYouTubeIframeAPIReady = () => {
+      if (typeof anterior === "function") anterior();
+      resolve((window as any).YT);
+    };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    s.async = true;
+    s.onerror = () => {
+      ytApi = null;
+      reject(new Error("iframe_api"));
+    };
+    document.head.appendChild(s);
+  });
+  return ytApi;
+}
+
+/** Pone un vídeo o una lista en un reproductor ya creado. */
+function cargarEnReproductor(player: any, item: YoutubeItem): void {
+  try {
+    if (item.kind === "playlist") player.loadPlaylist({ list: item.id, listType: "playlist" });
+    else player.loadVideoById({ videoId: item.id });
+  } catch {
+    /* si aún no está listo, onReady lo cargará */
+  }
+}
 
 // Geometría de la pantalla del recuadro flotante (mini-TV) 16:9. El ancho es
 // AJUSTABLE (tirador de esquina): se guarda y el alto se deriva en proporción.
@@ -97,11 +141,11 @@ interface MultimediaContextValue {
   panelOpen: boolean;
   togglePanel: () => void;
   closePanel: () => void;
-  tab: "tv" | "radio";
-  setTab: (t: "tv" | "radio") => void;
+  tab: PanelTab;
+  setTab: (t: PanelTab) => void;
 
   // estado de reproducción (compartido: solo suena una cosa a la vez)
-  active: "tv" | "radio" | null;
+  active: PanelTab | null;
   current: StreamItem | null;
   playing: boolean;
   buffering: boolean;
@@ -139,8 +183,16 @@ interface MultimediaContextValue {
   iptvError: string | null;
   loadIptv: () => void;
 
+  // YouTube (reproductor oficial incrustado, sin salir de la plataforma)
+  ytItems: YoutubeItem[];
+  addYoutube: (entrada: string, titulo?: string) => Promise<string | null>;
+  removeYoutube: (id: string) => void;
+  playYoutube: (item: YoutubeItem) => void;
+  ytCurrentId: string | null;
+
   // interno: el panel registra dónde va el vídeo acoplado
   registerSlot: (el: HTMLElement | null) => void;
+  registerYtSlot: (el: HTMLElement | null) => void;
 }
 
 const Ctx = createContext<MultimediaContextValue | null>(null);
@@ -153,6 +205,27 @@ export function useMultimedia(): MultimediaContextValue {
 
 const LS_CHANNELS_VER = "mm.channelsVer";
 const CHANNELS_VER = "2"; // subir cuando cambie la lista curada de canales
+
+/**
+ * Lista de YouTube del usuario, guardada en SU navegador.
+ *
+ * Igual que los canales de TV: la primera vez se siembran unas sugerencias y a
+ * partir de ahí manda el usuario. Si borra una, no reaparece — la app no
+ * mantiene una lista propia que se le imponga.
+ */
+function readYoutube(): YoutubeItem[] {
+  try {
+    const raw = window.localStorage.getItem(LS_YT);
+    if (raw === null) {
+      window.localStorage.setItem(LS_YT, JSON.stringify(YOUTUBE_SUGERIDOS));
+      return YOUTUBE_SUGERIDOS;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => x && x.id && x.kind) : [];
+  } catch {
+    return [];
+  }
+}
 
 function readChannels(): CustomChannel[] {
   try {
@@ -195,14 +268,28 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   const pipWinRef = useRef<Window | null>(null);
   const [poppedOut, setPoppedOut] = useState(false);
   // Refs vivos para los listeners del vídeo imperativo (evitan cierres obsoletos).
-  const activeRef = useRef<"tv" | "radio" | null>(null);
+  const activeRef = useRef<PanelTab | null>(null);
   const tRef = useRef(t);
   tRef.current = t;
 
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [tab, setTab] = useState<"tv" | "radio">("tv");
+  // --- YouTube ---
+  // El iframe vive en un contenedor FIJO que nunca se desprende del DOM. Es la
+  // diferencia esencial con el <video> de la TV: un <video> se puede mover de
+  // sitio sin perder la reproducción, pero un <iframe> SE RECARGA en cuanto se
+  // quita y se vuelve a insertar. Por eso aquí no se mueve nada: se reposiciona
+  // con CSS sobre el hueco del panel, y así la música sigue sonando aunque
+  // cierres el panel o te vayas a otra pestaña — que es justo lo que se busca.
+  const ytHostRef = useRef<HTMLDivElement | null>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const ytSlotRef = useRef<HTMLElement | null>(null);
+  const [ytRect, setYtRect] = useState<Rect | null>(null);
+  const [ytCurrentId, setYtCurrentId] = useState<string | null>(null);
+  const [ytItems, setYtItems] = useState<YoutubeItem[]>(readYoutube);
 
-  const [active, setActive] = useState<"tv" | "radio" | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [tab, setTab] = useState<PanelTab>("tv");
+
+  const [active, setActive] = useState<PanelTab | null>(null);
   const [current, setCurrent] = useState<StreamItem | null>(null);
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(false);
@@ -211,6 +298,10 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     const v = Number(window.localStorage.getItem(LS_VOLUME));
     return Number.isFinite(v) && v > 0 ? v : 80;
   });
+  // El reproductor de YouTube se crea dentro de un callback: necesita leer el
+  // volumen actual sin quedarse con el valor del primer render.
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
 
   const [channels, setChannels] = useState<CustomChannel[]>(readChannels);
   const [minimized, setMinimized] = useState(false);
@@ -253,6 +344,13 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume / 100;
     if (audioRef.current) audioRef.current.volume = volume / 100;
+    // YouTube trabaja en 0-100, no en 0-1: el mismo control gobierna las tres
+    // fuentes para que no haya un volumen distinto por pestaña.
+    try {
+      ytPlayerRef.current?.setVolume?.(volume);
+    } catch {
+      /* el iframe puede no estar listo */
+    }
     window.localStorage.setItem(LS_VOLUME, String(volume));
   }, [volume]);
 
@@ -296,6 +394,31 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, [placement, measureSlot]);
+
+  // El reproductor de YouTube se ve SOLO con su pestaña abierta. En cualquier
+  // otro caso sigue vivo y sonando, apartado fuera de la pantalla: es lo que
+  // permite dejar música puesta y seguir estudiando en el resto de la app.
+  const ytVisible = active === "youtube" && panelOpen && tab === "youtube";
+
+  useLayoutEffect(() => {
+    if (!ytVisible) return;
+    let raf = 0;
+    const loop = () => {
+      const el = ytSlotRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setYtRect((prev) =>
+          prev && prev.left === r.left && prev.top === r.top &&
+          prev.width === r.width && prev.height === r.height
+            ? prev
+            : { left: r.left, top: r.top, width: r.width, height: r.height },
+        );
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [ytVisible]);
 
   // Crea el <video> IMPERATIVAMENTE (una sola vez) y lo mete en su hueco. Al no
   // ser un nodo de React, se puede mover a la ventana PiP y traerlo de vuelta sin
@@ -351,6 +474,18 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  /** Detiene el reproductor de YouTube sin destruirlo (se reutiliza). */
+  const stopYoutube = useCallback(() => {
+    const p = ytPlayerRef.current;
+    if (!p) return;
+    try {
+      p.stopVideo?.();
+    } catch {
+      /* el iframe puede no estar listo todavía */
+    }
+    setYtCurrentId(null);
+  }, []);
+
   const stopAudio = useCallback(() => {
     if (radioHlsRef.current) {
       try {
@@ -372,6 +507,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     async (item: StreamItem) => {
       setError(null);
       stopAudio();
+      stopYoutube();
       setActive("tv");
       setCurrent(item);
       setMinimized(false);
@@ -404,12 +540,103 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
         setError(e instanceof Error ? e.message : t.multimedia.tvError);
       }
     },
-    [stopAudio, stopVideo, t.multimedia.tvError],
+    [stopAudio, stopVideo, stopYoutube, t.multimedia.tvError],
   );
+
+  const playYoutube = useCallback(
+    async (item: YoutubeItem) => {
+      setError(null);
+      // Solo suena una cosa a la vez, igual que entre TV y radio.
+      stopVideo();
+      stopAudio();
+      setActive("youtube");
+      setCurrent({ title: item.titulo, subtitle: item.autor || "YouTube", url: item.id, kind: "youtube" });
+      setBuffering(true);
+      setYtCurrentId(item.id);
+
+      let YT: any;
+      try {
+        YT = await loadYtApi();
+      } catch {
+        setBuffering(false);
+        setError(tRef.current.multimedia.ytApiError);
+        return;
+      }
+      const host = ytHostRef.current;
+      if (!host) return;
+
+      // El reproductor se crea UNA vez y luego se le cambia el contenido con
+      // loadVideoById/loadPlaylist. Recrearlo en cada clic volvería a descargar
+      // el iframe entero y se oiría un corte entre pista y pista.
+      if (!ytPlayerRef.current) {
+        const hueco = document.createElement("div");
+        host.appendChild(hueco);
+        ytPlayerRef.current = new YT.Player(hueco, {
+          host: "https://www.youtube-nocookie.com",
+          width: "100%",
+          height: "100%",
+          playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+          events: {
+            onReady: (e: any) => {
+              e.target.setVolume(volumeRef.current);
+              cargarEnReproductor(e.target, item);
+            },
+            onStateChange: (e: any) => {
+              const S = (window as any).YT?.PlayerState || {};
+              setPlaying(e.data === S.PLAYING);
+              setBuffering(e.data === S.BUFFERING);
+            },
+            onError: () => {
+              setBuffering(false);
+              setError(tRef.current.multimedia.ytPlayError);
+            },
+          },
+        });
+        return;
+      }
+      cargarEnReproductor(ytPlayerRef.current, item);
+    },
+    [stopVideo, stopAudio],
+  );
+
+  const addYoutube = useCallback(async (entrada: string, titulo?: string): Promise<string | null> => {
+    const ref = parseYoutube(entrada);
+    if (!ref) return tRef.current.multimedia.ytBadLink;
+    if (ytItems.some((i) => i.id === ref.id)) return tRef.current.multimedia.ytDuplicate;
+
+    // oEmbed confirma que existe y da el título real. Si no contesta (sin red o
+    // CORS), NO se bloquea el alta: se guarda con lo que haya escrito el usuario.
+    const meta = await consultarOEmbed(ref);
+    const nuevo: YoutubeItem = {
+      titulo: (titulo || "").trim() || meta?.titulo || tRef.current.multimedia.ytUntitled,
+      kind: ref.kind,
+      id: ref.id,
+      autor: meta?.autor,
+    };
+    setYtItems((prev) => {
+      const next = [...prev, nuevo];
+      window.localStorage.setItem(LS_YT, JSON.stringify(next));
+      return next;
+    });
+    return null;
+  }, [ytItems]);
+
+  const removeYoutube = useCallback((id: string) => {
+    setYtItems((prev) => {
+      const next = prev.filter((i) => i.id !== id);
+      window.localStorage.setItem(LS_YT, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const registerYtSlot = useCallback((el: HTMLElement | null) => {
+    ytSlotRef.current = el;
+  }, []);
 
   const playRadio = useCallback(
     async (item: StreamItem) => {
       setError(null);
+      stopYoutube();
       stopVideo();
       setActive("radio");
       setCurrent(item);
@@ -446,7 +673,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
         setError(t.multimedia.radioError);
       }
     },
-    [stopVideo, t.multimedia.radioError],
+    [stopVideo, stopYoutube, t.multimedia.radioError],
   );
 
   const loadIptv = useCallback(() => {
@@ -459,6 +686,20 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   }, [t.multimedia.iptvError]);
 
   const togglePlay = useCallback(() => {
+    if (active === "youtube") {
+      const p = ytPlayerRef.current;
+      if (!p) return;
+      // El estado real lo tiene el reproductor, no React: preguntárselo evita
+      // que un cambio hecho desde los controles del propio YouTube lo desincronice.
+      const S = (window as any).YT?.PlayerState || {};
+      try {
+        if (p.getPlayerState?.() === S.PLAYING) p.pauseVideo();
+        else p.playVideo();
+      } catch {
+        /* noop */
+      }
+      return;
+    }
     const el = active === "tv" ? videoRef.current : audioRef.current;
     if (!el) return;
     if (el.paused) el.play().catch(() => undefined);
@@ -468,11 +709,12 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   const stop = useCallback(() => {
     stopVideo();
     stopAudio();
+    stopYoutube();
     setActive(null);
     setCurrent(null);
     setPlaying(false);
     setBuffering(false);
-  }, [stopVideo, stopAudio]);
+  }, [stopVideo, stopAudio, stopYoutube]);
 
   const setVolume = useCallback((v: number) => {
     setVolumeState(Math.max(0, Math.min(100, Math.round(v))));
@@ -675,7 +917,13 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       iptvLoading,
       iptvError,
       loadIptv,
+      ytItems,
+      addYoutube,
+      removeYoutube,
+      playYoutube,
+      ytCurrentId,
       registerSlot,
+      registerYtSlot,
     }),
     [
       panelOpen, togglePanel, closePanel, tab, active, current, playing, buffering,
@@ -683,6 +931,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       playTv, minimized, placement, minimizeVideo, dockVideo, requestPip,
       requestFullscreen, poppedOut, radioItems, radioLoading, radioError, loadTopRadio,
       searchRadio, playRadio, iptvItems, iptvLoading, iptvError, loadIptv, registerSlot,
+      ytItems, addYoutube, removeYoutube, playYoutube, ytCurrentId, registerYtSlot,
     ],
   );
 
@@ -819,6 +1068,39 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
           </div>
         )}
       </div>
+
+      {/* Reproductor oficial de YouTube.
+          Este contenedor NO se desmonta nunca ni cambia de sitio en el DOM: un
+          <iframe> se recarga en cuanto se quita y se vuelve a insertar, y eso
+          cortaría la música cada vez que abres o cierras el panel. Cuando no
+          toca verlo se aparta fuera de la pantalla, así que se sigue oyendo. */}
+      <div
+        ref={ytHostRef}
+        aria-hidden={!ytVisible}
+        style={
+          ytVisible && ytRect
+            ? {
+                position: "fixed",
+                left: ytRect.left,
+                top: ytRect.top,
+                width: ytRect.width,
+                height: ytRect.height,
+                zIndex: 55,
+                overflow: "hidden",
+                borderRadius: 8,
+                background: "#000",
+              }
+            : {
+                position: "fixed",
+                left: -99999,
+                top: -99999,
+                width: 320,
+                height: 180,
+                opacity: 0,
+                pointerEvents: "none",
+              }
+        }
+      />
     </Ctx.Provider>
   );
 }

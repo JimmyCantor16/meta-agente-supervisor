@@ -37,6 +37,10 @@ _SYSTEM = (
     "- 'otro': cualquier otra cosa (un juego, solo una API...).\n\n"
     "Si es 'crud_login', DISEÑA EL DOMINIO REAL de esa idea. No inventes campos "
     "genéricos: piensa qué datos concretos anotaría de verdad esa persona.\n\n"
+    "El campo 'motor' es la base de datos: pon 'mysql' o 'postgres' SOLO si el "
+    "encargo los nombra explícitamente (\"con MySQL\", \"en PostgreSQL\"); si no "
+    "se nombra ninguna, pon 'sqlite'. Quien pide un motor concreto suele tenerlo "
+    "ya en su empresa: darle otro es no entregarle lo que pidió.\n\n"
     "Forma del JSON:\n"
     "{\n"
     '  "tipo": "crud_login|landing|otro",\n'
@@ -44,6 +48,7 @@ _SYSTEM = (
     '    "app_name": "Bitácora de Catas",\n'
     '    "entidad": "Cata", "entidad_plural": "Catas",\n'
     '    "tono": "cálido|frío|sobrio|vivo|neutro",\n'
+    '    "motor": "sqlite|mysql|postgres",\n'
     '    "campos": [\n'
     '      {"nombre":"cafe","etiqueta":"Café","tipo":"texto","obligatorio":true},\n'
     '      {"nombre":"tueste","etiqueta":"Tueste","tipo":"opcion",'

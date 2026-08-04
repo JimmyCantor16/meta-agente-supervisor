@@ -54,6 +54,242 @@ export function isLogged() { return Boolean(token); }
 '''
 
 
+def js_validacion() -> str:
+    return r'''// Validación que corre ANTES de enviar nada al servidor.
+// El servidor vuelve a validar siempre: esto es comodidad, no seguridad.
+
+export const reglas = {
+  usuario(v) {
+    const s = (v || "").trim();
+    if (!s) return "Escribe tu usuario.";
+    if (s.length < 3) return "Al menos 3 caracteres.";
+    if (s.length > 30) return "Como mucho 30 caracteres.";
+    if (!/^[a-zA-Z0-9._-]+$/.test(s)) return "Solo letras, números, punto, guion y guion bajo.";
+    return "";
+  },
+  clave(v) {
+    const s = v || "";
+    if (!s) return "Escribe una contraseña.";
+    if (s.length < 8) return "Al menos 8 caracteres.";
+    if (!/[a-zA-Z]/.test(s)) return "Debe llevar alguna letra.";
+    if (!/[0-9]/.test(s)) return "Debe llevar algún número.";
+    return "";
+  },
+  claveDeEntrada(v) {
+    // Al entrar no se re-exige la política: la cuenta puede ser antigua. Solo
+    // que no vaya vacía, para no gastar un viaje al servidor por nada.
+    return (v || "") ? "" : "Escribe tu contraseña.";
+  },
+  repetir(v, original) {
+    if (!(v || "")) return "Repite la contraseña.";
+    if (v !== original) return "Las dos contraseñas no coinciden.";
+    return "";
+  },
+};
+
+/**
+ * Enlaza un input con su hueco de error.
+ *
+ * El error se muestra PEGADO AL CAMPO que lo causa, no en un aviso global: así
+ * el usuario ve cuál de los tres campos tiene que arreglar. Y no se le regaña
+ * mientras escribe la primera vez — solo al salir del campo o al intentar
+ * enviar — porque marcar en rojo desde la primera letra es hostil.
+ */
+export function campo(raiz, clase, validar, alCambiar) {
+  const input = raiz.querySelector("." + clase);
+  const hueco = raiz.querySelector("." + clase + "-error");
+  let tocado = false;
+
+  function pintar(forzar) {
+    const error = validar(input.value);
+    const visible = (tocado || forzar) ? error : "";
+    hueco.textContent = visible;
+    input.setAttribute("aria-invalid", visible ? "true" : "false");
+    input.classList.toggle("malo", Boolean(visible));
+    return error;
+  }
+
+  input.addEventListener("blur", () => { tocado = true; pintar(false); });
+  input.addEventListener("input", () => { if (tocado) pintar(false); alCambiar(); });
+  return {
+    get valor() { return input.value; },
+    get valido() { return !validar(input.value); },
+    revisar: () => { tocado = true; return pintar(true); },
+    // Repinta sin marcar como tocado. Lo necesita el campo "repite la
+    // contraseña": si cambias la de arriba, su error debe actualizarse solo.
+    refrescar: () => pintar(false),
+    foco: () => input.focus(),
+  };
+}
+
+/** Deshabilita el botón mientras el formulario no sea válido. */
+export function gobernar(boton, campos) {
+  const repintar = () => { boton.disabled = !campos.every((c) => c.valido); };
+  repintar();
+  return repintar;
+}
+'''
+
+
+def js_login() -> str:
+    return r'''// PANTALLA DE ENTRAR. El registro vive en su propia pantalla (registro.js).
+import { login } from "../api.js";
+import { setToken } from "../state.js";
+import { reglas, campo, gobernar } from "../validacion.js";
+
+export function LoginView(onLogged, irARegistro) {
+  const el = document.createElement("section");
+  el.className = "card";
+  // Los campos van dentro de un <form> de verdad: así el Enter envía y los
+  // gestores de contraseñas del navegador ofrecen guardar y autocompletar.
+  el.innerHTML = `
+    <h1></h1>
+    <p class="sub">Entra con tu cuenta para continuar.</p>
+    <form class="entrar" novalidate>
+      <label for="u">Usuario</label>
+      <input id="u" class="u" name="username" autocomplete="username" aria-describedby="u-err">
+      <p class="u-error error-campo" id="u-err" role="alert"></p>
+      <label for="p">Contraseña</label>
+      <input id="p" class="p" name="password" type="password" autocomplete="current-password" aria-describedby="p-err">
+      <p class="p-error error-campo" id="p-err" role="alert"></p>
+      <div class="row">
+        <button class="in" type="submit" disabled>Entrar</button>
+      </div>
+    </form>
+    <p class="msg" role="status" aria-live="polite"></p>
+    <p class="ayuda">¿No tienes cuenta?
+      <a href="#/registro" class="ir-registro">Crea una aquí</a>.</p>
+    <div class="mirar"></div>`;
+
+  el.querySelector("h1").textContent = window.__APP__.name;
+
+  const msg = el.querySelector(".msg");
+  const boton = el.querySelector(".in");
+  const cu = campo(el, "u", reglas.usuario, () => repintar());
+  const cp = campo(el, "p", reglas.claveDeEntrada, () => repintar());
+  const repintar = gobernar(boton, [cu, cp]);
+
+  el.querySelector(".ir-registro").onclick = (e) => { e.preventDefault(); irARegistro(); };
+
+  el.querySelector("form.entrar").onsubmit = async (e) => {
+    e.preventDefault();
+    if (cu.revisar() || cp.revisar()) return;
+    boton.disabled = true;
+    msg.textContent = "Entrando…";
+    msg.className = "msg";
+    try {
+      const r = await login(cu.valor.trim(), cp.valor);
+      if (r.ok) { setToken((await r.json()).access_token); onLogged(); return; }
+      msg.textContent = "Usuario o contraseña incorrectos.";
+      msg.className = "msg error";
+    } catch (_) {
+      msg.textContent = "No se pudo conectar. Revisa tu conexión.";
+      msg.className = "msg error";
+    }
+    boton.disabled = false;
+  };
+
+  // Modo visita. Es lo que permite ENSEÑAR el sistema: quien recibe el enlace
+  // entra en un clic, con datos dentro, y entiende de qué va antes de decidir
+  // si se registra. Sin esto, un desconocido choca contra un formulario y se va.
+  const demo = window.__APP__.demo;
+  if (demo && demo.usuario) {
+    const caja = el.querySelector(".mirar");
+    caja.innerHTML = `
+      <hr>
+      <p class="ayuda">¿Solo quieres mirar? Entra a la cuenta de ejemplo, que ya
+      tiene ${window.__APP__.plural.toLowerCase()} dentro. Lo que crees ahí no se
+      mezcla con tu cuenta.</p>
+      <button class="ver ghost">Ver una demostración</button>`;
+    caja.querySelector(".ver").onclick = async () => {
+      msg.textContent = "Entrando a la demostración…";
+      msg.className = "msg";
+      const r = await login(demo.usuario, demo.clave);
+      if (r.ok) { setToken((await r.json()).access_token); onLogged(); }
+      else { msg.textContent = "La demostración no está disponible."; msg.className = "msg error"; }
+    };
+  }
+  return el;
+}
+'''
+
+
+def js_registro() -> str:
+    return r'''// PANTALLA DE CREAR CUENTA. Separada de la de entrar (login.js).
+import { register } from "../api.js";
+import { reglas, campo, gobernar } from "../validacion.js";
+
+export function RegistroView(onRegistrado, irALogin) {
+  const el = document.createElement("section");
+  el.className = "card";
+  // Igual que en la pantalla de entrar: <form> real, para que el Enter envíe y
+  // el gestor de contraseñas ofrezca guardar la cuenta recién creada.
+  el.innerHTML = `
+    <h1>Crear cuenta</h1>
+    <p class="sub"></p>
+    <form class="alta-cuenta" novalidate>
+      <label for="ru">Usuario</label>
+      <input id="ru" class="u" name="username" autocomplete="username" aria-describedby="ru-err">
+      <p class="u-error error-campo" id="ru-err" role="alert"></p>
+      <label for="rp">Contraseña</label>
+      <input id="rp" class="p" name="new-password" type="password" autocomplete="new-password" aria-describedby="rp-err">
+      <p class="p-error error-campo" id="rp-err" role="alert"></p>
+      <label for="rr">Repite la contraseña</label>
+      <input id="rr" class="r" name="confirm-password" type="password" autocomplete="new-password" aria-describedby="rr-err">
+      <p class="r-error error-campo" id="rr-err" role="alert"></p>
+      <p class="ayuda">Usuario: 3 caracteres o más. Contraseña: 8 o más, con letras y números.</p>
+      <div class="row">
+        <button class="up" type="submit" disabled>Crear mi cuenta</button>
+      </div>
+    </form>
+    <p class="msg" role="status" aria-live="polite"></p>
+    <p class="ayuda">¿Ya tienes cuenta? <a href="#/login" class="ir-login">Entra aquí</a>.</p>`;
+
+  el.querySelector(".sub").textContent =
+    "Regístrate para gestionar tus " + window.__APP__.plural.toLowerCase() + ".";
+
+  const msg = el.querySelector(".msg");
+  const boton = el.querySelector(".up");
+  const cu = campo(el, "u", reglas.usuario, () => repintar());
+  // Al cambiar la contraseña hay que refrescar la de confirmación: si no, se
+  // queda diciendo "no coinciden" cuando ya coinciden.
+  const cp = campo(el, "p", reglas.clave, () => { cr.refrescar(); repintar(); });
+  const cr = campo(el, "r", (v) => reglas.repetir(v, cp.valor), () => repintar());
+  const repintar = gobernar(boton, [cu, cp, cr]);
+
+  el.querySelector(".ir-login").onclick = (e) => { e.preventDefault(); irALogin(); };
+
+  el.querySelector("form.alta-cuenta").onsubmit = async (e) => {
+    e.preventDefault();
+    // Se revisan los tres a la vez para que el usuario vea TODO lo que falta,
+    // no un error, lo arregle, y descubra el siguiente.
+    const errores = [cu.revisar(), cp.revisar(), cr.revisar()].filter(Boolean);
+    if (errores.length) return;
+    boton.disabled = true;
+    msg.textContent = "Creando tu cuenta…";
+    msg.className = "msg";
+    try {
+      const r = await register(cu.valor.trim(), cp.valor);
+      if (r.ok) {
+        msg.textContent = "Cuenta creada. Te llevamos a entrar…";
+        msg.className = "msg ok";
+        setTimeout(() => onRegistrado(cu.valor.trim()), 900);
+        return;
+      }
+      const d = await r.json().catch(() => ({}));
+      msg.textContent = d.detail || "No se pudo crear la cuenta.";
+      msg.className = "msg error";
+    } catch (_) {
+      msg.textContent = "No se pudo conectar. Revisa tu conexión.";
+      msg.className = "msg error";
+    }
+    boton.disabled = false;
+  };
+  return el;
+}
+'''
+
+
 def js_campos() -> str:
     return r'''// Construye y lee el formulario a partir de los campos del dominio.
 // Cada tipo tiene su control: un número no se pide con una caja de texto.
@@ -151,72 +387,6 @@ export function pintarRegistro(r) {
     datos.appendChild(par);
   }
   return datos;
-}
-'''
-
-
-def js_auth() -> str:
-    return r'''// Pantalla de entrar / crear cuenta.
-import { register, login } from "../api.js";
-import { setToken } from "../state.js";
-
-export function AuthView(onLogged) {
-  const el = document.createElement("section");
-  el.className = "card";
-  el.innerHTML = `
-    <h1></h1>
-    <p class="sub"></p>
-    <label for="u">Usuario</label>
-    <input id="u" class="u" autocomplete="username" minlength="3" maxlength="30">
-    <label for="p">Contraseña</label>
-    <input id="p" class="p" type="password" autocomplete="current-password" minlength="8">
-    <p class="ayuda">Usuario: 3 caracteres o más. Contraseña: 8 o más, con letras y números.</p>
-    <div class="row">
-      <button class="in">Entrar</button>
-      <button class="up ghost">Crear cuenta</button>
-    </div>
-    <p class="msg" role="status" aria-live="polite"></p>
-    <div class="mirar"></div>`;
-
-  el.querySelector("h1").textContent = window.__APP__.name;
-  el.querySelector(".sub").textContent =
-    "Entra o crea tu cuenta para gestionar tus " + window.__APP__.plural.toLowerCase() + ".";
-
-  // Modo visita. Es lo que permite ENSEÑAR el sistema: quien recibe el enlace
-  // entra en un clic, con datos dentro, y entiende de qué va antes de decidir
-  // si se registra. Sin esto, un desconocido choca contra un formulario y se va.
-  const demo = window.__APP__.demo;
-  if (demo && demo.usuario) {
-    const caja = el.querySelector(".mirar");
-    caja.innerHTML = `
-      <hr>
-      <p class="ayuda">¿Solo quieres mirar? Entra a la cuenta de ejemplo, que ya
-      tiene ${window.__APP__.plural.toLowerCase()} dentro. Lo que crees ahí no se
-      mezcla con tu cuenta.</p>
-      <button class="ver ghost">Ver una demostración</button>`;
-    caja.querySelector(".ver").onclick = async () => {
-      msg.textContent = "Entrando a la demostración…";
-      msg.className = "msg";
-      const r = await login(demo.usuario, demo.clave);
-      if (r.ok) { setToken((await r.json()).access_token); onLogged(); }
-      else { msg.textContent = "La demostración no está disponible."; msg.className = "msg error"; }
-    };
-  }
-
-  const u = el.querySelector(".u"), p = el.querySelector(".p"), msg = el.querySelector(".msg");
-
-  el.querySelector(".up").onclick = async () => {
-    const r = await register(u.value, p.value);
-    const d = await r.json().catch(() => ({}));
-    msg.textContent = r.ok ? "Cuenta creada. Ya puedes entrar." : (d.detail || "No se pudo registrar.");
-    msg.className = r.ok ? "msg ok" : "msg error";
-  };
-  el.querySelector(".in").onclick = async () => {
-    const r = await login(u.value, p.value);
-    if (r.ok) { setToken((await r.json()).access_token); onLogged(); }
-    else { msg.textContent = "Usuario o contraseña incorrectos."; msg.className = "msg error"; }
-  };
-  return el;
 }
 '''
 
@@ -324,17 +494,35 @@ function fila(reg, refrescar) {
 
 
 def js_app() -> str:
-    return r'''// Entrada: monta la vista según haya sesión o no.
-import { AuthView } from "./components/auth.js";
+    return r'''// Entrada y enrutador. Entrar y registrarse son DOS pantallas distintas,
+// cada una con su dirección (#/login y #/registro), para que se pueda enlazar
+// y compartir cada una por separado y el botón "atrás" del navegador funcione.
+import { LoginView } from "./components/login.js";
+import { RegistroView } from "./components/registro.js";
 import { BoardView } from "./components/board.js";
 import { isLogged } from "./state.js";
 
 const root = document.getElementById("app");
 
-function render() {
-  root.innerHTML = "";
-  root.appendChild(isLogged() ? BoardView(render) : AuthView(render));
+function ir(ruta) {
+  if (location.hash === ruta) render();
+  else location.hash = ruta;
 }
 
+function render() {
+  root.innerHTML = "";
+  if (isLogged()) {
+    root.appendChild(BoardView(render));
+    return;
+  }
+  if (location.hash === "#/registro") {
+    root.appendChild(RegistroView(() => ir("#/login"), () => ir("#/login")));
+  } else {
+    root.appendChild(LoginView(() => ir("#/"), () => ir("#/registro")));
+  }
+  window.scrollTo(0, 0);
+}
+
+window.addEventListener("hashchange", render);
 render();
 '''

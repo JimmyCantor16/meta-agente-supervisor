@@ -218,9 +218,20 @@ class DeepSeekPromptEvaluator(PromptEvaluatorPort):
         return "\n".join(parts) + "\n"
 
     def _request_json(self, user_content: str) -> dict:
-        """Llama al LLM (multi-modelo con fallback) y devuelve el JSON."""
+        """Llama al LLM (multi-modelo con fallback) y devuelve el JSON.
+
+        El contrato del dominio viaja como `validar`: así, un proveedor que
+        devuelve JSON con la forma equivocada cuenta como fallo SUYO y el
+        siguiente de la cadena lo intenta. Antes se validaba después del bucle
+        y bastaba un modelo caprichoso para tumbar la petición entera.
+        """
         try:
-            return self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"), user_content, temperature=0.2)
+            return self._llm.chat_json(
+                SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"),
+                user_content,
+                temperature=0.2,
+                validar=AgentEvaluation.model_validate,
+            )
         except LLMError as exc:
             logger.error("Fallo del LLM al evaluar: %s", exc)
             raise PromptEvaluationError(str(exc)) from exc

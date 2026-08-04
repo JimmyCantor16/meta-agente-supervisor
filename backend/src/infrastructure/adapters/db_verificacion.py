@@ -39,15 +39,43 @@ def motor_requerido(project_dir: str) -> str | None:
     """Motor de base de datos externo que el proyecto necesita, si lo hay.
 
     Devuelve "postgres", "mysql" o None (SQLite u otro sin servicio aparte).
+
+    MANDA LO DECLARADO, Y SU SILENCIO TAMBIÉN. Si el proyecto trae manifiesto
+    de dependencias, su veredicto es definitivo: sin el driver instalado, la
+    aplicación NO puede hablar con ese motor por mucho que su código nombre uno.
+    El código solo se mira cuando no hay manifiesto ninguno.
+
+    Antes se mezclaba todo en un mismo texto, y una cadena suelta en el código
+    bastaba para decidir. Un `db.py` que normaliza prefijos de varios motores
+    —algo perfectamente razonable— se leía como «este proyecto es de
+    PostgreSQL»: se le prestaba el motor equivocado y moría al arrancar con
+    `ModuleNotFoundError`, porque el driver instalado era el otro.
     """
     root = Path(project_dir).resolve()
     if not root.is_dir():
         return None
 
-    texto = _texto_relevante(root)
+    manifiestos = [
+        a for nombre in _ARCHIVOS_DEPENDENCIAS
+        for a in root.rglob(nombre)
+        if not _IGNORAR.intersection(a.parts)
+    ]
+    if manifiestos:
+        deps = "\n".join(a.read_text(encoding="utf-8", errors="ignore") for a in manifiestos)
+        for motor, pistas in _PISTAS.items():
+            if any(re.search(p, deps, re.I) for p in pistas):
+                logger.info(
+                    "El proyecto declara %s en sus dependencias; se le prestará el de verificación.",
+                    motor,
+                )
+                return motor
+        return None
+
+    # Sin manifiesto no hay nada que declarar: toca deducirlo del código.
+    codigo = _texto_codigo(root)
     for motor, pistas in _PISTAS.items():
-        if any(re.search(p, texto, re.I) for p in pistas):
-            logger.info("El proyecto requiere %s; se le prestará el de verificación.", motor)
+        if any(re.search(p, codigo, re.I) for p in pistas):
+            logger.info("El código apunta a %s; se le prestará el de verificación.", motor)
             return motor
     return None
 
@@ -130,15 +158,9 @@ def variables_de_entorno(motor: str, url: str) -> dict[str, str]:
 
 
 # ----------------------------------------------------------------------
-def _texto_relevante(root: Path) -> str:
-    """Dependencias declaradas + código, que es donde se ve el motor real."""
+def _texto_codigo(root: Path) -> str:
+    """El código. Señal débil: solo se consulta si las dependencias callan."""
     trozos: list[str] = []
-
-    for nombre in _ARCHIVOS_DEPENDENCIAS:
-        for archivo in root.rglob(nombre):
-            if not _IGNORAR.intersection(archivo.parts):
-                trozos.append(archivo.read_text(encoding="utf-8", errors="ignore"))
-
     for patron in ("*.py", "*.js"):
         for archivo in root.rglob(patron):
             if _IGNORAR.intersection(archivo.parts):
@@ -146,5 +168,4 @@ def _texto_relevante(root: Path) -> str:
             trozos.append(archivo.read_text(encoding="utf-8", errors="ignore")[:4000])
             if len(trozos) > 60:
                 break
-
     return "\n".join(trozos)

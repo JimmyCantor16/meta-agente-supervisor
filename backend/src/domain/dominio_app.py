@@ -211,6 +211,13 @@ class DominioApp(BaseModel):
     calculos: list[Calculo] = Field(default_factory=list)
     #: Sugerencia de paleta acorde al dominio (el diseño también responde a la idea).
     tono: str = Field(default="neutro", description="cálido | frío | sobrio | vivo | neutro")
+    #: Motor de base de datos. SQLite salvo que el encargo pida otro por su
+    #: nombre: si alguien pide MySQL es porque lo tiene en su empresa, y
+    #: entregarle SQLite «porque es más fácil» es no entregar lo que pidió.
+    motor: Literal["sqlite", "mysql", "postgres"] = Field(
+        default="sqlite",
+        description="Motor pedido EXPLÍCITAMENTE en el encargo; sqlite si no se nombra ninguno.",
+    )
     #: Registros de ejemplo, uno por diccionario, con las claves de `campos`.
     #:
     #: Por qué es tan importante como el modelo de datos: una aplicación que abre

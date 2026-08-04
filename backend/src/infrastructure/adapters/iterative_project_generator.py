@@ -190,16 +190,29 @@ Reglas:
     queda vivo, mudo y sin escuchar, y es imposible de diagnosticar. Llama a
     `app.listen(PORT)` en el nivel superior, imprime un mensaje al arrancar, y
     conecta la base de datos aparte con su `.catch()` que registre el error.
-- PROHIBIDO DEPENDER DE SERVICIOS EXTERNOS. El sistema se verifica arrancándolo
-  en una máquina donde SOLO existe el propio proyecto:
-  * NADA de PostgreSQL, MySQL, MongoDB, Redis ni colas de mensajes. Ni sus
-    drivers (`pg`, `mysql2`, `mongoose`, `psycopg`, `redis`), ni un servicio en
-    `docker-compose.yml` del que dependa el arranque.
-  * La base de datos es SIEMPRE **SQLite en un archivo dentro del proyecto**, y
-    las tablas se crean al arrancar (o con un script incluido), no con
-    migraciones que requieran un servidor levantado.
-  * Un proyecto que necesite algo que no venga en el propio repositorio NO se
-    puede verificar ni entregar funcionando, y por tanto no sirve.
+- BASE DE DATOS — MANDA LO QUE PIDIÓ EL USUARIO:
+  * Si el encargo NO nombra un motor: usa **SQLite en un archivo del proyecto**.
+    Es la opción por defecto porque no necesita nada instalado.
+  * Si el encargo pide **PostgreSQL o MySQL/MariaDB explícitamente**: ÚSALO. El
+    entorno de verificación levanta ese motor de verdad y le presta una base al
+    proyecto, así que se comprueba con el motor real. Degradarlo a SQLite sería
+    entregar algo distinto de lo que se pidió.
+  * Con motor externo, la conexión se lee SIEMPRE del entorno, NUNCA fija en el
+    código: `DATABASE_URL` primero y, si no está, `DB_HOST`/`DB_PORT`/`DB_NAME`/
+    `DB_USER`/`DB_PASSWORD`. Deja un valor por defecto razonable para desarrollo.
+    Si escribes la cadena de conexión a mano, el proyecto no arranca al verificarse.
+  * Declara el driver en las dependencias (`psycopg[binary]`, `pymysql`, `pg`,
+    `mysql2`…) y añade el servicio al `docker-compose.yml` para quien lo ejecute.
+  * SIGUEN PROHIBIDOS: MongoDB, Redis, Elasticsearch y colas de mensajes
+    (Kafka, RabbitMQ, Celery). No hay entorno que los preste y el proyecto no se
+    podría verificar.
+- LAS TABLAS SE CREAN SOLAS AL ARRANCAR. Sea cual sea el motor. Es el fallo que
+  más veces ha dejado un sistema inservible: arranca, sirve la página, y toda su
+  API responde `no such table: X` o `relation "x" does not exist`. En el arranque
+  del servidor, antes de escuchar: crea el esquema si falta (`CREATE TABLE IF NOT
+  EXISTS`, `Base.metadata.create_all`, `sequelize.sync()`) y siembra los datos de
+  ejemplo si las tablas están vacías. Nada de migraciones que exijan un comando
+  aparte: si hace falta escribir un comando a mano, el sistema no funciona.
 - FRONTEND: elige el enfoque que pida el prompt. Hay dos soportados:
   * **React con Vite** (si el prompt pide React): `frontend/package.json` con
     `vite` y `@vitejs/plugin-react`, script `"build": "vite build"`, y
@@ -231,9 +244,35 @@ Reglas:
 - **MANUAL.md** es el manual de usuario final (no técnico): para qué sirve el
   sistema, cómo entrar, **USUARIOS DE PRUEBA con sus credenciales** y un paseo
   por las funciones principales, paso a paso.
-- Si el sistema tiene login, incluye **datos semilla** (seed) que creen esos
-  usuarios de prueba al arrancar (p. ej. admin/admin123 y user/user123), para
-  que se pueda probar el MVP de inmediato sin registrarse.
+- ENTRADA AL SISTEMA — DOS PANTALLAS SEPARADAS, NUNCA UN FORMULARIO ÚNICO:
+  * `login` (entrar) y `registro` (crear cuenta) son **pantallas distintas**, con
+    su propio archivo y su propia ruta (`/login` y `/registro`), enlazadas entre
+    sí ("¿No tienes cuenta? Regístrate" / "¿Ya tienes cuenta? Entra"). Un solo
+    formulario con una pestañita es justo lo que NO se quiere.
+  * VALIDACIÓN PREVIA EN EL CLIENTE, antes de enviar nada al servidor: formato de
+    correo, contraseña con su mínimo, confirmación que coincide, campos
+    obligatorios. El error se muestra **junto al campo** que lo causa, no en una
+    alerta global, y el botón de enviar está deshabilitado hasta que el formulario
+    sea válido. El servidor vuelve a validar SIEMPRE (el cliente no es seguridad).
+  * El registro deja al usuario dentro o lo manda al login con un aviso claro de
+    que ya puede entrar. Nunca lo deja en una pantalla muerta sin saber qué pasó.
+  * Contraseñas SIEMPRE con hash (bcrypt/argon2/werkzeug). Jamás en texto plano.
+  * Además, **datos semilla** que creen usuarios de prueba al arrancar (p. ej.
+    admin/admin123 y user/user123) para poder entrar sin registrarse primero.
+    Esas credenciales van en MANUAL.md.
+- EL SISTEMA SE ENTREGA FUNCIONANDO, NO COMO ESQUELETO. La meta es que el grueso
+  de lo pedido se pueda USAR el día de la entrega:
+  * Cada entidad del dominio lleva su ciclo COMPLETO: crear, listar, ver, editar
+    y borrar, conectados a pantallas reales. Una entidad que solo se lista es una
+    demo, no un sistema.
+  * Nada de pantallas "próximamente", botones que no hacen nada ni menús que
+    llevan a una página vacía. Si algo no cabe en esta entrega, NO lo pongas en
+    la interfaz.
+  * Datos semilla CREÍBLES y suficientes (8-15 registros por entidad, con nombres
+    y cifras plausibles del dominio real, no "Producto 1", "Producto 2"). Quien
+    abra el sistema tiene que ver algo vivo, no una tabla vacía.
+  * Estados vacíos, de carga y de error resueltos en cada pantalla que pida datos.
+  * Los formularios muestran qué salió mal y no pierden lo que el usuario escribió.
 - OBLIGATORIO — ARCHIVOS DE DEPENDENCIAS (se olvidan y rompen el build):
   * Python: `requirements.txt` (con TODAS las librerías que importe el código).
   * Node/JS: `package.json`.
@@ -289,6 +328,19 @@ REGLAS DE OFICIO (siempre, en todos los archivos — no son opcionales):
   config del backend); listas y catálogos renderizados desde datos, nunca
   hardcodeados uno a uno en el markup; paginación o límites donde una colección
   pueda crecer.
+- CONEXIÓN A LA BASE DE DATOS: se lee del entorno (`DATABASE_URL`, o
+  `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`), con un valor por
+  defecto para desarrollo. NUNCA la escribas fija en el código. Y el esquema se
+  crea al arrancar: si el archivo que escribes es el de arranque o el de la base
+  de datos, debe crear las tablas que falten y sembrar los datos de ejemplo.
+- SI ESCRIBES UNA PANTALLA DE ENTRADA: login y registro son pantallas SEPARADAS
+  (archivos y rutas distintas, enlazadas entre sí). Valida en el cliente ANTES de
+  enviar (correo, largo de contraseña, confirmación que coincide), muestra el
+  error PEGADO AL CAMPO que falla y deshabilita el botón hasta que sea válido.
+  El servidor revalida siempre y las contraseñas van con hash.
+- NADA DECORATIVO: si pintas un botón, un enlace o un menú, tiene que llevar a
+  algo que funciona. Prohibido "próximamente", `href="#"` sin acción y pantallas
+  vacías a medio hacer. Lo que no funcione, no se dibuja.
 - LANDING/HERO con scroll: si escribes una página de aterrizaje, incluye
   `scroll-behavior: smooth`, navegación por anclas a cada sección y el CTA del
   hero apuntando a la primera sección de contenido.

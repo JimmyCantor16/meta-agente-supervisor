@@ -60,7 +60,14 @@ class LLMCodeTeacher(CodeTeacherPort):
             f"=== ARCHIVOS ===\n{context}"
         )
         try:
-            payload = self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"), user, temperature=0.3)
+            payload = self._llm.chat_json(
+                SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"),
+                user,
+                temperature=0.3,
+                # Contrato dentro del bucle: una guía con la forma equivocada la
+                # reintenta el siguiente proveedor. `target` lo ponemos nosotros.
+                validar=lambda d: TeachingGuide.model_validate({**d, "target": target_name}),
+            )
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 

@@ -69,7 +69,16 @@ class LLMCodeAuditor(CodeAuditorPort):
         )
 
         try:
-            payload = self._llm.chat_json(SYSTEM_PROMPT, user_content, temperature=0.2)
+            payload = self._llm.chat_json(
+                SYSTEM_PROMPT,
+                user_content,
+                temperature=0.2,
+                # El contrato entra en el bucle de fallback: si un proveedor
+                # devuelve la forma equivocada, lo intenta el siguiente en vez
+                # de morir la petición. `target` lo inyectamos nosotros, así que
+                # se añade también aquí para que la comprobación sea la real.
+                validar=lambda d: AuditReport.model_validate({**d, "target": target_name}),
+            )
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 

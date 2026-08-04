@@ -2,10 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Tema claro y profesional (inspirado en Skywork). */
+/* Tema claro y profesional. Tokens en `tailwind.config.js`. */
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-800 antialiased;
+    @apply bg-surface-muted text-ink-body antialiased;
+    /* `cv11` da la "a" de un piso y `ss01` las alternativas humanistas de
+       Inter: es lo que la aleja del look de fuente por defecto. */
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+  /* Todo titular hereda el tracking del sistema (-1%), sin tener que
+     acordarse de ponerlo clase por clase. */
+  h1,
+  h2,
+  h3 {
+    @apply tracking-snug text-ink;
   }
 }
 
@@ -16,16 +27,16 @@
   }
 }
 
-/* Scrollbar sutil. */
+/* Scrollbar sutil, en el gris teñido del sistema. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: #c9cdd9 transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #c9cdd9;
   border-radius: 8px;
 }

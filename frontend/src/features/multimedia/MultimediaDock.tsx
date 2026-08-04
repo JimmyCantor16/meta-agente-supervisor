@@ -4,6 +4,7 @@ import { useLanguage } from "../../i18n/LanguageProvider";
 import { useMultimedia } from "./MultimediaProvider";
 import { RadioView } from "./RadioView";
 import { TvView } from "./TvView";
+import { YoutubeView } from "./YoutubeView";
 
 const PANEL_W = 300;
 
@@ -60,6 +61,9 @@ export function MultimediaDock() {
           <TabBtn active={m.tab === "radio"} onClick={() => m.setTab("radio")}>
             {t.multimedia.radioTab}
           </TabBtn>
+          <TabBtn active={m.tab === "youtube"} onClick={() => m.setTab("youtube")}>
+            {t.multimedia.ytTab}
+          </TabBtn>
         </div>
 
         {/* Aviso de error (TV/PiP), se autocierra */}
@@ -69,7 +73,7 @@ export function MultimediaDock() {
             los canales nunca deben provocar scroll horizontal (desalinearía el
             vídeo acoplado). */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-3">
-          {m.tab === "tv" ? <TvView /> : <RadioView />}
+          {m.tab === "tv" ? <TvView /> : m.tab === "radio" ? <RadioView /> : <YoutubeView />}
         </div>
 
         {/* Barra "sonando ahora" (sobre todo útil para la radio) */}

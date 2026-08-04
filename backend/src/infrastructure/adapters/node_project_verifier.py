@@ -479,6 +479,10 @@ class NodeProjectVerifier(ProjectVerifierPort):
         import urllib.request
 
         fallos: list[str] = []
+        # Rutas de listado que responden bien pero sin nada dentro. Un sistema
+        # que arranca vacío es, para quien lo abre, indistinguible de uno roto.
+        colecciones = 0
+        vacias: list[str] = []
         for path in endpoints:
             url = f"http://127.0.0.1:{port}{path}"
             try:
@@ -511,9 +515,33 @@ class NodeProjectVerifier(ProjectVerifierPort):
                 fallos.append(f"{path}: devolvió HTML en vez de JSON (la ruta de API no existe)")
             else:
                 try:
-                    _json.loads(cuerpo)
+                    datos = _json.loads(cuerpo)
                 except ValueError:
                     fallos.append(f"{path}: la respuesta no es JSON válido -> {recorte}")
+                else:
+                    # Solo las LISTAS cuentan como colección: un objeto vacío
+                    # puede ser legítimo (configuración, estado); una lista vacía
+                    # en un sistema recién sembrado casi nunca lo es.
+                    if isinstance(datos, list):
+                        colecciones += 1
+                        if not datos:
+                            vacias.append(path)
+
+        # Se denuncia solo si TODAS vienen vacías: eso son semillas que faltan.
+        # Si unas traen datos y otras no, puede ser legítimo (un buscador, un
+        # historial recién creado) y mandaría al reparador tras un fantasma.
+        if not fallos and colecciones >= 2 and len(vacias) == colecciones:
+            _terminar(process)
+            return (
+                f"El sistema arranca y su API responde, pero está VACÍO: las "
+                f"{colecciones} rutas de listado devuelven una lista vacía "
+                f"({', '.join(vacias[:6])}). Quien lo abra verá tablas y pantallas "
+                "sin nada.\n\nARRÉGLALO: siembra datos de ejemplo CREÍBLES al "
+                "arrancar (8-15 registros por entidad, con nombres y cifras "
+                "plausibles del dominio real, nunca 'Producto 1'). La siembra corre "
+                "en el arranque y solo si la tabla está vacía, para no duplicar en "
+                "cada reinicio."
+            )
 
         if fallos:
             # La CAUSA real del 500 está en lo que imprime el servidor (su

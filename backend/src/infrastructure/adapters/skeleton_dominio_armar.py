@@ -119,9 +119,19 @@ def _styles(d: DominioApp) -> str:
         "input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acento);\n"
         "  box-shadow:0 0 0 3px color-mix(in srgb,var(--acento) 18%,transparent)}\n"
         ".ayuda{font-size:.76rem;color:var(--tinta-2);margin:.2rem 0 0}\n"
+        ".ayuda a{color:var(--acento);font-weight:600}\n"
+        # El error va PEGADO al campo que lo causa: así se ve cuál hay que
+        # arreglar, en vez de un aviso genérico arriba que obliga a adivinar.
+        ".error-campo{font-size:.78rem;color:var(--alerta);margin:.25rem 0 0;min-height:1em}\n"
+        ".error-campo:empty{min-height:0;margin:0}\n"
+        "input.malo,select.malo,textarea.malo{border-color:var(--alerta)}\n"
+        "input.malo:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--alerta) 18%,transparent)}\n"
         "button{padding:.68rem 1.15rem;border:0;border-radius:4px;background:var(--acento);\n"
         "  color:#fff;font-weight:600;font-size:.95rem;cursor:pointer;font-family:inherit}\n"
         "button:hover{filter:brightness(1.08)}\n"
+        # Sin esto, el botón deshabilitado se ve igual que el activo y el
+        # usuario cree que la aplicación no responde.
+        "button:disabled{opacity:.45;cursor:not-allowed;filter:none}\n"
         "button.ghost{background:transparent;border:1px solid var(--linea);color:var(--tinta-2)}\n"
         "button.small{padding:.35rem .7rem;font-size:.82rem}\n"
         ".row{display:flex;gap:.6rem;margin-top:1rem}\n"
@@ -186,11 +196,158 @@ def _readme(d: DominioApp) -> str:
     )
 
 
+_URL_POR_MOTOR = {
+    "sqlite": "sqlite:///./app.db",
+    "mysql": "mysql+pymysql://usuario:clave@localhost:3306/{base}",
+    "postgres": "postgresql://usuario:clave@localhost:5432/{base}",
+}
+
+
+def _env_example(d: DominioApp) -> str:
+    """Las variables que el proyecto lee, con un ejemplo de cada una."""
+    url = _URL_POR_MOTOR[d.motor].format(base=d.tabla)
+    return (
+        "# Copia este archivo a `.env` y ajusta los valores.\n\n"
+        "# Conexión a la base de datos. El código la lee de aquí: no hay ninguna\n"
+        "# cadena escrita a mano dentro del programa.\n"
+        f"DATABASE_URL={url}\n\n"
+        "# Clave con la que se firman las sesiones. CÁMBIALA en producción:\n"
+        "# quien la tenga puede entrar como cualquier usuario.\n"
+        "SECRET_KEY=cambia-esta-clave-por-una-larga-y-aleatoria\n"
+    )
+
+
+def _compose(d: DominioApp) -> str:
+    """Solo tiene sentido si hay un motor que levantar aparte."""
+    if d.motor == "mysql":
+        servicio = (
+            "  base:\n"
+            "    image: mysql:8.4\n"
+            "    environment:\n"
+            "      MYSQL_ROOT_PASSWORD: clave\n"
+            "      MYSQL_USER: usuario\n"
+            "      MYSQL_PASSWORD: clave\n"
+            f"      MYSQL_DATABASE: {d.tabla}\n"
+            "    ports: ['3306:3306']\n"
+        )
+        url = f"mysql+pymysql://usuario:clave@base:3306/{d.tabla}"
+    else:
+        servicio = (
+            "  base:\n"
+            "    image: postgres:16-alpine\n"
+            "    environment:\n"
+            "      POSTGRES_USER: usuario\n"
+            "      POSTGRES_PASSWORD: clave\n"
+            f"      POSTGRES_DB: {d.tabla}\n"
+            "    ports: ['5432:5432']\n"
+        )
+        url = f"postgresql://usuario:clave@base:5432/{d.tabla}"
+    return (
+        "services:\n"
+        "  app:\n"
+        "    build: .\n"
+        "    ports: ['8000:8000']\n"
+        f"    environment:\n      DATABASE_URL: {url}\n"
+        "    depends_on: [base]\n"
+        + servicio
+    )
+
+
+def _configure(d: DominioApp) -> str:
+    motor_legible = {"sqlite": "SQLite", "mysql": "MySQL", "postgres": "PostgreSQL"}[d.motor]
+    pasos = (
+        "No hay que instalar ninguna base de datos: SQLite es un archivo\n"
+        "(`app.db`) que se crea solo la primera vez que arrancas.\n"
+        if d.motor == "sqlite"
+        else
+        f"Necesitas un {motor_legible} en marcha. La forma más rápida es\n"
+        "`docker compose up`, que levanta la base y la app juntas.\n\n"
+        "Si ya tienes tu propio servidor, pon su dirección en `DATABASE_URL`\n"
+        "dentro de `.env`. Las tablas se crean solas al arrancar.\n"
+    )
+    return (
+        f"# Configurar {d.app_name}\n\n"
+        "## 1. Las variables\n\n"
+        "Copia `.env.example` a `.env`:\n\n"
+        "```\ncp .env.example .env\n```\n\n"
+        "- `DATABASE_URL`: dónde está la base de datos.\n"
+        "- `SECRET_KEY`: **cámbiala**. Con la de ejemplo, cualquiera que la\n"
+        "  conozca podría entrar como cualquier usuario.\n\n"
+        f"## 2. La base de datos ({motor_legible})\n\n"
+        f"{pasos}\n"
+        "## 3. Arrancar\n\n"
+        "```\npip install -r backend/requirements.txt\nuvicorn backend.main:app\n```\n\n"
+        "Abre http://localhost:8000\n"
+    )
+
+
+def _deploy(d: DominioApp) -> str:
+    return (
+        f"# Publicar {d.app_name} en internet\n\n"
+        "Pensado para alguien que no lo ha hecho nunca. Render tiene plan gratis\n"
+        "y es lo más corto.\n\n"
+        "## 1. Sube el código a GitHub\n\n"
+        "```\ngit init -b main\ngit add .\ngit commit -m \"mi aplicación\"\n```\n\n"
+        "Crea un repositorio en github.com y sigue las dos líneas que te muestra\n"
+        "para enlazarlo y subirlo.\n\n"
+        "## 2. Crea el servicio\n\n"
+        "En https://dashboard.render.com elige **New → Web Service** y conecta tu\n"
+        "repositorio. Rellena:\n\n"
+        "| Campo | Valor |\n|---|---|\n"
+        "| Build Command | `pip install -r backend/requirements.txt` |\n"
+        "| Start Command | `uvicorn backend.main:app --host 0.0.0.0 --port $PORT` |\n\n"
+        + (
+            "## 3. La base de datos\n\n"
+            "En Render, **New → PostgreSQL**. Copia su *Internal Database URL* y\n"
+            "pégala como variable `DATABASE_URL` en tu servicio.\n\n"
+            if d.motor != "sqlite"
+            else
+            "## 3. La base de datos\n\n"
+            "No hace falta nada: SQLite viaja con la aplicación. Ten en cuenta que\n"
+            "en el plan gratis el disco se borra en cada despliegue; cuando quieras\n"
+            "que los datos duren, crea un PostgreSQL en Render y pon su dirección\n"
+            "en `DATABASE_URL` (el código ya lo admite sin cambiar nada).\n\n"
+        )
+        + "## 4. La clave\n\n"
+        "Añade también `SECRET_KEY` con un valor largo y aleatorio.\n\n"
+        "## 5. Comprueba\n\n"
+        "Abre la URL que te da Render. Debe salir la pantalla de entrar.\n"
+    )
+
+
+def _manual(d: DominioApp) -> str:
+    campos = "\n".join(f"- **{c.etiqueta}**" for c in d.campos[:8])
+    return (
+        f"# Manual de {d.app_name}\n\n"
+        f"Para qué sirve: llevar el registro de tus {d.entidad_plural.lower()}.\n\n"
+        "## Entrar\n\n"
+        "Hay dos pantallas separadas:\n\n"
+        "- **Entrar** — si ya tienes cuenta.\n"
+        "- **Crear cuenta** — el enlace está debajo del formulario de entrar.\n\n"
+        "### Usuario de prueba\n\n"
+        "| Usuario | Contraseña |\n|---|---|\n| `demo` | `demo1234` |\n\n"
+        "Esa cuenta ya viene con ejemplos dentro, para que veas el sistema en uso\n"
+        "sin tener que registrarte. También hay un botón **Ver una demostración**\n"
+        "en la pantalla de entrar que hace lo mismo en un clic.\n\n"
+        "## Crear tu cuenta\n\n"
+        "El usuario necesita 3 caracteres o más. La contraseña, 8 o más con letras\n"
+        "y números, y hay que repetirla. Si algo no cuadra, el aviso sale justo\n"
+        "debajo del campo que hay que corregir y el botón no se activa hasta que\n"
+        "todo esté bien.\n\n"
+        f"## Registrar {d.entidad_plural.lower()}\n\n"
+        f"Una vez dentro, el formulario pide:\n\n{campos}\n\n"
+        "Se guardan al pulsar el botón y aparecen en la lista de abajo, con el\n"
+        "resumen recalculado. Cada registro se puede borrar desde la lista.\n\n"
+        "## Tus datos son tuyos\n\n"
+        f"Cada cuenta ve SOLO sus {d.entidad_plural.lower()}.\n"
+    )
+
+
 def construir_desde_dominio(d: DominioApp) -> GeneratedProject:
     """Arma el proyecto completo a partir del dominio descrito."""
     d = d.sanear()
     archivos = {
-        "backend/requirements.txt": _requirements(),
+        "backend/requirements.txt": _requirements(d.motor),
         "backend/__init__.py": "",
         "backend/domain/__init__.py": "",
         "backend/domain/entities.py": be._entities(d),
@@ -209,11 +366,22 @@ def construir_desde_dominio(d: DominioApp) -> GeneratedProject:
         "frontend/js/api.js": fe.js_api(),
         "frontend/js/state.js": fe.js_state(),
         "frontend/js/campos.js": fe.js_campos(),
-        "frontend/js/components/auth.js": fe.js_auth(),
+        "frontend/js/validacion.js": fe.js_validacion(),
+        # Entrar y registrarse son dos pantallas separadas, cada una en su
+        # archivo y con su propia dirección (#/login, #/registro).
+        "frontend/js/components/login.js": fe.js_login(),
+        "frontend/js/components/registro.js": fe.js_registro(),
         "frontend/js/components/board.js": fe.js_board(),
         "README.md": _readme(d),
+        "MANUAL.md": _manual(d),
+        "CONFIGURE.md": _configure(d),
+        "DEPLOY.md": _deploy(d),
+        ".env.example": _env_example(d),
         MARCADOR: "esqueleto por dominio v3",
     }
+    # El compose solo tiene sentido si hay un motor que levantar aparte.
+    if d.motor != "sqlite":
+        archivos["docker-compose.yml"] = _compose(d)
     return GeneratedProject(
         name=d.app_name,
         summary=(

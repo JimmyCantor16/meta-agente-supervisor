@@ -13,6 +13,13 @@ python-dotenv>=1.0.0
 # --- Persistencia en la nube (PostgreSQL; opcional vía DATABASE_URL) ---
 psycopg[binary]>=3.1.0
 
+# --- Verificación de proyectos que piden MySQL ---
+# NO es para la base de datos del Meta-Agente: la usa `db_verificacion` para
+# CREAR la base de usar y tirar de cada proyecto generado que pida MySQL. Sin
+# este driver, esa creación fallaba en silencio y el proyecto moría al arrancar
+# con «Access denied to database v_xxx» — porque la base nunca llegó a existir.
+pymysql>=1.1.0
+
 # --- Login con Google (verificación del ID token) ---
 google-auth>=2.30.0
 requests>=2.31.0

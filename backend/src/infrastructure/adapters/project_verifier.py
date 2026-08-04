@@ -70,6 +70,10 @@ import json, traceback, sys
 
 REPORT = sys.argv[1]
 problems = []
+# Endpoints de colección que responden 200 pero con la lista VACÍA. Un sistema
+# que arranca y no tiene nada dentro es, para quien lo abre, un sistema roto.
+colecciones = 0
+vacios = []
 
 def dummy(schema, defs, depth=0):
     """Genera un valor de ejemplo a partir de un schema OpenAPI."""
@@ -146,10 +150,38 @@ try:
                         method.upper() + " " + url + " -> HTTP " + str(r.status_code)
                         + "\\n" + detail
                     )
+                elif method.upper() == "GET" and r.status_code == 200:
+                    # ¿Es una colección? Solo cuentan las listas: un objeto vacío
+                    # puede ser legítimo (configuración, estado), una lista vacía
+                    # en un sistema recién sembrado casi nunca lo es.
+                    try:
+                        cuerpo = r.json()
+                    except Exception:
+                        cuerpo = None
+                    if isinstance(cuerpo, list):
+                        colecciones += 1
+                        if not cuerpo:
+                            vacios.append("GET " + url)
             except Exception:
                 problems.append(
                     method.upper() + " " + url + " lanzo excepcion:\\n" + traceback.format_exc()[-1500:]
                 )
+    # Solo se denuncia si TODAS las colecciones vienen vacías: eso es que faltan
+    # las semillas. Si unas traen datos y otras no, puede ser legítimo (un
+    # buscador, un historial recién creado) y marcarlo mandaría al reparador a
+    # perseguir un fantasma.
+    if not problems and colecciones >= 2 and len(vacios) == colecciones:
+        problems.append(
+            "EL SISTEMA ARRANCA PERO ESTA VACIO: las " + str(colecciones)
+            + " rutas de listado responden 200 con una lista vacia ("
+            + ", ".join(vacios[:6]) + ").\\n"
+            "Quien lo abra vera tablas y pantallas sin nada, que es indistinguible "
+            "de un sistema roto.\\n"
+            "ARREGLALO: siembra datos de ejemplo CREIBLES al arrancar (8-15 registros "
+            "por entidad, con nombres y cifras plausibles del dominio real, nunca "
+            "'Producto 1'). La siembra corre en el arranque del servidor y solo si la "
+            "tabla esta vacia, para no duplicar en cada reinicio."
+        )
 except Exception:
     problems.append("La app no se pudo ejercitar:\\n" + traceback.format_exc()[-1500:])
 

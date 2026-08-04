@@ -113,16 +113,31 @@ def main() -> int:
     db = next(f.content for f in p.files if f.path.endswith("db.py"))
     main_py = next(f.content for f in p.files if f.path.endswith("main.py"))
     indice = next(f.content for f in p.files if f.path.endswith("index.html"))
-    auth = next(f.content for f in p.files if f.path.endswith("auth.js"))
+    # Entrar y registrarse son pantallas separadas; la visita se ofrece en la
+    # de entrar, que es donde aterriza quien recibe el enlace.
+    rutas = {f.path for f in p.files}
+    login = next(f.content for f in p.files if f.path.endswith("components/login.js"))
+    registro = next(f.content for f in p.files if f.path.endswith("components/registro.js"))
 
     print("   errores de sintaxis      :", errores or "ninguno")
     print("   siembra en db.py         :", "sembrar_demostracion" in db)
     print("   se llama al arrancar     :", "sembrar_demostracion(BcryptHasher())" in main_py)
     print("   credenciales en el HTML  :", '"demo"' in indice)
-    print("   botón «Ver una demostración»:", "Ver una demostración" in auth)
+    print("   entrar y registro aparte :",
+          "frontend/js/components/login.js" in rutas
+          and "frontend/js/components/registro.js" in rutas
+          and not any(r.endswith("components/auth.js") for r in rutas))
+    print("   cada una enlaza a la otra:",
+          "#/registro" in login and "#/login" in registro)
+    print("   registro pide repetir    :", "Repite la contraseña" in registro)
+    print("   botón «Ver una demostración»:", "Ver una demostración" in login)
     assert not errores and "sembrar_demostracion" in db
     assert "sembrar_demostracion(BcryptHasher())" in main_py
-    assert "Ver una demostración" in auth
+    assert "Ver una demostración" in login
+    assert "#/registro" in login and "#/login" in registro, (
+        "cada pantalla debe poder llevar a la otra, o el usuario queda atrapado"
+    )
+    assert "Repite la contraseña" in registro
 
     sep("4. SIN EJEMPLOS NO SE OFRECE LA VISITA")
     vacio = dominio([])

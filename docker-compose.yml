@@ -19,8 +19,13 @@ services:
       # Datos de conexión que el verificador inyecta en el proyecto generado
       # cuando este pide PostgreSQL o MySQL. Son de USAR Y TIRAR: sirven para
       # comprobar que el código funciona, no para guardar nada del usuario.
+      # Van con el superusuario de cada motor a propósito: el verificador CREA
+      # una base por proyecto (`v_<nombre>`) para que no se pisen entre ellos, y
+      # eso exige permisos que un usuario normal no tiene. En MySQL, `verificador`
+      # no podía crearla y el proyecto moría con «Access denied to database
+      # v_xxx». Son contenedores de usar y tirar, sin datos de nadie.
       VERIFY_POSTGRES_URL: postgresql://verificador:verificador@verify-postgres:5432/verificacion
-      VERIFY_MYSQL_URL: mysql://verificador:verificador@verify-mysql:3306/verificacion
+      VERIFY_MYSQL_URL: mysql://root:verificador@verify-mysql:3306/verificacion
     volumes:
       - ./backend/data:/app/data
       - ./backend/generated:/app/generated

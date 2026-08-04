@@ -2,7 +2,23 @@
 // C:\Editor (DKEditor): un `StreamItem` normalizado que el reproductor consume
 // directamente, y los canales de TV que aporta el propio usuario.
 
-export type StreamKind = "tv" | "radio";
+export type StreamKind = "tv" | "radio" | "youtube";
+
+/**
+ * Un vídeo o lista de YouTube guardado por el usuario.
+ *
+ * Se guarda el ID y no la URL entera: así el mismo dato sirve para el
+ * reproductor incrustado, para la miniatura y para el enlace público, sin tener
+ * que volver a parsear nada.
+ */
+export interface YoutubeItem {
+  titulo: string;
+  kind: "video" | "playlist";
+  id: string;
+  /** Nombre del canal, si oEmbed lo pudo confirmar. */
+  autor?: string;
+  categoria?: string;
+}
 
 /** Un ítem reproducible (emisora de radio o canal de TV), normalizado para la UI. */
 export interface StreamItem {

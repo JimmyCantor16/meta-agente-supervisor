@@ -3,6 +3,22 @@
 Analiza el código real del alumno y arma un curso de N clases: cada una con
 objetivo, contenido sobre SU proyecto, un reto y un criterio de superación
 VERIFICABLE (quiz sobre su código, un cambio aplicado, su repo o su URL vivos).
+
+SE GENERA EN VARIAS LLAMADAS PEQUEÑAS, A PROPÓSITO
+--------------------------------------------------
+Pedir el curso entero de una vez desbordaba el límite de SALIDA de los modelos
+gratuitos: 18 clases con su contenido de 2-4 párrafos y su quiz son más de 20k
+tokens, y la respuesta volvía cortada. Con los planes de pago (pro=15,
+business=18) fallaba aproximadamente una de cada tres veces, y al cortarse el
+JSON no se salvaba nada: el alumno se quedaba sin curso.
+
+Ahora va en dos fases:
+  1. EL ÍNDICE — títulos, objetivos y tipo de criterio de las N clases. Es una
+     respuesta corta, que cabe de sobra.
+  2. EL DETALLE — el contenido, el reto y el quiz, en lotes de pocas clases.
+
+Si un lote falla, esa clase se queda con lo del índice (título y objetivo) en
+vez de tumbar el curso entero. Media clase es recuperable; ninguna, no.
 """
 
 from __future__ import annotations
@@ -24,6 +40,23 @@ logger = logging.getLogger(__name__)
 
 _TIPOS = {"quiz", "cambio", "repo_git", "url_publicada", "reflexion"}
 
+# Clases por llamada de detalle. Cuatro clases con su contenido y su quiz rondan
+# los 4-5k tokens de salida: entran holgadas en cualquier modelo gratuito.
+_CLASES_POR_LOTE = 4
+
+
+def _indice_valido(data: dict) -> None:
+    """Contrato mínimo del índice, para que corra DENTRO del bucle de fallback.
+
+    Sin esto, un proveedor que devolviera `{"curso": [...]}` en vez de `clases`
+    se daba por bueno y tumbaba la petición sin llegar a probar a los demás.
+    """
+    clases = data.get("clases")
+    if not isinstance(clases, list) or not clases:
+        raise ValueError("falta la lista 'clases'")
+    if not all(isinstance(c, dict) and str(c.get("titulo") or "").strip() for c in clases):
+        raise ValueError("hay clases sin 'titulo'")
+
 # Cómo cambia la EXIGENCIA de los criterios según el nivel del alumno.
 _GUIA_NIVEL = {
     "bajo": ("NUNCA ha programado. Retos muy pequeños y celebrados. Las clases "
@@ -36,11 +69,17 @@ _GUIA_NIVEL = {
              "y url_publicada reales, y algún reto avanzado extra."),
 }
 
-SYSTEM_PROMPT = """\
+_QUIEN_ERES = """\
 Eres el DISEÑADOR DE CURSOS del Meta-Agente. Recibes el código real del proyecto
 de un alumno (que NO sabe programar) y diseñas un curso que lo lleva de la mano,
 clase a clase, de "no entiendo nada" a "tengo mi sistema en internet y sé cómo
 funciona". El material del curso es SU propio proyecto — nunca ejemplos ajenos.
+"""
+
+# --- FASE 1: el índice. Respuesta corta, cabe en cualquier modelo gratuito. ---
+SYSTEM_INDICE = _QUIEN_ERES + """
+Diseña SOLO EL ÍNDICE del curso: los títulos y de qué va cada clase. NO escribas
+todavía el contenido ni los quiz — eso viene después, clase por clase.
 
 Devuelve EXCLUSIVAMENTE un JSON válido (sin markdown):
 {
@@ -50,43 +89,65 @@ Devuelve EXCLUSIVAMENTE un JSON válido (sin markdown):
     {
       "titulo": "Título corto y claro",
       "objetivo": "Qué logras en esta clase, en una frase, en cristiano",
-      "contenido": "La explicación (markdown, 2-4 párrafos). Habla de SU proyecto por su nombre, sus archivos, sus datos reales. Analogías cotidianas. Sin jerga sin traducir.",
-      "reto": "El ejercicio práctico concreto de esta clase",
       "concepto_clave": "El concepto que se aprende",
-      "criterio": {
-        "tipo": "quiz | cambio | repo_git | url_publicada | reflexion",
-        "descripcion": "Cómo se supera la clase, en cristiano",
-        "quiz": [ {"pregunta":"...", "opciones":["a","b","c"], "correcta":1} ],
-        "aciertos_minimos": 2,
-        "pista": "Ayuda breve si se atasca",
-        "archivo": "SOLO si tipo=cambio: la ruta EXACTA del archivo a modificar, copiada de la lista de archivos",
-        "resultado_esperado": "SOLO si tipo=cambio: qué debe verse diferente en la pantalla al lograrlo"
-      }
+      "tipo": "quiz | cambio | repo_git | url_publicada | reflexion"
     }
   ]
 }
 
 DISEÑO OBLIGATORIO del arco de clases (adáptalo al proyecto, pero respeta el viaje):
-1. "Conoce tu sistema" — qué hace, sus partes. criterio tipo "quiz" (3 preguntas sobre SU proyecto).
-2. Tu primer cambio pequeño (un texto/título). criterio "cambio".
-3. Los datos de tu sistema (semillas/contenido). criterio "quiz" o "cambio".
-4. Correrlo en tu computador sin Docker (Node/instalar/arrancar). criterio "reflexion".
-5-6. Entender y tocar el CRUD / una entidad o pantalla. criterio "quiz" o "cambio".
-7. Git y GitHub: la caja fuerte de tu código. criterio tipo "repo_git".
-8. Publicarlo GRATIS en internet (Netlify si es estático, Render si tiene backend). criterio "url_publicada".
-9. Cambiar algo y volver a publicar (el ciclo real). criterio "reflexion" o "url_publicada".
-10+. Graduación: repaso y siguientes pasos. criterio "quiz" final.
-(Si te piden MÁS de 10 clases, añade avanzadas: dominio propio, base de datos persistente, analítica, seguridad — cada una con su criterio.)
+1. "Conoce tu sistema" — qué hace, sus partes. tipo "quiz".
+2. Tu primer cambio pequeño (un texto/título). tipo "cambio".
+3. Los datos de tu sistema (semillas/contenido). tipo "quiz" o "cambio".
+4. Correrlo en tu computador sin Docker (instalar/arrancar). tipo "reflexion".
+5-6. Entender y tocar el CRUD / una entidad o pantalla. tipo "quiz" o "cambio".
+7. Git y GitHub: la caja fuerte de tu código. tipo "repo_git".
+8. Publicarlo GRATIS en internet (Netlify si es estático, Render si tiene backend). tipo "url_publicada".
+9. Cambiar algo y volver a publicar (el ciclo real). tipo "reflexion" o "url_publicada".
+10+. Graduación: repaso y siguientes pasos. tipo "quiz" final.
+(Si te piden MÁS de 10 clases, añade avanzadas: dominio propio, base de datos persistente, analítica, seguridad.)
 
 REGLAS:
-- EXACTAMENTE el número de clases pedido.
-- Los quiz preguntan sobre EL PROYECTO DEL ALUMNO (sus archivos, sus datos), no teoría genérica. 3 opciones, una correcta.
-- "tipo" SIEMPRE uno de: quiz, cambio, repo_git, url_publicada, reflexion.
+- EXACTAMENTE el número de clases pedido, ni una más ni una menos.
 - Clase 7 = repo_git; una clase de publicar = url_publicada. Sin falta.
-- En TODA clase de tipo "cambio": "archivo" debe ser una ruta EXACTA de la lista
-  de archivos de arriba (no la inventes) y "resultado_esperado" debe describir un
-  cambio VISIBLE en pantalla. El aula le abre ese archivo al alumno; si la ruta no
-  existe, se queda mirando 23 archivos sin saber cuál tocar.
+- "tipo" SIEMPRE uno de: quiz, cambio, repo_git, url_publicada, reflexion.
+- Tono del profesor paciente: celebra, motiva, cero jerga sin explicar.
+- Todo en el idioma indicado.
+"""
+
+# --- FASE 2: el detalle, en lotes de pocas clases. ---
+SYSTEM_DETALLE = _QUIEN_ERES + """
+Ya existe el índice del curso. Ahora ESCRIBE EL CONTENIDO COMPLETO de las pocas
+clases que se te indican, respetando su título, objetivo y tipo de criterio.
+
+Devuelve EXCLUSIVAMENTE un JSON válido (sin markdown):
+{
+  "clases": [
+    {
+      "numero": 3,
+      "contenido": "La explicación (markdown, 2-4 párrafos). Habla de SU proyecto por su nombre, sus archivos, sus datos reales. Analogías cotidianas. Sin jerga sin traducir.",
+      "reto": "El ejercicio práctico concreto de esta clase",
+      "criterio": {
+        "descripcion": "Cómo se supera la clase, en cristiano",
+        "quiz": [ {"pregunta":"...", "opciones":["a","b","c"], "correcta":1} ],
+        "aciertos_minimos": 2,
+        "pista": "Ayuda breve si se atasca",
+        "archivo": "SOLO si el tipo es 'cambio': la ruta EXACTA del archivo a modificar, copiada de la lista de archivos",
+        "resultado_esperado": "SOLO si el tipo es 'cambio': qué debe verse diferente en la pantalla al lograrlo"
+      }
+    }
+  ]
+}
+
+REGLAS:
+- Una entrada por cada clase pedida, con su "numero" EXACTO del índice.
+- Si el tipo de la clase es "quiz": 3 preguntas SOBRE EL PROYECTO DEL ALUMNO (sus
+  archivos, sus datos), no teoría genérica. 3 opciones cada una, una correcta.
+- Si el tipo NO es "quiz", deja "quiz" como lista vacía.
+- Si el tipo es "cambio": "archivo" debe ser una ruta EXACTA de la lista de
+  archivos de arriba (no la inventes) y "resultado_esperado" debe describir un
+  cambio VISIBLE en pantalla. El aula le abre ese archivo al alumno; si la ruta
+  no existe, se queda mirando 23 archivos sin saber cuál tocar.
 - Tono del profesor paciente: celebra, motiva, cero jerga sin explicar.
 - Todo en el idioma indicado.
 """
@@ -99,7 +160,47 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
 
     def generar(self, proyecto, arquetipo, files, num_clases, language="es",
                 nivel="desconocido") -> Syllabus:
-        # Contexto: rutas + fragmentos de los archivos que dan identidad.
+        contexto = self._contexto(proyecto, arquetipo, files, language, nivel)
+        rutas_reales = [f.path for f in files]
+
+        indice = self._pedir_indice(contexto, num_clases)
+        cabeceras = (indice.get("clases") or [])[:num_clases]
+        if not cabeceras:
+            raise AuditError("El diseñador de cursos no devolvió clases válidas.")
+
+        # El detalle se pide en lotes pequeños. Cada lote es independiente: si
+        # uno falla, sus clases quedan con lo del índice y el curso sigue en pie.
+        detalles: dict[int, dict] = {}
+        for inicio in range(0, len(cabeceras), _CLASES_POR_LOTE):
+            lote = cabeceras[inicio : inicio + _CLASES_POR_LOTE]
+            detalles.update(self._pedir_detalle(contexto, lote, inicio + 1))
+
+        brutas = [
+            self._fusionar(cab, detalles.get(inicio + 1, {}))
+            for inicio, cab in enumerate(cabeceras)
+        ]
+        clases = self._sanear_clases(brutas, num_clases, rutas_reales=rutas_reales)
+        if not clases:
+            raise AuditError("El diseñador de cursos no devolvió clases válidas.")
+
+        completas = sum(1 for c in clases if len(c.contenido) > 40)
+        logger.info(
+            "Temario de '%s': %d clase(s), %d con contenido completo (%d lote(s)).",
+            proyecto, len(clases), completas,
+            (len(cabeceras) + _CLASES_POR_LOTE - 1) // _CLASES_POR_LOTE,
+        )
+        return Syllabus(
+            proyecto=proyecto,
+            arquetipo=arquetipo,
+            titulo_curso=str(indice.get("titulo_curso") or f"Aprende con {proyecto}"),
+            resumen=str(indice.get("resumen") or ""),
+            clases=clases,
+        )
+
+    # ------------------------------------------------------------------ fases
+    @staticmethod
+    def _contexto(proyecto, arquetipo, files, language, nivel) -> str:
+        """El bloque de contexto que comparten las dos fases."""
         rutas = "\n".join(f"- {f.path}" for f in files[:40])
         claves = [f for f in files if f.path.endswith(
             ("dominio.json", "server.js", "main.py", "App.jsx", "index.html",
@@ -107,34 +208,70 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
         fragmentos = "\n\n".join(f"=== {f.path} ===\n{f.content[:1500]}" for f in claves)
         idioma = "español" if language == "es" else "English"
         guia_nivel = _GUIA_NIVEL.get(nivel, "")
-        user = (
+        return (
             f"[Redacta TODO en {idioma}]\n"
             + (f"NIVEL DEL ALUMNO: {guia_nivel}\n" if guia_nivel else "")
-            + f"PROYECTO: {proyecto} (arquetipo: {arquetipo or 'desconocido'})\n"
-            f"NÚMERO EXACTO DE CLASES: {num_clases}\n\n"
+            + f"PROYECTO: {proyecto} (arquetipo: {arquetipo or 'desconocido'})\n\n"
             f"ARCHIVOS DEL PROYECTO:\n{rutas}\n\n"
             f"CÓDIGO CLAVE:\n{fragmentos}"
         )
+
+    def _pedir_indice(self, contexto: str, num_clases: int) -> dict:
+        """Fase 1: títulos y tipo de criterio. Sin esto no hay curso."""
         try:
-            data = self._llm.chat_json(
-                SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"),
-                user, temperature=0.4,
+            return self._llm.chat_json(
+                SYSTEM_INDICE + "\n\n" + skill("profesor_paciente.md"),
+                f"{contexto}\n\nNÚMERO EXACTO DE CLASES: {num_clases}",
+                temperature=0.4,
+                validar=_indice_valido,
             )
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 
-        clases = self._sanear_clases(
-            data.get("clases") or [], num_clases, rutas_reales=[f.path for f in files]
+    def _pedir_detalle(self, contexto: str, lote: list[dict], primero: int) -> dict[int, dict]:
+        """Fase 2: contenido y quiz de un lote. Si falla, se degrada, no se cae."""
+        pedido = "\n".join(
+            f"- Clase {primero + i}: «{c.get('titulo')}» · objetivo: {c.get('objetivo')} "
+            f"· tipo de criterio: {c.get('tipo') or 'reflexion'}"
+            for i, c in enumerate(lote)
         )
-        if not clases:
-            raise AuditError("El diseñador de cursos no devolvió clases válidas.")
-        return Syllabus(
-            proyecto=proyecto,
-            arquetipo=arquetipo,
-            titulo_curso=str(data.get("titulo_curso") or f"Aprende con {proyecto}"),
-            resumen=str(data.get("resumen") or ""),
-            clases=clases,
-        )
+        try:
+            data = self._llm.chat_json(
+                SYSTEM_DETALLE + "\n\n" + skill("profesor_paciente.md"),
+                f"{contexto}\n\nESCRIBE EL CONTENIDO DE ESTAS CLASES:\n{pedido}",
+                temperature=0.4,
+            )
+        except LLMError as exc:
+            # Degradar es correcto aquí: estas clases se quedan con su título y
+            # objetivo del índice. Perder el lote no debe costar el curso entero.
+            logger.warning(
+                "Lote de clases %d-%d sin detalle (%s); se quedan con el índice.",
+                primero, primero + len(lote) - 1, exc,
+            )
+            return {}
+
+        salida: dict[int, dict] = {}
+        for c in data.get("clases") or []:
+            try:
+                salida[int(c.get("numero"))] = c
+            except (TypeError, ValueError):
+                continue
+        return salida
+
+    @staticmethod
+    def _fusionar(cabecera: dict, detalle: dict) -> dict:
+        """Une índice y detalle en la forma que espera `_sanear_clases`."""
+        criterio = dict(detalle.get("criterio") or {})
+        # El TIPO manda desde el índice: es quien diseñó el arco del curso.
+        criterio["tipo"] = cabecera.get("tipo") or criterio.get("tipo") or "reflexion"
+        return {
+            "titulo": cabecera.get("titulo"),
+            "objetivo": cabecera.get("objetivo"),
+            "concepto_clave": cabecera.get("concepto_clave"),
+            "contenido": detalle.get("contenido"),
+            "reto": detalle.get("reto"),
+            "criterio": criterio,
+        }
 
     @staticmethod
     def _archivo_real(propuesto: str, rutas_reales: list[str]) -> str:

@@ -1,4 +1,28 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  CircleCheckBig,
+  FlaskConical,
+  GraduationCap,
+  Lightbulb,
+  LoaderCircle,
+  Lock,
+  OctagonX,
+  RotateCw,
+  Search,
+  Send,
+  Target,
+  TriangleAlert,
+  Trophy,
+  User,
+  UserRound,
+  Wrench,
+} from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import {
   ApiError,
@@ -20,6 +44,10 @@ import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat, MisionClase 
  * proyecto del alumno, clase por clase, y no lo deja avanzar hasta comprobar
  * que aprendió (quiz sobre su código, un cambio, su repo o su URL vivos). Es
  * lo que ningún chatbot gratis hace: enseña TU sistema y revisa TU tarea.
+ *
+ * Visualmente sigue el sistema de diseño de `tailwind.config.js`: un solo
+ * color de marca, cero gradientes, radios de 6-8px, sombras teñidas e iconos
+ * vectoriales monocromos (nunca emojis como iconografía).
  */
 export function ProfesorChat({
   projectName,
@@ -146,7 +174,7 @@ export function ProfesorChat({
     } catch (err) {
       setMensajes((m) => [
         ...m,
-        { rol: "profesor", texto: "😅 " + (err instanceof ApiError ? err.message : "Algo falló, reintenta.") },
+        { rol: "profesor", texto: err instanceof ApiError ? err.message : "Algo falló, reintenta." },
       ]);
     } finally {
       setEnviando(false);
@@ -157,8 +185,8 @@ export function ProfesorChat({
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
-          <p className="mt-4 text-sm text-slate-500">{g.preparando}</p>
+          <LoaderCircle className="mx-auto h-7 w-7 animate-spin text-brand-600" strokeWidth={2} />
+          <p className="mt-4 text-sm text-ink-muted">{g.preparando}</p>
         </div>
       </div>
     );
@@ -172,8 +200,9 @@ export function ProfesorChat({
 
   if (error && !curso) {
     return (
-      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">
-        ⚠ {error}
+      <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <TriangleAlert className="mt-px h-4 w-4 shrink-0" strokeWidth={2} />
+        <span>{error}</span>
       </div>
     );
   }
@@ -182,26 +211,35 @@ export function ProfesorChat({
   const clase = curso.clases.find((c) => c.numero === claseActiva);
   const completadas = new Set(curso.progreso.completadas);
   const maxAbierta = curso.progreso.clase_actual;
+  const pct = (completadas.size / curso.progreso.total_clases) * 100;
 
   return (
     <div className="space-y-4">
-      {/* Cabecera del curso */}
-      <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-emerald-500 p-5 text-white shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-white/80">🎓 {g.tuCurso}</p>
-        <h1 className="mt-1 text-xl font-bold">{curso.titulo_curso}</h1>
-        <p className="mt-1 text-sm text-white/90">{curso.resumen}</p>
-        <div className="mt-3">
-          <div className="mb-1 flex justify-between text-xs font-semibold">
-            <span>{g.progreso}</span>
-            <span>
+      {/* Cabecera del curso: fondo plano, sin gradiente. */}
+      <div className="rounded-lg bg-ink p-6 text-white">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/60">
+          <GraduationCap className="h-3.5 w-3.5" strokeWidth={2.2} />
+          {g.tuCurso}
+        </p>
+        <h1 className="mt-2 text-heading text-white">{curso.titulo_curso}</h1>
+        <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-white/70">{curso.resumen}</p>
+        <div className="mt-5">
+          <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+            <span className="text-white/60">{g.progreso}</span>
+            <span className="flex items-center gap-1.5 tabular-nums text-white/90">
               {completadas.size}/{curso.progreso.total_clases}
-              {curso.progreso.graduado && " · 🏆 " + g.graduado}
+              {curso.progreso.graduado && (
+                <span className="flex items-center gap-1 text-accent">
+                  <Trophy className="h-3.5 w-3.5" strokeWidth={2.2} />
+                  {g.graduado}
+                </span>
+              )}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/30">
+          <div className="h-1 overflow-hidden rounded-sm bg-white/15">
             <div
-              className="h-full rounded-full bg-white transition-all"
-              style={{ width: `${(completadas.size / curso.progreso.total_clases) * 100}%` }}
+              className="h-full rounded-sm bg-accent transition-all duration-500"
+              style={{ width: `${pct}%` }}
             />
           </div>
         </div>
@@ -228,29 +266,35 @@ export function ProfesorChat({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
         {/* Panel de clases */}
-        <aside className="space-y-1.5">
+        <aside className="space-y-1">
           {curso.clases.map((c) => {
             const hecha = completadas.has(c.numero);
             const bloqueada = c.numero > maxAbierta;
             const activa = c.numero === claseActiva;
+            const Icono = hecha ? CircleCheckBig : bloqueada ? Lock : activa ? BookOpen : Circle;
             return (
               <button
                 key={c.numero}
                 onClick={() => !bloqueada && cambiarClase(c.numero)}
                 disabled={bloqueada}
-                className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                className={`flex w-full items-start gap-2.5 rounded px-3 py-2.5 text-left text-sm transition ${
                   activa
-                    ? "border-brand-400 bg-brand-50 font-semibold text-brand-800"
+                    ? "bg-brand-50 font-semibold text-brand-800 shadow-[inset_2px_0_0_0_#027E6F]"
                     : bloqueada
-                      ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-brand-200"
+                      ? "cursor-not-allowed text-ink-faint/60"
+                      : "text-ink-body hover:bg-surface-muted"
                 }`}
               >
-                <span className="text-base">
-                  {hecha ? "✅" : bloqueada ? "🔒" : activa ? "📖" : "⭕"}
-                </span>
-                <span className="flex-1">
-                  <span className="block text-xs text-slate-400">{g.clase} {c.numero}</span>
+                <Icono
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${
+                    hecha ? "text-brand-600" : activa ? "text-brand-700" : "text-ink-faint"
+                  }`}
+                  strokeWidth={2}
+                />
+                <span className="flex-1 leading-snug">
+                  <span className="block text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                    {g.clase} {c.numero}
+                  </span>
                   {c.titulo}
                 </span>
               </button>
@@ -259,17 +303,20 @@ export function ProfesorChat({
         </aside>
 
         {/* Chat de la clase */}
-        <section className="flex min-h-[60vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex-1 space-y-3 overflow-y-auto p-4" style={{ maxHeight: "60vh" }}>
+        <section className="flex min-h-[60vh] flex-col overflow-hidden rounded-lg bg-white shadow-card">
+          <div className="flex-1 space-y-4 overflow-y-auto p-5" style={{ maxHeight: "60vh" }}>
             {mensajes.map((m, i) => (
               <Burbuja key={i} mensaje={m} />
             ))}
             {enviando && (
-              <div className="flex items-center gap-2 text-sm text-slate-400">
+              <div className="flex items-center gap-2.5 text-sm text-ink-faint">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-brand-50">
+                  <GraduationCap className="h-4 w-4 text-brand-600" strokeWidth={2} />
+                </span>
                 <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: "0ms" }} />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: "150ms" }} />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: "300ms" }} />
+                  <span className="h-1 w-1 animate-bounce rounded-sm bg-ink-faint" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1 w-1 animate-bounce rounded-sm bg-ink-faint" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1 w-1 animate-bounce rounded-sm bg-ink-faint" style={{ animationDelay: "300ms" }} />
                 </span>
                 {g.profeEscribiendo}
               </div>
@@ -294,21 +341,23 @@ export function ProfesorChat({
           )}
 
           {/* Entrada del chat */}
-          <div className="flex gap-2 border-t border-slate-200 p-3">
+          <div className="flex gap-2 border-t border-black/[0.07] p-3">
             <input
               value={entrada}
               onChange={(e) => setEntrada(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && enviar()}
               placeholder={g.preguntaAlProfe}
               disabled={enviando}
-              className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:bg-white focus:outline-none"
+              className="flex-1 rounded border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink-body transition placeholder:text-ink-faint focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/15"
             />
             <button
               onClick={() => void enviar()}
               disabled={enviando || !entrada.trim()}
-              className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-700 disabled:opacity-50"
+              aria-label={g.enviar}
+              className="inline-flex items-center gap-1.5 rounded bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-40"
             >
               {g.enviar}
+              <Send className="h-3.5 w-3.5" strokeWidth={2.2} />
             </button>
           </div>
         </section>
@@ -332,10 +381,11 @@ function DiagnosticoBanner({
   const [relanzando, setRelanzando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const estilo = {
-    funciona: { borde: "border-emerald-200", fondo: "bg-emerald-50", texto: "text-emerald-800", icono: "✅", titulo: g.diagFunciona },
-    parcial: { borde: "border-amber-200", fondo: "bg-amber-50", texto: "text-amber-800", icono: "⚠️", titulo: g.diagParcial },
-    vacio: { borde: "border-red-200", fondo: "bg-red-50", texto: "text-red-800", icono: "🛑", titulo: g.diagVacio },
+    funciona: { borde: "border-brand-200", fondo: "bg-brand-50", texto: "text-brand-800", icono: CircleCheckBig, tinte: "text-brand-600", titulo: g.diagFunciona },
+    parcial: { borde: "border-amber-200", fondo: "bg-amber-50", texto: "text-amber-900", icono: TriangleAlert, tinte: "text-amber-600", titulo: g.diagParcial },
+    vacio: { borde: "border-red-200", fondo: "bg-red-50", texto: "text-red-900", icono: OctagonX, tinte: "text-red-600", titulo: g.diagVacio },
   }[d.estado];
+  const Icono = estilo.icono;
 
   const relanzar = async () => {
     setRelanzando(true);
@@ -352,16 +402,19 @@ function DiagnosticoBanner({
   };
 
   return (
-    <div className={`rounded-2xl border ${estilo.borde} ${estilo.fondo} p-4`}>
+    <div className={`rounded-lg border ${estilo.borde} ${estilo.fondo} p-4`}>
       <div className="flex items-start gap-3">
-        <span className="text-xl">{estilo.icono}</span>
+        <Icono className={`mt-0.5 h-5 w-5 shrink-0 ${estilo.tinte}`} strokeWidth={2} />
         <div className="flex-1">
-          <p className={`text-sm font-bold ${estilo.texto}`}>
+          <p className={`text-sm font-semibold ${estilo.texto}`}>
             {g.diagTitulo}: {estilo.titulo}
           </p>
-          <p className={`mt-1 text-sm ${estilo.texto}`}>{d.veredicto}</p>
+          <p className={`mt-1 text-sm leading-relaxed ${estilo.texto}`}>{d.veredicto}</p>
           {d.lo_que_ve_el_usuario && (
-            <p className="mt-1 text-xs text-slate-500">👤 {g.diagVeUsuario}: {d.lo_que_ve_el_usuario}</p>
+            <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-muted">
+              <User className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              <span>{g.diagVeUsuario}: {d.lo_que_ve_el_usuario}</span>
+            </p>
           )}
           {d.problemas.length > 0 && (
             <ul className={`mt-2 list-disc space-y-0.5 pl-5 text-xs ${estilo.texto}`}>
@@ -371,18 +424,22 @@ function DiagnosticoBanner({
             </ul>
           )}
           {d.siguiente_paso && (
-            <p className={`mt-2 text-sm font-semibold ${estilo.texto}`}>👉 {d.siguiente_paso}</p>
+            <p className={`mt-2.5 flex items-start gap-1.5 text-sm font-semibold ${estilo.texto}`}>
+              <ArrowRight className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} />
+              <span>{d.siguiente_paso}</span>
+            </p>
           )}
           {d.estado !== "funciona" && (
             <button
               onClick={() => void relanzar()}
               disabled={relanzando}
-              className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-900 disabled:opacity-50"
+              className="mt-3 inline-flex items-center gap-1.5 rounded bg-ink px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-ink-body disabled:opacity-50"
             >
-              {relanzando ? g.relanzando2 : "🔁 " + g.relanzar}
+              <RotateCw className={`h-3.5 w-3.5 ${relanzando ? "animate-spin" : ""}`} strokeWidth={2.2} />
+              {relanzando ? g.relanzando2 : g.relanzar}
             </button>
           )}
-          {aviso && <p className="mt-2 whitespace-pre-wrap text-xs font-medium text-slate-600">{aviso}</p>}
+          {aviso && <p className="mt-2 whitespace-pre-wrap text-xs font-medium text-ink-muted">{aviso}</p>}
         </div>
       </div>
     </div>
@@ -418,8 +475,9 @@ function NivelacionPanel({
 
   if (msg) {
     return (
-      <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm text-brand-800">
-        👨‍🏫 {msg}
+      <div className="flex items-start gap-2.5 rounded-lg border border-brand-200 bg-brand-50 p-4 text-sm text-brand-800">
+        <GraduationCap className="mt-px h-4 w-4 shrink-0 text-brand-600" strokeWidth={2} />
+        <span>{msg}</span>
       </div>
     );
   }
@@ -431,34 +489,37 @@ function NivelacionPanel({
   ];
 
   return (
-    <div className="rounded-2xl border border-brand-200 bg-white p-4 shadow-sm">
-      <p className="text-sm font-bold text-slate-700">👋 {g.nivelTitulo}</p>
-      <p className="mt-1 text-sm text-slate-500">{g.nivelIntro}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
+    <div className="rounded-lg bg-white p-5 shadow-card">
+      <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <UserRound className="h-4 w-4 text-brand-600" strokeWidth={2} />
+        {g.nivelTitulo}
+      </p>
+      <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">{g.nivelIntro}</p>
+      <div className="mt-3.5 flex flex-wrap gap-2">
         {rapidas.map(([label, frase]) => (
           <button
             key={label}
             onClick={() => void enviar(frase)}
             disabled={enviando}
-            className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:border-brand-300 disabled:opacity-50"
+            className="rounded border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink-body transition hover:border-brand-600 hover:text-brand-700 disabled:opacity-50"
           >
             {label}
           </button>
         ))}
       </div>
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3.5 flex gap-2">
         <input
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void enviar(texto)}
           placeholder={g.nivelPlaceholder}
           disabled={enviando}
-          className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-brand-300 focus:bg-white focus:outline-none"
+          className="flex-1 rounded border border-black/10 bg-white px-3.5 py-2 text-sm text-ink-body transition placeholder:text-ink-faint focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/15"
         />
         <button
           onClick={() => void enviar(texto)}
           disabled={enviando || !texto.trim()}
-          className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-700 disabled:opacity-50"
+          className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-40"
         >
           {enviando ? "…" : g.enviar}
         </button>
@@ -469,16 +530,25 @@ function NivelacionPanel({
 
 function Burbuja({ mensaje }: { mensaje: MensajeChat }) {
   const esProfe = mensaje.rol === "profesor";
+
+  if (esProfe) {
+    return (
+      <div className="flex gap-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-brand-50">
+          <GraduationCap className="h-4 w-4 text-brand-600" strokeWidth={2} />
+        </span>
+        {/* 66ch es la medida legible clásica: a 85% de ancho la línea se iba a
+            ~140 caracteres y el ojo pierde el renglón al volver. */}
+        <div className="max-w-[66ch] whitespace-pre-wrap rounded-lg rounded-tl-sm bg-surface-muted px-4 py-2.5 text-sm leading-relaxed text-ink-body">
+          {mensaje.texto}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex ${esProfe ? "justify-start" : "justify-end"}`}>
-      <div
-        className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-          esProfe
-            ? "rounded-tl-sm border border-brand-100 bg-brand-50 text-slate-700"
-            : "rounded-br-sm bg-brand-600 text-white"
-        }`}
-      >
-        {esProfe && <span className="mb-0.5 block text-xs font-semibold text-brand-500">👨‍🏫 Profe</span>}
+    <div className="flex justify-end">
+      <div className="max-w-[66ch] whitespace-pre-wrap rounded-lg rounded-br-sm bg-brand-600 px-4 py-2.5 text-sm leading-relaxed text-white">
         {mensaje.texto}
       </div>
     </div>
@@ -547,9 +617,10 @@ function SuperarClase({
 
   if (yaHecha && !abierto) {
     return (
-      <div className="border-t border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700">
-        ✅ {g.claseSuperada}
-        <button onClick={() => setAbierto(true)} className="ml-2 text-xs font-medium text-emerald-600 underline">
+      <div className="flex items-center justify-center gap-2 border-t border-brand-100 bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-800">
+        <CircleCheckBig className="h-4 w-4 text-brand-600" strokeWidth={2} />
+        {g.claseSuperada}
+        <button onClick={() => setAbierto(true)} className="text-xs font-medium text-brand-700 underline">
           {g.repasar}
         </button>
       </div>
@@ -561,33 +632,51 @@ function SuperarClase({
     return (
       <button
         onClick={() => setExpandido(true)}
-        className="flex w-full items-center justify-between border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+        className="flex w-full items-center justify-between border-t border-black/[0.07] bg-surface-sunken px-4 py-3 text-sm font-semibold text-ink-body transition hover:bg-surface-muted"
       >
-        <span>🎯 {g.listoSuperar}</span>
-        <span className="text-xs font-medium text-brand-600">{g.abrirReto} ▾</span>
+        <span className="flex items-center gap-2">
+          <Target className="h-4 w-4 text-brand-600" strokeWidth={2} />
+          {g.listoSuperar}
+        </span>
+        <span className="flex items-center gap-1 text-xs font-semibold text-brand-700">
+          {g.abrirReto}
+          <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.2} />
+        </span>
       </button>
     );
   }
 
   return (
-    <div className="border-t border-slate-200 bg-slate-50/70 p-4">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-bold text-slate-700">🎯 {g.paraAvanzar}: <span className="font-normal">{criterio.descripcion}</span></p>
-        <button onClick={() => setExpandido(false)} className="shrink-0 text-xs font-medium text-slate-400 hover:text-slate-600">
-          {g.ocultar} ▴
+    <div className="border-t border-black/[0.07] bg-surface-muted p-4">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <p className="flex items-start gap-2 text-sm font-semibold text-ink">
+          <Target className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" strokeWidth={2} />
+          <span>
+            {g.paraAvanzar}: <span className="font-normal text-ink-body">{criterio.descripcion}</span>
+          </span>
+        </p>
+        <button
+          onClick={() => setExpandido(false)}
+          className="flex shrink-0 items-center gap-1 text-xs font-medium text-ink-faint transition hover:text-ink-body"
+        >
+          {g.ocultar}
+          <ChevronUp className="h-3.5 w-3.5" strokeWidth={2.2} />
         </button>
       </div>
 
       {/* Clase que exige tocar código: el aula es el sitio donde se hace, así
           que se le dice qué archivo y qué debería ver, y se le lleva allí. */}
       {esCambio && onIrAlAula && (
-        <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/70 p-3">
-          <p className="text-sm font-bold text-brand-800">🛠️ {g.tocaCodigo}</p>
+        <div className="mb-3 rounded border border-brand-200 bg-brand-50 p-3.5">
+          <p className="flex items-center gap-2 text-sm font-semibold text-brand-800">
+            <Wrench className="h-4 w-4 text-brand-600" strokeWidth={2} />
+            {g.tocaCodigo}
+          </p>
           {criterio.archivo && (
-            <p className="mt-1 font-mono text-xs text-brand-700">{criterio.archivo}</p>
+            <p className="mt-1.5 font-mono text-xs text-brand-700">{criterio.archivo}</p>
           )}
           {criterio.resultado_esperado && (
-            <p className="mt-1.5 text-xs leading-snug text-slate-600">
+            <p className="mt-1.5 text-xs leading-snug text-ink-muted">
               <span className="font-semibold">{g.deberiasVer}:</span> {criterio.resultado_esperado}
             </p>
           )}
@@ -601,26 +690,29 @@ function SuperarClase({
                 pista: criterio.pista,
               })
             }
-            className="mt-2.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-700"
+            className="mt-3 inline-flex items-center gap-1.5 rounded bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
           >
-            {g.irAlAula} →
+            {g.irAlAula}
+            <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.2} />
           </button>
         </div>
       )}
 
       {esQuiz && (
-        <div className="space-y-3">
+        // Las opciones son frases cortas: a todo el ancho quedaban perdidas en
+        // un renglón de 1000px con el texto pegado al borde izquierdo.
+        <div className="max-w-2xl space-y-3.5">
           {criterio.quiz.map((q, qi) => (
             <div key={qi}>
-              <p className="mb-1 text-sm font-medium text-slate-700">{qi + 1}. {q.pregunta}</p>
+              <p className="mb-1.5 text-sm font-medium text-ink">{qi + 1}. {q.pregunta}</p>
               <div className="flex flex-col gap-1.5">
                 {q.opciones.map((op, oi) => (
                   <label
                     key={oi}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition ${
+                    className={`flex cursor-pointer items-center gap-2.5 rounded border px-3 py-2 text-sm transition ${
                       respuestas[qi] === oi
-                        ? "border-brand-400 bg-brand-50 text-brand-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-brand-200"
+                        ? "border-brand-600 bg-brand-50 text-brand-800"
+                        : "border-black/10 bg-white text-ink-body hover:border-brand-300"
                     }`}
                   >
                     <input
@@ -636,23 +728,27 @@ function SuperarClase({
               </div>
             </div>
           ))}
-          <p className={`text-xs font-semibold ${quizCompleto ? "text-emerald-600" : "text-slate-400"}`}>
-            {quizCompleto ? "✓ " : ""}
+          <p
+            className={`flex items-center gap-1 text-xs font-semibold ${
+              quizCompleto ? "text-brand-700" : "text-ink-faint"
+            }`}
+          >
+            {quizCompleto && <Check className="h-3.5 w-3.5" strokeWidth={2.4} />}
             {g.marcadas} {quizRespondidas}/{criterio.quiz.length}
           </p>
         </div>
       )}
 
       {(esTexto || esUrl || esRepo) && (
-        <div>
-          {esUrl && <p className="mb-1 text-xs text-slate-500">{g.pegaUrl}</p>}
-          {esRepo && <p className="mb-1 text-xs text-slate-500">{g.pegaRepo}</p>}
+        <div className="max-w-2xl">
+          {esUrl && <p className="mb-1.5 text-xs text-ink-muted">{g.pegaUrl}</p>}
+          {esRepo && <p className="mb-1.5 text-xs text-ink-muted">{g.pegaRepo}</p>}
           {esUrl || esRepo ? (
             <input
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
               placeholder={esUrl ? "https://mi-pagina.netlify.app" : "https://github.com/tu-usuario/tu-proyecto"}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-brand-300 focus:outline-none"
+              className="w-full rounded border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink-body transition placeholder:text-ink-faint focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/15"
             />
           ) : (
             <textarea
@@ -660,10 +756,15 @@ function SuperarClase({
               onChange={(e) => setTexto(e.target.value)}
               placeholder={g.tuRespuesta}
               rows={2}
-              className="w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-brand-300 focus:outline-none"
+              className="w-full resize-y rounded border border-black/10 bg-white px-3.5 py-2.5 text-sm text-ink-body transition placeholder:text-ink-faint focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/15"
             />
           )}
-          {criterio.pista && <p className="mt-1 text-xs text-slate-400">💡 {criterio.pista}</p>}
+          {criterio.pista && (
+            <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-faint">
+              <Lightbulb className="mt-px h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              <span>{criterio.pista}</span>
+            </p>
+          )}
         </div>
       )}
 
@@ -671,23 +772,35 @@ function SuperarClase({
         onClick={() => void revisar()}
         disabled={verificando || !puedeRevisar}
         title={!puedeRevisar && esQuiz ? g.completaQuiz : undefined}
-        className="mt-3 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-4 inline-flex items-center gap-1.5 rounded bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {verificando ? g.revisando : "🧪 " + g.revisame}
+        {verificando ? (
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} />
+        ) : (
+          <FlaskConical className="h-3.5 w-3.5" strokeWidth={2.2} />
+        )}
+        {verificando ? g.revisando : g.revisame}
       </button>
       {!puedeRevisar && esQuiz && (
-        <p className="mt-1.5 text-xs text-slate-400">🔒 {g.completaQuiz}</p>
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-faint">
+          <Lock className="h-3.5 w-3.5" strokeWidth={2} />
+          {g.completaQuiz}
+        </p>
       )}
 
       {resultado && (
-        <p
-          className={`mt-3 whitespace-pre-wrap rounded-xl p-3 text-sm font-semibold ${
-            resultado.ok ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+        <div
+          className={`mt-3 flex items-start gap-2.5 rounded p-3.5 text-sm font-medium ${
+            resultado.ok ? "bg-brand-50 text-brand-800" : "bg-amber-50 text-amber-900"
           }`}
         >
-          {resultado.ok ? "🎉 " : "🔍 "}
-          {resultado.msg}
-        </p>
+          {resultado.ok ? (
+            <CircleCheckBig className="mt-px h-4 w-4 shrink-0 text-brand-600" strokeWidth={2} />
+          ) : (
+            <Search className="mt-px h-4 w-4 shrink-0 text-amber-600" strokeWidth={2} />
+          )}
+          <span className="whitespace-pre-wrap">{resultado.msg}</span>
+        </div>
       )}
     </div>
   );

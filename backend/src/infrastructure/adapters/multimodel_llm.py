@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from typing import Callable
 
 from openai import (
     APIConnectionError,
@@ -87,9 +88,28 @@ class MultiModelLLM:
     # ------------------------------------------------------------------
     # API pública
     # ------------------------------------------------------------------
-    def chat_json(self, system: str, user: str, temperature: float = 0.2) -> dict:
-        """Devuelve la respuesta parseada como dict (modo JSON)."""
-        raw = self._chat(system, user, temperature, want_json=True)
+    def chat_json(
+        self,
+        system: str,
+        user: str,
+        temperature: float = 0.2,
+        validar: Callable[[dict], object] | None = None,
+    ) -> dict:
+        """Devuelve la respuesta parseada como dict (modo JSON).
+
+        Args:
+            validar: comprobación del CONTRATO de la respuesta, que se ejecuta
+                dentro del bucle de fallback. Recibe el dict y debe lanzar una
+                excepción si no cumple (encaja tal cual `MiModelo.model_validate`).
+
+                Sin esto, el bucle aceptaba cualquier JSON *parseable* aunque
+                tuviera la forma equivocada, y el fallo estallaba después, ya
+                fuera del bucle: los proveedores restantes no se probaban y la
+                petición entera moría. Es el modo de fallo típico de los modelos
+                gratuitos —JSON impecable, forma inventada— y se lo comía el
+                usuario en forma de 502.
+        """
+        raw = self._chat(system, user, temperature, want_json=True, validar=validar)
         return self._parse_json(raw)
 
     def chat_text(self, system: str, user: str, temperature: float = 0.2) -> str:
@@ -99,7 +119,14 @@ class MultiModelLLM:
     # ------------------------------------------------------------------
     # Núcleo: fallback entre proveedores
     # ------------------------------------------------------------------
-    def _chat(self, system: str, user: str, temperature: float, want_json: bool) -> str:
+    def _chat(
+        self,
+        system: str,
+        user: str,
+        temperature: float,
+        want_json: bool,
+        validar: Callable[[dict], object] | None = None,
+    ) -> str:
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -131,7 +158,7 @@ class MultiModelLLM:
                 continue
 
             content = self._try_provider(
-                provider, client, messages, temperature, response_format, errors, want_json
+                provider, client, messages, temperature, response_format, errors, want_json, validar
             )
             if content is not None:
                 return content
@@ -145,7 +172,7 @@ class MultiModelLLM:
             )
             time.sleep(min(wait, 61))
             content = self._try_provider(
-                provider, client, messages, temperature, response_format, errors, want_json
+                provider, client, messages, temperature, response_format, errors, want_json, validar
             )
             if content is not None:
                 return content
@@ -162,13 +189,15 @@ class MultiModelLLM:
         response_format: dict | None,
         errors: list[str],
         want_json: bool = False,
+        validar: Callable[[dict], object] | None = None,
     ) -> str | None:
         """Intenta una llamada. Devuelve el contenido, o None si hay que seguir.
 
         La respuesta se VALIDA aquí, dentro del bucle de fallback: si viene
-        cortada o su JSON no se puede parsear, se descarta y el siguiente
-        proveedor tiene su oportunidad. Validar fuera del bucle hacía que una
-        respuesta mala de un proveedor tumbara toda la tarea.
+        cortada, su JSON no se puede parsear o NO CUMPLE EL CONTRATO que espera
+        quien llama, se descarta y el siguiente proveedor tiene su oportunidad.
+        Validar fuera del bucle hacía que una respuesta mala de un proveedor
+        tumbara toda la tarea.
         """
         try:
             response = client.chat.completions.create(
@@ -203,12 +232,29 @@ class MultiModelLLM:
         # cuenta como fallo de ESTE proveedor y se prueba el siguiente.
         if want_json:
             try:
-                self._parse_json(choice.message.content)
+                datos = self._parse_json(choice.message.content)
             except LLMError as exc:
                 logger.warning("Proveedor '%s' devolvió JSON inválido (%s). Siguiente...",
                                provider.name, exc)
                 errors.append(f"{provider.name}: JSON inválido")
                 return None
+
+            # Y aquí el CONTRATO: un JSON perfecto con la forma equivocada es
+            # tan inútil como uno roto. Se captura `Exception` a propósito —
+            # el validador es código de quien llama y puede lanzar lo que sea;
+            # en un bucle de fallback, cualquier fallo suyo significa "este
+            # proveedor no sirve, prueba el siguiente", nunca tumbar la tarea.
+            if validar is not None:
+                try:
+                    validar(datos)
+                except Exception as exc:  # noqa: BLE001
+                    motivo = str(exc).replace("\n", " ")[:200]
+                    logger.warning(
+                        "Proveedor '%s' no cumple el contrato (%s: %s). Siguiente...",
+                        provider.name, type(exc).__name__, motivo,
+                    )
+                    errors.append(f"{provider.name}: no cumple el contrato ({motivo})")
+                    return None
 
         # Se contabiliza siempre: aunque el proveedor no informe del consumo,
         # la petición cuenta para su límite de peticiones/minuto.
