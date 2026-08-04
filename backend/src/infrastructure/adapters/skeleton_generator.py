@@ -41,29 +41,51 @@ _SYSTEM = (
     "encargo los nombra explícitamente (\"con MySQL\", \"en PostgreSQL\"); si no "
     "se nombra ninguna, pon 'sqlite'. Quien pide un motor concreto suele tenerlo "
     "ya en su empresa: darle otro es no entregarle lo que pidió.\n\n"
+    "CATÁLOGOS (la diferencia entre una lista y un negocio): si el encargo "
+    "nombra entidades DE APOYO que administra el dueño —los barberos de la "
+    "barbería, los servicios con su precio, las categorías, las mesas, las "
+    "canchas— decláralas en 'catalogos' (máximo 3, con 2-5 ejemplos cada uno) y "
+    "enlázalas desde la entidad principal con un campo "
+    '{"tipo":"relacion","catalogo":"Barbero"}. Así el formulario ofrece un '
+    "desplegable con los ítems reales y el ADMINISTRADOR los gestiona desde su "
+    "panel. El primer campo de cada catálogo es su nombre visible (texto). En "
+    "los 'ejemplos' de la entidad principal usa EXACTAMENTE los nombres "
+    "sembrados en los catálogos. NO conviertas en catálogo lo que cada usuario "
+    "crea para sí (eso es la entidad principal), ni uses 'relacion' para listas "
+    "fijas de 2-4 valores (eso es 'opcion').\n\n"
     "Forma del JSON:\n"
     "{\n"
     '  "tipo": "crud_login|landing|otro",\n'
     '  "dominio": {\n'
-    '    "app_name": "Bitácora de Catas",\n'
-    '    "entidad": "Cata", "entidad_plural": "Catas",\n'
+    '    "app_name": "Barbería Estilo",\n'
+    '    "entidad": "Cita", "entidad_plural": "Citas",\n'
     '    "tono": "cálido|frío|sobrio|vivo|neutro",\n'
     '    "motor": "sqlite|mysql|postgres",\n'
+    '    "catalogos": [\n'
+    '      {"nombre":"Barbero","plural":"Barberos",\n'
+    '       "campos":[{"nombre":"nombre","etiqueta":"Nombre","tipo":"texto","obligatorio":true}],\n'
+    '       "ejemplos":[{"nombre":"Ana López"},{"nombre":"Luis Rivas"}]},\n'
+    '      {"nombre":"Servicio","plural":"Servicios",\n'
+    '       "campos":[{"nombre":"nombre","etiqueta":"Servicio","tipo":"texto","obligatorio":true},\n'
+    '                 {"nombre":"precio","etiqueta":"Precio","tipo":"decimal","minimo":0}],\n'
+    '       "ejemplos":[{"nombre":"Corte clásico","precio":25000}]}\n'
+    "    ],\n"
     '    "campos": [\n'
-    '      {"nombre":"cafe","etiqueta":"Café","tipo":"texto","obligatorio":true},\n'
-    '      {"nombre":"tueste","etiqueta":"Tueste","tipo":"opcion",'
-    '"opciones":["Claro","Medio","Oscuro"],"obligatorio":true},\n'
-    '      {"nombre":"puntaje","etiqueta":"Puntuación","tipo":"entero",'
-    '"minimo":1,"maximo":100,"obligatorio":true}\n'
+    '      {"nombre":"cliente","etiqueta":"Cliente","tipo":"texto","obligatorio":true},\n'
+    '      {"nombre":"barbero","etiqueta":"Barbero","tipo":"relacion","catalogo":"Barbero","obligatorio":true},\n'
+    '      {"nombre":"servicio","etiqueta":"Servicio","tipo":"relacion","catalogo":"Servicio","obligatorio":true},\n'
+    '      {"nombre":"fecha","etiqueta":"Fecha","tipo":"fecha","obligatorio":true},\n'
+    '      {"nombre":"hora","etiqueta":"Hora","tipo":"opcion",'
+    '"opciones":["09:00","10:00","11:00","15:00","16:00"],"obligatorio":true}\n'
     "    ],\n"
     '    "calculos": [\n'
-    '      {"etiqueta":"Puntuación media","operacion":"promedio","campo":"puntaje"},\n'
-    '      {"etiqueta":"Catas registradas","operacion":"conteo"}\n'
+    '      {"etiqueta":"Citas registradas","operacion":"conteo"}\n'
     "    ],\n"
     '    "ejemplos": [\n'
-    '      {"cafe":"Finca La Esperanza, Huila","tueste":"Medio","puntaje":87},\n'
-    '      {"cafe":"Nariño lavado, lote 12","tueste":"Claro","puntaje":91},\n'
-    '      {"cafe":"Sierra Nevada honey","tueste":"Oscuro","puntaje":78}\n'
+    '      {"cliente":"María Restrepo","barbero":"Ana López","servicio":"Corte clásico",'
+    '"fecha":"2026-08-10","hora":"10:00"},\n'
+    '      {"cliente":"Jorge Uribe","barbero":"Luis Rivas","servicio":"Corte clásico",'
+    '"fecha":"2026-08-10","hora":"11:00"}\n'
     "    ]\n"
     "  },\n"
     '  "title":"...", "tagline":"...", "cta":"...", "sections":[{"heading":"...","text":"..."}],\n'

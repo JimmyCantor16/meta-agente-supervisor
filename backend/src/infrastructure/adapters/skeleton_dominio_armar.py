@@ -36,8 +36,10 @@ _PALETAS = {
 
 def _campos_js(d: DominioApp) -> str:
     """Descripción de los campos que consume el frontend para dibujarse."""
-    salida = [
-        {
+    salida = []
+    for c in d.campos:
+        cat = d.catalogo_de(c)
+        salida.append({
             "nombre": c.nombre,
             "etiqueta": c.etiqueta,
             "tipo": c.tipo,
@@ -46,8 +48,32 @@ def _campos_js(d: DominioApp) -> str:
             "minimo": c.minimo,
             "maximo": c.maximo,
             "ayuda": c.ayuda,
+            # El frontend referencia los catálogos por slug (así llegan de la API).
+            "catalogo": cat.slug if cat else "",
+        })
+    return json.dumps(salida, ensure_ascii=False).replace("</", "<\\/")
+
+
+def _catalogos_js(d: DominioApp) -> str:
+    """Definición de los catálogos: alimenta el panel del administrador."""
+    salida = [
+        {
+            "nombre": cat.nombre,
+            "plural": cat.plural,
+            "slug": cat.slug,
+            # La columna que hace de nombre visible en los desplegables.
+            "visible": cat.campos[0].nombre,
+            "campos": [
+                {
+                    "nombre": c.nombre,
+                    "etiqueta": c.etiqueta,
+                    "tipo": c.tipo,
+                    "obligatorio": c.obligatorio,
+                }
+                for c in cat.campos
+            ],
         }
-        for c in d.campos
+        for cat in d.catalogos
     ]
     return json.dumps(salida, ensure_ascii=False).replace("</", "<\\/")
 
@@ -67,6 +93,7 @@ def _index_html(d: DominioApp) -> str:
         },
         ensure_ascii=False,
     ).replace("</", "<\\/")
+    acento = _PALETAS.get((d.tono or "neutro").lower(), _PALETAS["neutro"])[2]
     return f"""<!doctype html>
 <html lang="es">
 <head>
@@ -74,12 +101,19 @@ def _index_html(d: DominioApp) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(d.app_name)}</title>
   <link rel="stylesheet" href="static/styles.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="static/icon.svg">
+  <meta name="theme-color" content="{acento}">
 </head>
 <body>
   <main id="app" class="wrap"></main>
   <script type="module">
     window.__APP__ = {datos};
     window.__CAMPOS__ = {_campos_js(d)};
+    window.__CATALOGOS__ = {_catalogos_js(d)};
+    // La aplicación es instalable (PWA): en el teléfono queda con su icono,
+    // como una app. La ruta es RELATIVA para funcionar también bajo /preview/.
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {{}});
   </script>
   <script type="module" src="static/js/app.js"></script>
 </body>
@@ -160,6 +194,24 @@ def _styles(d: DominioApp) -> str:
         ".item .del:hover{color:var(--alerta);background:color-mix(in srgb,var(--alerta) 10%,transparent)}\n"
         ".vacio{text-align:center;padding:1.8rem 1rem;color:var(--tinta-2);font-size:.92rem;\n"
         "  border:1px dashed var(--linea);border-radius:4px}\n"
+        "/* La vista del administrador: su insignia, sus catalogos y el dueno de cada registro */\n"
+        ".badge{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;\n"
+        "  background:color-mix(in srgb,var(--acento) 14%,transparent);color:var(--acento);\n"
+        "  border:1px solid color-mix(in srgb,var(--acento) 35%,transparent);\n"
+        "  border-radius:20px;padding:.15rem .6rem;white-space:nowrap}\n"
+        ".admin{display:grid;gap:1rem;margin-bottom:1.2rem}\n"
+        ".cat{border:1px solid var(--linea);border-radius:4px;padding: .9rem 1rem;\n"
+        "  background:color-mix(in srgb,var(--acento) 4%,transparent)}\n"
+        ".cat h2{margin:0 0 .5rem;font-size:.95rem;letter-spacing:.01em}\n"
+        ".cat-lista{list-style:none;margin:0 0 .6rem;padding:0;display:flex;flex-direction:column;gap:.3rem}\n"
+        ".cat-lista li{display:flex;justify-content:space-between;align-items:center;gap:.6rem;\n"
+        "  font-size:.88rem;padding:.3rem .5rem;background:#fff;border:1px solid var(--linea);border-radius:3px}\n"
+        ".cat-lista .del{background:transparent;border:0;color:var(--tinta-2);cursor:pointer;border-radius:3px}\n"
+        ".cat-lista .del:hover{color:var(--alerta)}\n"
+        ".cat-alta{display:flex;flex-wrap:wrap;gap:.45rem}\n"
+        ".cat-alta input{flex:1;min-width:110px;width:auto;padding:.45rem .6rem;font-size:.88rem}\n"
+        ".cat-alta button{padding:.45rem .9rem}\n"
+        ".item .dueno{align-self:center}\n"
         "@media (max-width:480px){\n"
         "  .card{padding:1.4rem 1.15rem}\n"
         "  .row{flex-direction:column}\n"
@@ -315,8 +367,96 @@ def _deploy(d: DominioApp) -> str:
     )
 
 
+def _manifest(d: DominioApp) -> str:
+    """La app es INSTALABLE (PWA): en el teléfono queda con icono propio.
+
+    Rutas y alcance RELATIVOS a propósito: así la instalación funciona igual
+    servida en la raíz que bajo el proxy `/preview/<slug>/`.
+    """
+    fondo, _, acento, *_ = _PALETAS.get((d.tono or "neutro").lower(), _PALETAS["neutro"])
+    return json.dumps(
+        {
+            "name": d.app_name,
+            "short_name": d.app_name[:12].strip(),
+            "start_url": "./",
+            "scope": "./",
+            "display": "standalone",
+            "background_color": fondo,
+            "theme_color": acento,
+            "icons": [
+                # SVG: un solo icono nítido a cualquier tamaño. Chrome y Android
+                # lo aceptan; es el público de la instalación.
+                {"src": "static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+            ],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _sw() -> str:
+    return r'''// Service worker MINIMO: lo justo para instalar y abrir sin red.
+// Los datos (/api/) van SIEMPRE a la red: una agenda vieja es peor que
+// una pantalla de "sin conexion".
+const CACHE = "app-v1";
+
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(clients.claim()));
+
+self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== "GET" || url.origin !== location.origin) return;
+  if (url.pathname.includes("/api/")) return;
+  e.respondWith(
+    fetch(e.request)
+      .then((r) => {
+        const copia = r.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copia)).catch(() => {});
+        return r;
+      })
+      .catch(() => caches.match(e.request).then((r) => r || Response.error()))
+  );
+});
+'''
+
+
+def _icono(d: DominioApp) -> str:
+    """Isotipo simple: la inicial del sistema sobre su color de acento."""
+    fondo, _, acento, *_ = _PALETAS.get((d.tono or "neutro").lower(), _PALETAS["neutro"])
+    inicial = html.escape((d.app_name.strip() or "A")[0].upper())
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+        f'<rect width="64" height="64" rx="14" fill="{acento}"/>'
+        f'<text x="32" y="43" font-family="Segoe UI,system-ui,sans-serif" font-size="34" '
+        f'font-weight="700" fill="{fondo}" text-anchor="middle">{inicial}</text>'
+        "</svg>"
+    )
+
+
 def _manual(d: DominioApp) -> str:
     campos = "\n".join(f"- **{c.etiqueta}**" for c in d.campos[:8])
+    bloque_admin = ""
+    if d.catalogos:
+        lista_cat = "\n".join(f"- **{c.plural}**" for c in d.catalogos)
+        bloque_admin = (
+            "## La cuenta del dueño (administración)\n\n"
+            "| Usuario | Contraseña |\n|---|---|\n| `admin` | `admin1234` |\n\n"
+            "**Cámbiale la contraseña cuanto antes**: es la cuenta que manda.\n\n"
+            "Al entrar como administrador ves, además de lo normal:\n\n"
+            f"- Todos los {d.entidad_plural.lower()} de todos los usuarios, con el\n"
+            "  nombre de quién hizo cada uno, y puedes cancelarlos.\n"
+            f"- La gestión de los catálogos del negocio:\n\n{lista_cat}\n\n"
+            "Lo que des de alta ahí aparece al instante en los desplegables del\n"
+            "formulario. Lo que borres, deja de ofrecerse.\n\n"
+        )
+    else:
+        # Sin catálogos también existe el admin: ve y cancela lo de todos.
+        bloque_admin = (
+            "## La cuenta del dueño (administración)\n\n"
+            "| Usuario | Contraseña |\n|---|---|\n| `admin` | `admin1234` |\n\n"
+            "**Cámbiale la contraseña cuanto antes.** Al entrar con ella ves los\n"
+            f"{d.entidad_plural.lower()} de todos los usuarios y puedes cancelarlos.\n\n"
+        )
     return (
         f"# Manual de {d.app_name}\n\n"
         f"Para qué sirve: llevar el registro de tus {d.entidad_plural.lower()}.\n\n"
@@ -329,6 +469,7 @@ def _manual(d: DominioApp) -> str:
         "Esa cuenta ya viene con ejemplos dentro, para que veas el sistema en uso\n"
         "sin tener que registrarte. También hay un botón **Ver una demostración**\n"
         "en la pantalla de entrar que hace lo mismo en un clic.\n\n"
+        + bloque_admin +
         "## Crear tu cuenta\n\n"
         "El usuario necesita 3 caracteres o más. La contraseña, 8 o más con letras\n"
         "y números, y hay que repetirla. Si algo no cuadra, el aviso sale justo\n"
@@ -338,8 +479,12 @@ def _manual(d: DominioApp) -> str:
         f"Una vez dentro, el formulario pide:\n\n{campos}\n\n"
         "Se guardan al pulsar el botón y aparecen en la lista de abajo, con el\n"
         "resumen recalculado. Cada registro se puede borrar desde la lista.\n\n"
+        "## Llévala en el teléfono\n\n"
+        "La aplicación es instalable: en Chrome (computador o Android), menú →\n"
+        "**Instalar aplicación**. Queda con su icono, a pantalla completa.\n\n"
         "## Tus datos son tuyos\n\n"
-        f"Cada cuenta ve SOLO sus {d.entidad_plural.lower()}.\n"
+        f"Cada cuenta ve SOLO sus {d.entidad_plural.lower()} (salvo el administrador,\n"
+        "que es el dueño del sistema).\n"
     )
 
 
@@ -377,7 +522,12 @@ def construir_desde_dominio(d: DominioApp) -> GeneratedProject:
         "CONFIGURE.md": _configure(d),
         "DEPLOY.md": _deploy(d),
         ".env.example": _env_example(d),
-        MARCADOR: "esqueleto por dominio v3",
+        # PWA: instalable en el teléfono, con su icono. manifest y sw viven en
+        # la RAÍZ (los sirve main.py) para que su alcance cubra la página.
+        "frontend/manifest.json": _manifest(d),
+        "frontend/sw.js": _sw(),
+        "frontend/icon.svg": _icono(d),
+        MARCADOR: "esqueleto por dominio v4",
     }
     # El compose solo tiene sentido si hay un motor que levantar aparte.
     if d.motor != "sqlite":

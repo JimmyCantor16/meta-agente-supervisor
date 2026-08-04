@@ -40,6 +40,17 @@ export async function listar() { return req("api/registros"); }
 export async function crear(datos) { return req("api/registros", { method: "POST", body: JSON.stringify(datos) }); }
 export async function borrar(id) { return req("api/registros/" + id, { method: "DELETE" }); }
 export async function resumen() { return req("api/resumen"); }
+
+// Quién soy (decide si se muestra el panel de administración) y los catálogos
+// del negocio (alimentan los desplegables y el panel del admin).
+export async function quienSoy() { return req("api/me"); }
+export async function catalogos() { return req("api/catalogos"); }
+export async function crearEnCatalogo(slug, datos) {
+  return req("api/catalogos/" + slug, { method: "POST", body: JSON.stringify(datos) });
+}
+export async function borrarDeCatalogo(slug, id) {
+  return req("api/catalogos/" + slug + "/" + id, { method: "DELETE" });
+}
 '''
 
 
@@ -294,7 +305,8 @@ def js_campos() -> str:
     return r'''// Construye y lee el formulario a partir de los campos del dominio.
 // Cada tipo tiene su control: un número no se pide con una caja de texto.
 
-export function dibujarCampos(contenedor) {
+export function dibujarCampos(contenedor, itemsCatalogos) {
+  itemsCatalogos = itemsCatalogos || {};
   for (const c of window.__CAMPOS__) {
     const id = "f_" + c.nombre;
     const label = document.createElement("label");
@@ -309,7 +321,23 @@ export function dibujarCampos(contenedor) {
     contenedor.appendChild(label);
 
     let control;
-    if (c.tipo === "opcion") {
+    if (c.tipo === "relacion") {
+      // Un desplegable con los ítems REALES del catálogo (los barberos que la
+      // dueña dio de alta), no una caja de texto libre.
+      control = document.createElement("select");
+      const vacia = document.createElement("option");
+      vacia.value = "";
+      vacia.textContent = "Elige...";
+      control.appendChild(vacia);
+      const def = (window.__CATALOGOS__ || []).find((k) => k.slug === c.catalogo) || {};
+      const visible = def.visible || "nombre";
+      for (const item of itemsCatalogos[c.catalogo] || []) {
+        const op = document.createElement("option");
+        op.value = String(item[visible] ?? "");
+        op.textContent = String(item[visible] ?? "");
+        control.appendChild(op);
+      }
+    } else if (c.tipo === "opcion") {
       control = document.createElement("select");
       const vacia = document.createElement("option");
       vacia.value = "";
@@ -393,7 +421,12 @@ export function pintarRegistro(r) {
 
 def js_board() -> str:
     return r'''// Panel principal: los cálculos, el formulario y la lista.
-import { listar, crear, borrar, resumen } from "../api.js";
+// Si quien entra es el ADMINISTRADOR, además: la vista de todos los registros
+// (con su dueño) y la gestión de los catálogos del negocio.
+import {
+  listar, crear, borrar, resumen,
+  quienSoy, catalogos, crearEnCatalogo, borrarDeCatalogo,
+} from "../api.js";
 import { clearToken } from "../state.js";
 import { dibujarCampos, leerCampos, limpiarCampos, pintarRegistro } from "../campos.js";
 
@@ -403,9 +436,11 @@ export function BoardView(onLogout) {
   el.innerHTML = `
     <div class="cab">
       <h1></h1>
+      <span class="rol"></span>
       <button class="out ghost small">Salir</button>
     </div>
     <div class="resumen"></div>
+    <div class="admin"></div>
     <form class="alta"></form>
     <p class="msg" role="status" aria-live="polite"></p>
     <ul class="lista"></ul>
@@ -419,14 +454,117 @@ export function BoardView(onLogout) {
   const lista = el.querySelector(".lista");
   const vacio = el.querySelector(".vacio");
   const cajaResumen = el.querySelector(".resumen");
+  const cajaAdmin = el.querySelector(".admin");
   const msg = el.querySelector(".msg");
 
-  dibujarCampos(form);
-  const enviar = document.createElement("button");
-  enviar.type = "submit";
-  enviar.textContent = "Añadir " + window.__APP__.entidad.toLowerCase();
-  enviar.style.marginTop = "1rem";
-  form.appendChild(enviar);
+  // El formulario se dibuja cuando se sabe quién es el usuario y qué hay en
+  // los catálogos: los desplegables necesitan los ítems reales.
+  let yo = { es_admin: false };
+  let items = {};
+
+  async function armar() {
+    const rMe = await quienSoy();
+    if (rMe.status === 401) { clearToken(); onLogout(); return; }
+    if (rMe.ok) yo = await rMe.json();
+    const rCat = await catalogos();
+    if (rCat.ok) items = itemsPorNombre(await rCat.json());
+
+    if (yo.es_admin) {
+      el.querySelector(".rol").textContent = "Administración";
+      el.querySelector(".rol").className = "rol badge";
+    }
+    form.innerHTML = "";
+    dibujarCampos(form, items);
+    const enviar = document.createElement("button");
+    enviar.type = "submit";
+    enviar.textContent = "Añadir " + window.__APP__.entidad.toLowerCase();
+    enviar.style.marginTop = "1rem";
+    form.appendChild(enviar);
+
+    pintarAdmin();
+    refrescar();
+  }
+
+  // La API entrega los catálogos por slug; los campos los nombran por catálogo.
+  function itemsPorNombre(porSlug) {
+    const salida = {};
+    for (const def of window.__CATALOGOS__ || []) {
+      salida[def.nombre] = porSlug[def.slug] || [];
+      salida[def.slug] = porSlug[def.slug] || [];
+    }
+    return salida;
+  }
+
+  // --- El panel del administrador: sus catálogos, con alta y baja. ---
+  function pintarAdmin() {
+    cajaAdmin.innerHTML = "";
+    if (!yo.es_admin || !(window.__CATALOGOS__ || []).length) return;
+    for (const def of window.__CATALOGOS__) {
+      const bloque = document.createElement("div");
+      bloque.className = "cat";
+      const titulo = document.createElement("h2");
+      titulo.textContent = def.plural;
+      bloque.appendChild(titulo);
+
+      const ul = document.createElement("ul");
+      ul.className = "cat-lista";
+      for (const item of items[def.slug] || []) {
+        const li = document.createElement("li");
+        const texto = document.createElement("span");
+        texto.textContent = def.campos
+          .map((c) => item[c.nombre])
+          .filter((v) => v !== null && v !== undefined && v !== "")
+          .join(" · ");
+        const quitar = document.createElement("button");
+        quitar.type = "button";
+        quitar.className = "del";
+        quitar.textContent = "✕";
+        quitar.title = "Quitar de " + def.plural.toLowerCase();
+        quitar.onclick = async () => {
+          const r = await borrarDeCatalogo(def.slug, item.id);
+          if (r.ok) armar();
+        };
+        li.append(texto, quitar);
+        ul.appendChild(li);
+      }
+      bloque.appendChild(ul);
+
+      // Alta inline: un control por campo del catálogo, en una fila.
+      const alta = document.createElement("form");
+      alta.className = "cat-alta";
+      for (const c of def.campos) {
+        const input = document.createElement("input");
+        input.placeholder = c.etiqueta + (c.obligatorio ? " *" : "");
+        input.dataset.campo = c.nombre;
+        if (c.tipo === "entero" || c.tipo === "decimal") {
+          input.type = "number";
+          input.step = c.tipo === "entero" ? "1" : "any";
+        }
+        alta.appendChild(input);
+      }
+      const anadir = document.createElement("button");
+      anadir.type = "submit";
+      anadir.className = "small";
+      anadir.textContent = "Añadir";
+      alta.appendChild(anadir);
+      alta.onsubmit = async (ev) => {
+        ev.preventDefault();
+        const datos = {};
+        for (const input of alta.querySelectorAll("[data-campo]")) {
+          datos[input.dataset.campo] = input.type === "number"
+            ? (input.value === "" ? null : Number(input.value))
+            : input.value;
+        }
+        const r = await crearEnCatalogo(def.slug, datos);
+        if (r.ok) { armar(); return; }
+        const d = await r.json().catch(() => ({}));
+        msg.textContent = d.detail || "No se pudo añadir.";
+        msg.className = "msg error";
+      };
+      bloque.appendChild(alta);
+      cajaAdmin.appendChild(bloque);
+    }
+  }
 
   async function refrescar() {
     const r = await listar();
@@ -474,13 +612,21 @@ export function BoardView(onLogout) {
     }
   };
 
-  refrescar();
+  armar();
   return el;
 }
 
 function fila(reg, refrescar) {
   const li = document.createElement("li");
   li.className = "item";
+  // En la vista del administrador cada registro dice DE QUIÉN es: la dueña
+  // mira su agenda completa, no una lista anónima.
+  if (reg.dueno) {
+    const quien = document.createElement("span");
+    quien.className = "dueno badge";
+    quien.textContent = reg.dueno;
+    li.appendChild(quien);
+  }
   li.appendChild(pintarRegistro(reg));
   const del = document.createElement("button");
   del.className = "del";

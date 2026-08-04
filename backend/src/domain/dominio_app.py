@@ -32,6 +32,7 @@ TipoCampo = Literal[
     "fecha",        # 2026-07-29
     "opcion",       # una de una lista cerrada
     "booleano",     # sí / no
+    "relacion",     # apunta a un catálogo (la cita elige SU barbero)
 ]
 
 #: Cálculos que el sistema sabe hacer sobre una columna numérica.
@@ -73,6 +74,8 @@ class Campo(BaseModel):
     maximo: float | None = None
     #: Pista bajo el campo, para que el usuario sepa qué escribir.
     ayuda: str = ""
+    #: Solo para `relacion`: el NOMBRE del catálogo al que apunta ("Barbero").
+    catalogo: str = ""
 
     @field_validator("nombre", mode="before")
     @classmethod
@@ -82,6 +85,83 @@ class Campo(BaseModel):
     @property
     def es_numerico(self) -> bool:
         return self.tipo in ("entero", "decimal")
+
+
+class Catalogo(BaseModel):
+    """Una entidad de APOYO que administra el dueño del sistema.
+
+    Es la pieza que faltaba para que un encargo real quepa en el esqueleto: en
+    «los clientes piden cita con un barbero» hay DOS clases de datos. La cita es
+    del cliente; el barbero es de la casa. Sin esto, "barbero" acababa siendo
+    una caja de texto libre y el sistema entregado era una lista plana, no el
+    negocio que pidieron.
+
+    Los catálogos los gestiona el ADMINISTRADOR desde su panel, y los campos de
+    tipo `relacion` de la entidad principal se eligen de aquí (un desplegable
+    con los barberos reales, no texto a mano).
+    """
+
+    nombre: str = Field(..., description="En singular. P. ej. 'Barbero'.")
+    plural: str = Field(default="", description="En plural. P. ej. 'Barberos'.")
+    campos: list[Campo] = Field(default_factory=list)
+    #: Filas iniciales del catálogo, con las claves de `campos`. Sin ellas el
+    #: desplegable de la entidad principal nace vacío y no se puede crear nada.
+    ejemplos: list = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _completar_plural(self) -> "Catalogo":
+        if not (self.plural or "").strip():
+            self.plural = self.nombre + "s"
+        return self
+
+    @property
+    def tabla(self) -> str:
+        """Nombre de tabla; con prefijo para no chocar con la entidad principal."""
+        return "cat_" + (_a_identificador(self.plural) or "items")
+
+    @property
+    def slug(self) -> str:
+        """Identificador en la API y en el frontend."""
+        return _a_identificador(self.plural) or "items"
+
+    @property
+    def clase(self) -> str:
+        limpio = _a_identificador(self.nombre) or "item"
+        return "Cat" + "".join(p.capitalize() for p in limpio.split("_"))
+
+    def sanear(self) -> "Catalogo":
+        """Un catálogo construible: campos simples y su primer campo es el nombre.
+
+        El primer campo es el VISIBLE: lo que sale en el desplegable y lo que se
+        guarda en el registro que lo referencia. Por eso se fuerza a texto
+        obligatorio — un catálogo cuyo identificador visible puede quedar vacío
+        daría desplegables con huecos.
+        """
+        vistos: set[str] = set()
+        limpios: list[Campo] = []
+        for campo in self.campos:
+            if not campo.nombre or campo.nombre in vistos:
+                continue
+            # Dentro de un catálogo no hay relaciones (ni catálogos anidados):
+            # es reference data, y un nivel es lo que se sabe construir bien.
+            if campo.tipo == "relacion":
+                campo = campo.model_copy(update={"tipo": "texto", "catalogo": ""})
+            if campo.tipo == "opcion" and len(campo.opciones) < 2:
+                campo = campo.model_copy(update={"tipo": "texto", "opciones": []})
+            vistos.add(campo.nombre)
+            limpios.append(campo)
+        if not limpios:
+            limpios = [Campo(nombre="nombre", etiqueta="Nombre", tipo="texto")]
+        primero = limpios[0]
+        if primero.tipo != "texto" or not primero.obligatorio:
+            limpios[0] = primero.model_copy(update={"tipo": "texto", "obligatorio": True, "opciones": []})
+        campos_finales = limpios[:5]
+        return self.model_copy(
+            update={
+                "campos": campos_finales,
+                "ejemplos": _sanear_ejemplos(self.ejemplos, campos_finales),
+            }
+        )
 
 
 class Calculo(BaseModel):
@@ -232,6 +312,9 @@ class DominioApp(BaseModel):
     #: aplicación por un dato de adorno. Aquí se acepta cualquier cosa y es
     #: `sanear()` quien decide qué sobrevive.
     ejemplos: list = Field(default_factory=list)
+    #: Entidades de apoyo que administra el dueño (barberos, servicios,
+    #: categorías…). Vacío = la app de siempre, sin panel de administración.
+    catalogos: list[Catalogo] = Field(default_factory=list)
 
     @property
     def tabla(self) -> str:
@@ -255,11 +338,29 @@ class DominioApp(BaseModel):
         fallar la generación entera, se corrige aquí y se sigue: un dominio algo
         más simple es mejor que ninguna aplicación.
         """
+        # Primero los catálogos: los campos de relación se validan contra ellos.
+        catalogos = [c.sanear() for c in self.catalogos[:3] if (c.nombre or "").strip()]
+        # Dos catálogos con el mismo slug chocarían en tabla y API.
+        slugs_vistos: set[str] = set()
+        catalogos = [
+            c for c in catalogos
+            if c.slug not in slugs_vistos and not slugs_vistos.add(c.slug)  # type: ignore[func-returns-value]
+        ]
+        nombres_catalogo = {_sin_acentos(c.nombre): c.nombre for c in catalogos}
+
         vistos: set[str] = set()
         limpios: list[Campo] = []
         for campo in self.campos:
             if campo.nombre in vistos or not campo.nombre:
                 continue
+            # Una relación debe apuntar a un catálogo QUE EXISTA; si no, se
+            # degrada a texto libre: peor que un desplegable, mejor que fallar.
+            if campo.tipo == "relacion":
+                real = nombres_catalogo.get(_sin_acentos(campo.catalogo))
+                if real is None:
+                    campo = campo.model_copy(update={"tipo": "texto", "catalogo": ""})
+                else:
+                    campo = campo.model_copy(update={"catalogo": real})
             # Una opción sin opciones no es una opción: pasa a texto.
             if campo.tipo == "opcion" and len(campo.opciones) < 2:
                 campo = campo.model_copy(update={"tipo": "texto", "opciones": []})
@@ -286,8 +387,15 @@ class DominioApp(BaseModel):
                 "campos": campos_finales,
                 "calculos": calculos,
                 "ejemplos": _sanear_ejemplos(self.ejemplos, campos_finales),
+                "catalogos": catalogos,
             }
         )
+
+    def catalogo_de(self, campo: Campo) -> Catalogo | None:
+        """El catálogo al que apunta un campo de relación, si lo hay."""
+        if campo.tipo != "relacion" or not campo.catalogo:
+            return None
+        return next((c for c in self.catalogos if c.nombre == campo.catalogo), None)
 
 
 #: Dominio de respaldo: si el modelo falla del todo, esto al menos funciona.

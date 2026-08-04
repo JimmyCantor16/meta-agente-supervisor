@@ -36,6 +36,12 @@ _COLUMNA = {
     "fecha": "String(32)",   # ISO: simple, ordenable y sin líos de zona horaria
     "opcion": "String(120)",
     "booleano": "Boolean",
+    # La relación guarda el NOMBRE visible del ítem del catálogo, no su id.
+    # Deliberado: evita joins en todo el esqueleto (listados, resumen, seeds) y
+    # el valor se valida contra el catálogo al crear/editar. Para un MVP, un
+    # desplegable real + validación en servidor es el 90% del valor con el 30%
+    # de la plomería.
+    "relacion": "String(255)",
 }
 _PYTHON = {
     "texto": "str",
@@ -45,6 +51,7 @@ _PYTHON = {
     "fecha": "str",
     "opcion": "str",
     "booleano": "bool",
+    "relacion": "str",
 }
 _INPUT = {
     "texto": 'type="text"',
@@ -75,6 +82,9 @@ from dataclasses import dataclass
 class User:
     id: int | None
     username: str
+    #: El administrador es el dueño del negocio: ve todos los registros y
+    #: gestiona los catálogos. Los demás solo ven y tocan lo suyo.
+    es_admin: bool = False
 
 
 @dataclass
@@ -109,6 +119,9 @@ class {d.clase}Repository(ABC):
     @abstractmethod
     def list_for(self, owner_id: int) -> list[{d.clase}]: ...
     @abstractmethod
+    def list_all(self) -> list[tuple[{d.clase}, str]]:
+        """Todos los registros con el nombre de su dueño (vista del administrador)."""
+    @abstractmethod
     def create(self, owner_id: int, datos: dict) -> {d.clase}: ...
     @abstractmethod
     def get(self, registro_id: int, owner_id: int) -> {d.clase} | None: ...
@@ -116,6 +129,23 @@ class {d.clase}Repository(ABC):
     def update(self, registro_id: int, owner_id: int, datos: dict) -> {d.clase} | None: ...
     @abstractmethod
     def delete(self, registro_id: int, owner_id: int) -> bool: ...
+    @abstractmethod
+    def delete_any(self, registro_id: int) -> bool:
+        """Borra sin mirar el dueño. SOLO lo usa el administrador."""
+
+
+class CatalogoRepository(ABC):
+    """Las entidades de apoyo del negocio (lo que administra el dueño)."""
+
+    @abstractmethod
+    def listar(self, slug: str) -> list[dict]: ...
+    @abstractmethod
+    def crear(self, slug: str, datos: dict) -> dict: ...
+    @abstractmethod
+    def borrar(self, slug: str, item_id: int) -> bool: ...
+    @abstractmethod
+    def existe_valor(self, slug: str, valor: str) -> bool:
+        """¿Hay un ítem cuyo nombre visible sea `valor`? (valida las relaciones)."""
 
 
 class PasswordHasher(ABC):
@@ -196,6 +226,24 @@ def _services(d: DominioApp) -> str:
             )
     bloque_calculos = "\n".join(calculos) if calculos else "        pass"
 
+    # --- Literales del dominio que la validación necesita en tiempo de ejecución ---
+    relaciones = {
+        c.nombre: d.catalogo_de(c).slug  # type: ignore[union-attr]
+        for c in d.campos
+        if c.tipo == "relacion" and d.catalogo_de(c) is not None
+    }
+    campos_catalogos = {
+        cat.slug: [
+            {
+                "nombre": c.nombre, "etiqueta": c.etiqueta, "tipo": c.tipo,
+                "obligatorio": c.obligatorio, "opciones": c.opciones,
+                "minimo": c.minimo, "maximo": c.maximo,
+            }
+            for c in cat.campos
+        ]
+        for cat in d.catalogos
+    }
+
     return f'''"""Casos de uso: dependen SOLO de puertos."""
 from __future__ import annotations
 
@@ -203,6 +251,7 @@ import re
 
 from backend.domain.entities import {d.clase}, User
 from backend.domain.ports import (
+    CatalogoRepository,
     PasswordHasher,
     TokenService,
     UserRepository,
@@ -216,6 +265,10 @@ class AuthError(Exception):
 
 class ValidacionError(Exception):
     """Los datos recibidos no cumplen las reglas del dominio."""
+
+
+class PermisoError(Exception):
+    """La operación exige ser administrador."""
 
 
 MIN_USUARIO = 3
@@ -275,25 +328,108 @@ class AuthService:
         return self._users.by_username(username) if username else None
 
 
-class {d.clase}Service:
-    def __init__(self, repo: {d.clase}Repository) -> None:
+#: Campos de {d.entidad_plural.lower()} que apuntan a un catálogo. El valor debe
+#: existir allí: sin esta comprobación, el desplegable del frontend sería pura
+#: decoración (con la API a mano se podría guardar cualquier cosa).
+RELACIONES: dict[str, str] = {relaciones!r}
+
+#: Definición de los campos de cada catálogo, para validar las altas del admin.
+CAMPOS_CATALOGOS: dict = {campos_catalogos!r}
+
+
+def validar_catalogo(slug: str, datos: dict) -> dict:
+    """Valida un ítem de catálogo contra su definición declarada."""
+    campos = CAMPOS_CATALOGOS.get(slug)
+    if campos is None:
+        raise ValidacionError("Ese catálogo no existe.")
+    limpio: dict = {{}}
+    for campo in campos:
+        bruto = datos.get(campo["nombre"])
+        vacio = bruto is None or str(bruto).strip() == ""
+        if campo["obligatorio"] and vacio:
+            raise ValidacionError(campo["etiqueta"] + " es obligatorio.")
+        if vacio:
+            continue
+        if campo["tipo"] in ("entero", "decimal"):
+            try:
+                numero = int(bruto) if campo["tipo"] == "entero" else float(bruto)
+            except (TypeError, ValueError):
+                raise ValidacionError(campo["etiqueta"] + " debe ser un número.")
+            if campo["minimo"] is not None and numero < campo["minimo"]:
+                raise ValidacionError(campo["etiqueta"] + " es demasiado pequeño.")
+            if campo["maximo"] is not None and numero > campo["maximo"]:
+                raise ValidacionError(campo["etiqueta"] + " es demasiado grande.")
+            limpio[campo["nombre"]] = numero
+        elif campo["tipo"] == "opcion":
+            if str(bruto) not in campo["opciones"]:
+                raise ValidacionError(campo["etiqueta"] + " debe ser una de: " + ", ".join(campo["opciones"]))
+            limpio[campo["nombre"]] = str(bruto)
+        elif campo["tipo"] == "booleano":
+            limpio[campo["nombre"]] = bool(bruto)
+        else:
+            limpio[campo["nombre"]] = str(bruto).strip()[:500]
+    return limpio
+
+
+class CatalogoService:
+    """Lo que administra el dueño: consultar es de todos, tocar es del admin."""
+
+    def __init__(self, repo: CatalogoRepository) -> None:
         self._repo = repo
 
-    def list(self, owner_id: int) -> list[{d.clase}]:
-        return self._repo.list_for(owner_id)
+    def listar_todos(self) -> dict:
+        return {{slug: self._repo.listar(slug) for slug in CAMPOS_CATALOGOS}}
+
+    def crear(self, user: User, slug: str, datos: dict) -> dict:
+        if not user.es_admin:
+            raise PermisoError("Solo el administrador puede modificar los catálogos.")
+        return self._repo.crear(slug, validar_catalogo(slug, datos))
+
+    def borrar(self, user: User, slug: str, item_id: int) -> bool:
+        if not user.es_admin:
+            raise PermisoError("Solo el administrador puede modificar los catálogos.")
+        if slug not in CAMPOS_CATALOGOS:
+            raise ValidacionError("Ese catálogo no existe.")
+        return self._repo.borrar(slug, item_id)
+
+
+class {d.clase}Service:
+    def __init__(self, repo: {d.clase}Repository, catalogos: CatalogoRepository | None = None) -> None:
+        self._repo = repo
+        self._catalogos = catalogos
+
+    def _validar_relaciones(self, datos: dict) -> dict:
+        for campo, slug in RELACIONES.items():
+            valor = datos.get(campo)
+            if valor and self._catalogos is not None and not self._catalogos.existe_valor(slug, str(valor)):
+                raise ValidacionError(f"'{{valor}}' no está en el catálogo. Elige una de las opciones.")
+        return datos
+
+    def list_para(self, user: User) -> list[tuple[{d.clase}, str | None]]:
+        """Lo que este usuario tiene derecho a ver.
+
+        El administrador ve TODO y con el nombre de cada dueño: es la dueña del
+        negocio mirando su agenda, no un usuario más mirando la suya.
+        """
+        if user.es_admin:
+            return [(r, dueno) for r, dueno in self._repo.list_all()]
+        return [(r, None) for r in self._repo.list_for(user.id)]
 
     def create(self, owner_id: int, datos: dict) -> {d.clase}:
-        return self._repo.create(owner_id, validar_{d.tabla}(datos))
+        return self._repo.create(owner_id, self._validar_relaciones(validar_{d.tabla}(datos)))
 
     def update(self, registro_id: int, owner_id: int, datos: dict) -> {d.clase} | None:
-        return self._repo.update(registro_id, owner_id, validar_{d.tabla}(datos))
+        return self._repo.update(registro_id, owner_id, self._validar_relaciones(validar_{d.tabla}(datos)))
 
-    def delete(self, registro_id: int, owner_id: int) -> bool:
-        return self._repo.delete(registro_id, owner_id)
+    def delete_como(self, user: User, registro_id: int) -> bool:
+        """El admin puede cancelar el registro de cualquiera; los demás, el suyo."""
+        if user.es_admin:
+            return self._repo.delete_any(registro_id)
+        return self._repo.delete(registro_id, user.id)
 
-    def resumen(self, owner_id: int) -> dict:
-        """Los números que acompañan a la lista: es lo que la vuelve informativa."""
-        registros = self._repo.list_for(owner_id)
+    def resumen_para(self, user: User) -> dict:
+        """Los números que acompañan a la lista, sobre lo que este usuario VE."""
+        registros = [r for r, _ in self.list_para(user)]
         resultado: dict = {{}}
 {bloque_calculos}
         return resultado
@@ -307,6 +443,21 @@ class {d.clase}Service:
 _USUARIO_DEMO = "demo"
 _CLAVE_DEMO = "demo1234"
 
+#: La cuenta del dueño del negocio. Fija y documentada en el MANUAL, que le
+#: pide cambiar la contraseña como primer paso.
+_ADMIN_USUARIO = "admin"
+_ADMIN_CLAVE = "admin1234"
+
+
+def _columnas_de(campos) -> str:
+    filas = []
+    for c in campos:
+        tipo = _COLUMNA[c.tipo]
+        nulo = "False" if c.obligatorio else "True"
+        extra = ", default=False" if c.tipo == "booleano" else ""
+        filas.append(f"    {c.nombre} = Column({tipo}, nullable={nulo}{extra})")
+    return "\n".join(filas)
+
 
 def _db(d: DominioApp) -> str:
     ejemplos = d.ejemplos
@@ -316,6 +467,19 @@ def _db(d: DominioApp) -> str:
         nulo = "False" if c.obligatorio else "True"
         extra = ", default=False" if c.tipo == "booleano" else ""
         columnas.append(f"    {c.nombre} = Column({tipo}, nullable={nulo}{extra})")
+
+    # Un modelo ORM por catálogo, cada uno con sus columnas declaradas.
+    modelos_catalogo = "\n\n".join(
+        f"class {cat.clase}Model(Base):\n"
+        f'    __tablename__ = "{cat.tabla}"\n'
+        f"    id = Column(Integer, primary_key=True, index=True)\n"
+        f"{_columnas_de(cat.campos)}"
+        for cat in d.catalogos
+    )
+    semillas_catalogos = "\n    ".join(
+        f"({cat.clase}Model, {cat.ejemplos!r})," for cat in d.catalogos
+    ) or "# (sin catálogos que sembrar)"
+
     return f'''"""Infraestructura: base de datos y modelos ORM."""
 from __future__ import annotations
 
@@ -361,6 +525,7 @@ class UserModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(60), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
+    es_admin = Column(Boolean, nullable=False, default=False)
 
 
 class {d.clase}Model(Base):
@@ -368,6 +533,9 @@ class {d.clase}Model(Base):
     id = Column(Integer, primary_key=True, index=True)
 {chr(10).join(columnas)}
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+
+{modelos_catalogo or "# (esta aplicación no declara catálogos)"}
 
 
 def create_tables() -> None:
@@ -380,35 +548,65 @@ def create_tables() -> None:
 USUARIO_DEMO = "{_USUARIO_DEMO}"
 CLAVE_DEMO = "{_CLAVE_DEMO}"
 
+#: La cuenta del DUEÑO del negocio. Fija y documentada en el MANUAL: quien
+#: recibe el sistema entra con ella, gestiona sus catálogos y ve todo. Cambiar
+#: su contraseña es lo primero que el manual le pide hacer.
+ADMIN_USUARIO = "{_ADMIN_USUARIO}"
+ADMIN_CLAVE = "{_ADMIN_CLAVE}"
+
 _EJEMPLOS = {ejemplos!r}
 
 
 def sembrar_demostracion(hasher) -> bool:
-    """Crea la cuenta de demostración con datos dentro. True si sembró algo.
+    """Deja el sistema LISTO PARA USAR en el primer arranque. True si sembró algo.
 
-    Se ejecuta en cada arranque pero solo actúa una vez: si la cuenta ya existe,
-    no toca nada. Así el usuario puede añadir y borrar sus propios registros sin
-    que un reinicio le devuelva los de ejemplo encima.
+    Tres siembras independientes, cada una de un solo disparo:
+      1. La cuenta del administrador (siempre, haya o no ejemplos).
+      2. Los catálogos con sus filas iniciales (si sus tablas están vacías):
+         sin barberos no se puede pedir cita, así que un catálogo vacío
+         dejaría la aplicación inservible nada más nacer.
+      3. La cuenta de demostración con sus registros (si hay ejemplos).
     """
-    if not _EJEMPLOS:
-        return False
+    sembrado = False
     sesion = SessionLocal()
     try:
-        demo = sesion.query(UserModel).filter(UserModel.username == USUARIO_DEMO).first()
-        if demo is not None:
-            return False
-        demo = UserModel(username=USUARIO_DEMO, hashed_password=hasher.hash(CLAVE_DEMO))
-        sesion.add(demo)
-        sesion.flush()  # necesitamos su id para que los registros sean suyos
-        for fila in _EJEMPLOS:
-            sesion.add({d.clase}Model(owner_id=demo.id, **fila))
-        sesion.commit()
-        return True
+        admin = sesion.query(UserModel).filter(UserModel.username == ADMIN_USUARIO).first()
+        if admin is None:
+            sesion.add(UserModel(
+                username=ADMIN_USUARIO, hashed_password=hasher.hash(ADMIN_CLAVE), es_admin=True,
+            ))
+            sesion.commit()
+            sembrado = True
+
+        for modelo, filas in _MODELOS_SEMILLA:
+            if filas and sesion.query(modelo).first() is None:
+                for fila in filas:
+                    sesion.add(modelo(**fila))
+                sesion.commit()
+                sembrado = True
+
+        if _EJEMPLOS:
+            demo = sesion.query(UserModel).filter(UserModel.username == USUARIO_DEMO).first()
+            if demo is None:
+                demo = UserModel(username=USUARIO_DEMO, hashed_password=hasher.hash(CLAVE_DEMO))
+                sesion.add(demo)
+                sesion.flush()  # necesitamos su id para que los registros sean suyos
+                for fila in _EJEMPLOS:
+                    sesion.add({d.clase}Model(owner_id=demo.id, **fila))
+                sesion.commit()
+                sembrado = True
+        return sembrado
     except Exception:  # noqa: BLE001 - sin datos de ejemplo la app sigue sirviendo
         sesion.rollback()
-        return False
+        return sembrado
     finally:
         sesion.close()
+
+
+#: (modelo ORM, filas iniciales) de cada catálogo, para la siembra.
+_MODELOS_SEMILLA = [
+    {semillas_catalogos}
+]
 '''
 
 
@@ -419,18 +617,29 @@ def _repositories(d: DominioApp) -> str:
         for c in d.campos
     )
     creacion = ", ".join(f"{c.nombre}=datos.get({c.nombre!r})" for c in d.campos)
+
+    # Literales por catálogo: su modelo, sus columnas y cuál es el nombre visible.
+    imports_cat = "".join(f", {cat.clase}Model" for cat in d.catalogos)
+    modelos_cat = ", ".join(f"{cat.slug!r}: {cat.clase}Model" for cat in d.catalogos)
+    columnas_cat = ", ".join(
+        f"{cat.slug!r}: {[c.nombre for c in cat.campos]!r}" for cat in d.catalogos
+    )
+    visibles_cat = ", ".join(
+        f"{cat.slug!r}: {cat.campos[0].nombre!r}" for cat in d.catalogos
+    )
+
     return f'''"""Adaptadores: implementan los puertos con SQLAlchemy."""
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
 from backend.domain.entities import {d.clase}, User
-from backend.domain.ports import UserRepository, {d.clase}Repository
-from backend.infrastructure.db import UserModel, {d.clase}Model
+from backend.domain.ports import CatalogoRepository, UserRepository, {d.clase}Repository
+from backend.infrastructure.db import UserModel, {d.clase}Model{imports_cat}
 
 
 def _a_user(row: UserModel) -> User:
-    return User(id=row.id, username=row.username)
+    return User(id=row.id, username=row.username, es_admin=bool(row.es_admin))
 
 
 def _a_entidad(row: {d.clase}Model) -> {d.clase}:
@@ -470,6 +679,16 @@ class Sql{d.clase}Repository({d.clase}Repository):
         )
         return [_a_entidad(f) for f in filas]
 
+    def list_all(self) -> list[tuple[{d.clase}, str]]:
+        """Todo con su dueño: la vista del administrador."""
+        filas = (
+            self._s.query({d.clase}Model, UserModel.username)
+            .join(UserModel, UserModel.id == {d.clase}Model.owner_id)
+            .order_by({d.clase}Model.id.desc())
+            .all()
+        )
+        return [(_a_entidad(f), username) for f, username in filas]
+
     def create(self, owner_id: int, datos: dict) -> {d.clase}:
         row = {d.clase}Model(owner_id=owner_id, {creacion})
         self._s.add(row)
@@ -498,12 +717,71 @@ class Sql{d.clase}Repository({d.clase}Repository):
         self._s.commit()
         return True
 
+    def delete_any(self, registro_id: int) -> bool:
+        """Sin filtro de dueño. El servicio ya comprobó que quien pide es admin."""
+        row = self._s.query({d.clase}Model).filter({d.clase}Model.id == registro_id).first()
+        if row is None:
+            return False
+        self._s.delete(row)
+        self._s.commit()
+        return True
+
     def _buscar(self, registro_id: int, owner_id: int):
         return (
             self._s.query({d.clase}Model)
             .filter({d.clase}Model.id == registro_id, {d.clase}Model.owner_id == owner_id)
             .first()
         )
+
+
+class SqlCatalogoRepository(CatalogoRepository):
+    """Un solo adaptador para todos los catálogos, guiado por estos mapas."""
+
+    _MODELOS = {{{modelos_cat}}}
+    _COLUMNAS = {{{columnas_cat}}}
+    #: La columna que hace de NOMBRE del ítem (la que ven los desplegables).
+    _VISIBLE = {{{visibles_cat}}}
+
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def listar(self, slug: str) -> list[dict]:
+        modelo = self._MODELOS.get(slug)
+        if modelo is None:
+            return []
+        filas = self._s.query(modelo).order_by(modelo.id).all()
+        columnas = self._COLUMNAS[slug]
+        return [
+            {{"id": f.id, **{{col: getattr(f, col) for col in columnas}}}}
+            for f in filas
+        ]
+
+    def crear(self, slug: str, datos: dict) -> dict:
+        modelo = self._MODELOS[slug]
+        columnas = self._COLUMNAS[slug]
+        row = modelo(**{{col: datos.get(col) for col in columnas}})
+        self._s.add(row)
+        self._s.commit()
+        self._s.refresh(row)
+        return {{"id": row.id, **{{col: getattr(row, col) for col in columnas}}}}
+
+    def borrar(self, slug: str, item_id: int) -> bool:
+        modelo = self._MODELOS.get(slug)
+        if modelo is None:
+            return False
+        row = self._s.query(modelo).filter(modelo.id == item_id).first()
+        if row is None:
+            return False
+        self._s.delete(row)
+        self._s.commit()
+        return True
+
+    def existe_valor(self, slug: str, valor: str) -> bool:
+        modelo = self._MODELOS.get(slug)
+        if modelo is None:
+            return False
+        visible = getattr(modelo, self._VISIBLE[slug])
+        return self._s.query(modelo).filter(visible == valor).first() is not None
 '''
 
 
@@ -520,11 +798,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.application.services import (
-    AuthError, AuthService, ValidacionError, {d.clase}Service,
+    AuthError, AuthService, CatalogoService, PermisoError, ValidacionError, {d.clase}Service,
 )
 from backend.domain.entities import User
 from backend.infrastructure.db import SessionLocal
-from backend.infrastructure.repositories import SqlUserRepository, Sql{d.clase}Repository
+from backend.infrastructure.repositories import (
+    SqlCatalogoRepository, SqlUserRepository, Sql{d.clase}Repository,
+)
 from backend.infrastructure.security import BcryptHasher, JwtTokenService
 
 router = APIRouter(prefix="/api")
@@ -539,6 +819,7 @@ class Credentials(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+    es_admin: bool = False
 
 
 class Token(BaseModel):
@@ -553,6 +834,8 @@ class RegistroIn(BaseModel):
 class RegistroOut(BaseModel):
     id: int
 {campos_out}
+    #: Solo en la vista del administrador: de quién es cada registro.
+    dueno: str | None = None
 
 
 def get_session():
@@ -568,7 +851,11 @@ def get_auth(session: Session = Depends(get_session)) -> AuthService:
 
 
 def get_servicio(session: Session = Depends(get_session)) -> {d.clase}Service:
-    return {d.clase}Service(Sql{d.clase}Repository(session))
+    return {d.clase}Service(Sql{d.clase}Repository(session), SqlCatalogoRepository(session))
+
+
+def get_catalogos(session: Session = Depends(get_session)) -> CatalogoService:
+    return CatalogoService(SqlCatalogoRepository(session))
 
 
 def current_user(token: str = Depends(_oauth2), auth: AuthService = Depends(get_auth)) -> User:
@@ -595,9 +882,48 @@ def login(form: OAuth2PasswordRequestForm = Depends(), auth: AuthService = Depen
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
 
 
+@router.get("/me", response_model=UserOut)
+def quien_soy(user: User = Depends(current_user)):
+    """El frontend decide con esto si muestra el panel de administración."""
+    return UserOut(id=user.id or 0, username=user.username, es_admin=user.es_admin)
+
+
+@router.get("/catalogos")
+def ver_catalogos(user: User = Depends(current_user), svc: CatalogoService = Depends(get_catalogos)):
+    """Todos los catálogos con sus ítems: alimenta los desplegables del formulario."""
+    return svc.listar_todos()
+
+
+@router.post("/catalogos/{{slug}}")
+def crear_en_catalogo(slug: str, body: dict, user: User = Depends(current_user),
+                      svc: CatalogoService = Depends(get_catalogos)):
+    try:
+        return svc.crear(user, slug, body)
+    except PermisoError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValidacionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/catalogos/{{slug}}/{{item_id}}")
+def borrar_de_catalogo(slug: str, item_id: int, user: User = Depends(current_user),
+                       svc: CatalogoService = Depends(get_catalogos)):
+    try:
+        if not svc.borrar(user, slug, item_id):
+            raise HTTPException(status_code=404, detail="No encontrado")
+    except PermisoError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValidacionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {{"ok": True}}
+
+
 @router.get("/registros", response_model=list[RegistroOut])
 def listar(user: User = Depends(current_user), svc: {d.clase}Service = Depends(get_servicio)):
-    return [RegistroOut(id=r.id, {a_salida}) for r in svc.list(user.id)]
+    return [
+        RegistroOut(id=r.id, {a_salida}, dueno=dueno)
+        for r, dueno in svc.list_para(user)
+    ]
 
 
 @router.post("/registros", response_model=RegistroOut)
@@ -625,15 +951,17 @@ def actualizar(registro_id: int, body: RegistroIn, user: User = Depends(current_
 @router.delete("/registros/{{registro_id}}")
 def borrar(registro_id: int, user: User = Depends(current_user),
            svc: {d.clase}Service = Depends(get_servicio)):
-    if not svc.delete(registro_id, user.id):
+    # El administrador puede cancelar el registro de cualquiera (la dueña
+    # cancela citas); los demás solo el suyo.
+    if not svc.delete_como(user, registro_id):
         raise HTTPException(status_code=404, detail="No encontrado")
     return {{"ok": True}}
 
 
 @router.get("/resumen")
 def resumen(user: User = Depends(current_user), svc: {d.clase}Service = Depends(get_servicio)):
-    """Los cálculos declarados en el dominio (totales, promedios, conteos)."""
-    return svc.resumen(user.id)
+    """Los cálculos declarados en el dominio, sobre lo que este usuario ve."""
+    return svc.resumen_para(user)
 '''
 
 
@@ -664,6 +992,19 @@ app.mount("/static", StaticFiles(directory=str(_FRONT)), name="static")
 @app.get("/")
 def index():
     return FileResponse(str(_FRONT / "index.html"))
+
+
+# La PWA exige que el manifest y el service worker se sirvan desde la RAÍZ:
+# el alcance de un service worker es la carpeta desde la que se sirve, y desde
+# /static no podría controlar la página.
+@app.get("/manifest.json")
+def manifest():
+    return FileResponse(str(_FRONT / "manifest.json"), media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(str(_FRONT / "sw.js"), media_type="text/javascript")
 '''
 
 
