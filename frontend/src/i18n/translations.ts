@@ -292,6 +292,8 @@ const es = {
     tabTaller: "🔧 Taller",
     tabCurso: "🎓 Curso del profesor",
     tabAula: "🖥️ Aula en vivo",
+    claseYTaller: "Clase y taller, lado a lado",
+    cerrarAula: "Cerrar el taller",
     tabMetas: "🎯 Metas",
   },
   curso: {
@@ -807,6 +809,8 @@ const en: Translation = {
     tabTaller: "🔧 Workshop",
     tabCurso: "🎓 Teacher's course",
     tabAula: "🖥️ Live classroom",
+    claseYTaller: "Lesson and workshop, side by side",
+    cerrarAula: "Close the workshop",
     tabMetas: "🎯 Goals",
   },
   curso: {

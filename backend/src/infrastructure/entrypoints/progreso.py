@@ -14,6 +14,8 @@ escuchando, no cuesta nada.
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import json
 import logging
 import re
 
@@ -87,18 +89,51 @@ _AMIGABLES = (
 logger = logging.getLogger(__name__)
 
 
+#: De quién es el trabajo que se está ejecutando AHORA en este hilo.
+#:
+#: Es un ContextVar y no un parámetro porque el progreso lo emite el sistema de
+#: logging, a metros de distancia de quien pidió la generación: pasar el usuario
+#: a mano por veinte funciones solo para poder etiquetar una línea de log sería
+#: peor. FastAPI copia el contexto al hilo del threadpool, así que un endpoint
+#: síncrono que tarda minutos conserva su dueño.
+DUENO_ACTUAL: contextvars.ContextVar[str] = contextvars.ContextVar("dueno_actual", default="")
+
+#: Las fases del pipeline, en orden. Sirven para pintar "vas por la 3 de 5" sin
+#: que el frontend tenga que adivinarlo de un texto.
+FASES = ("entender", "planificar", "escribir", "verificar", "publicar")
+
+
 class _Difusor(logging.Handler):
     """Handler de logging que reparte cada mensaje a los sockets suscritos."""
 
     def __init__(self) -> None:
         super().__init__(level=logging.INFO)
-        self._suscriptores: dict[asyncio.Queue, asyncio.AbstractEventLoop] = {}
+        # Cada suscriptor apunta a (loop, dueño). El dueño decide qué ve.
+        self._suscriptores: dict[asyncio.Queue, tuple[asyncio.AbstractEventLoop, str]] = {}
 
-    def suscribir(self, cola: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> None:
-        self._suscriptores[cola] = loop
+    def suscribir(self, cola: asyncio.Queue, loop: asyncio.AbstractEventLoop, dueno: str) -> None:
+        self._suscriptores[cola] = (loop, dueno)
 
     def desuscribir(self, cola: asyncio.Queue) -> None:
         self._suscriptores.pop(cola, None)
+
+    def _repartir(self, texto: str, dueno: str) -> int:
+        """Entrega a quien le corresponde.
+
+        Un evento SIN dueño (arranque, tareas de fondo) lo ve todo el mundo.
+        Uno CON dueño lo ve solo él: antes se difundía a todos los conectados,
+        así que un usuario veía los nombres de proyecto y las ideas de otro.
+        """
+        enviados = 0
+        for cola, (loop, suscriptor) in list(self._suscriptores.items()):
+            if dueno and suscriptor != dueno:
+                continue
+            try:
+                loop.call_soon_threadsafe(cola.put_nowait, texto)
+                enviados += 1
+            except RuntimeError:
+                self._suscriptores.pop(cola, None)
+        return enviados
 
     def emit(self, record: logging.LogRecord) -> None:
         if not self._suscriptores or not record.name.startswith(_FUENTES):
@@ -109,14 +144,37 @@ class _Difusor(logging.Handler):
             return
         if not texto:
             return
-        for cola, loop in list(self._suscriptores.items()):
-            try:
-                loop.call_soon_threadsafe(cola.put_nowait, texto)
-            except RuntimeError:
-                self._suscriptores.pop(cola, None)
+        try:
+            self._repartir(texto, DUENO_ACTUAL.get(""))
+        except Exception:  # noqa: BLE001
+            return
 
+    def fase(self, nombre: str, detalle: str = "", paso: int = 0, de: int = 0) -> None:
+        """Anuncia un cambio de FASE, con estructura.
 
-    def difundir(self, texto: str) -> int:
+        Va como JSON en una línea. El frontend que sepa leerlo pinta una barra
+        de verdad ("Verificando · intento 3 de 7"); el que no, lo ignora y sigue
+        con las frases de siempre. Así se puede mejorar la vista sin coordinar
+        un despliegue de las tres apps a la vez.
+        """
+        if nombre not in FASES:
+            return
+        evento = {
+            "t": "fase",
+            "fase": nombre,
+            "indice": FASES.index(nombre) + 1,
+            "total": len(FASES),
+            "detalle": (detalle or "")[:160],
+        }
+        if de:
+            evento["paso"] = paso
+            evento["de"] = de
+        try:
+            self._repartir(json.dumps(evento, ensure_ascii=False), DUENO_ACTUAL.get(""))
+        except Exception:  # noqa: BLE001 - el progreso jamás rompe el pipeline
+            pass
+
+    def difundir(self, texto: str, dueno: str = "") -> int:
         """Empuja un texto YA formado a los sockets, sin pasar por logging.
 
         Lo usa el reenvío entre canales: cuando generas contra el backend de tu
@@ -124,14 +182,7 @@ class _Difusor(logging.Handler):
         que sí lo ve reenvía cada paso aquí, al backend compartido, y entonces
         los tres aparatos cuentan la misma historia.
         """
-        enviados = 0
-        for cola, loop in list(self._suscriptores.items()):
-            try:
-                loop.call_soon_threadsafe(cola.put_nowait, texto)
-                enviados += 1
-            except RuntimeError:
-                self._suscriptores.pop(cola, None)
-        return enviados
+        return self._repartir(texto, dueno)
 
 
 def sanear_evento(texto: str) -> str | None:
@@ -158,15 +209,47 @@ def _traducir(mensaje: str) -> str | None:
 DIFUSOR = _Difusor()
 logging.getLogger("src").addHandler(DIFUSOR)
 
+
+def _dueno_del_socket(token: str) -> str:
+    """Identifica al oyente. Cadena vacía = anónimo (solo eventos sin dueño).
+
+    No rechaza la conexión sin sesión, la limita: la vista de progreso es útil
+    aunque no haya nada tuyo corriendo, y cerrar el socket obligaría al frontend
+    a distinguir «no hay sesión» de «el servidor está dormido», que en el plan
+    gratuito tarda ~50 s en despertar y ya cuesta bastante.
+    """
+    token = (token or "").strip()
+    if not token:
+        return ""
+    try:
+        from src.infrastructure.entrypoints.auth_github import leer_sesion
+
+        propia = leer_sesion(token)
+        if propia is not None:
+            return str(propia.get("sub") or "")
+
+        from src.infrastructure.entrypoints.auth import verify_google_token
+
+        return str(verify_google_token(token).get("sub") or "")
+    except Exception:  # noqa: BLE001 - un token malo escucha como anónimo
+        return ""
+
 router_ws = APIRouter()
 
 
 @router_ws.websocket("/api/v1/ws/progreso")
 async def ws_progreso(websocket: WebSocket) -> None:
     """Canal de progreso: el cliente conecta y solo escucha."""
+    # Un navegador no puede poner cabeceras al abrir un WebSocket, así que la
+    # sesión viaja como parámetro. Sin sesión válida se escucha en modo ANÓNIMO:
+    # solo llegan los eventos sin dueño (arranque, avisos generales). Los pasos
+    # de una generación pertenecen a quien la pidió; antes se difundían a todos
+    # los conectados y un usuario veía los nombres de proyecto de otro.
+    dueno = _dueno_del_socket(websocket.query_params.get("token", ""))
+
     await websocket.accept()
     cola: asyncio.Queue = asyncio.Queue(maxsize=500)
-    DIFUSOR.suscribir(cola, asyncio.get_running_loop())
+    DIFUSOR.suscribir(cola, asyncio.get_running_loop(), dueno)
     try:
         await websocket.send_text("👋 Conectado: te iré contando cada paso.")
         while True:

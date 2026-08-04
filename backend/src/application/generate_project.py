@@ -39,6 +39,21 @@ logger = logging.getLogger(__name__)
 _MAX_FIX_ATTEMPTS = 7
 
 
+def _fase(nombre: str, detalle: str = "", paso: int = 0, de: int = 0) -> None:
+    """Anuncia en qué fase va la construcción.
+
+    La aplicación no debería saber de WebSockets, así que el import va DENTRO y
+    cualquier fallo se traga: si el canal de progreso no está disponible, la
+    generación sigue igual. Contar lo que pasa nunca puede impedir que pase.
+    """
+    try:
+        from src.infrastructure.entrypoints.progreso import DIFUSOR
+
+        DIFUSOR.fase(nombre, detalle, paso, de)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _solo_falla_el_frontend(error: str) -> bool:
     """True si lo único roto es la compilación de la interfaz.
 
@@ -160,10 +175,12 @@ class GenerateProjectUseCase:
     ) -> tuple[GeneratedProject, str]:
         """El bucle generar→verificar→corregir, con spec+plan, RAG y gate."""
         # 1) Contrato spec+plan (qué/cómo explícito) y 2) lecciones de casos.
+        _fase("entender", "Leyendo tu idea y decidiendo qué construir")
         spec = self._disenar_spec(original)
         prompt_gen = self._con_lecciones(self._con_spec(original, spec))
 
         logger.info("Generando proyecto a partir del prompt (%d caracteres)...", len(prompt_gen))
+        _fase("escribir", "Escribiendo el código de tu sistema")
         project = self._generator.generate(prompt_gen, language)
 
         # El spec+plan se guarda como material del alumno y guía del proyecto.
@@ -184,9 +201,13 @@ class GenerateProjectUseCase:
             # deja entrar" en "usable".
             self._normalizar_determinista(output_path)
             self.intentos_verificacion = attempt
+            # Con paso/de, la vista puede pintar una barra de verdad en vez de
+            # una lista de frases: "Comprobando · intento 3 de 7".
+            _fase("verificar", "Comprobando que arranca y responde", attempt, _MAX_FIX_ATTEMPTS)
             error = self._verifier.verify(output_path)
             if error is None:
                 logger.info("Verificación superada en el intento %d.", attempt)
+                _fase("publicar", "Arrancando tu sistema y preparando su dirección")
                 project, output_path = self._entregar(project, output_path, original, language)
                 if self.last_url is None:
                     # Sin URL el entregable está incompleto: el usuario recibe

@@ -71,8 +71,53 @@ function estadoInicial(): MonitorState {
 // `lib/canal.ts`, compartido con las notificaciones: un solo sitio donde decidir
 // qué escucha cada aparato evita que la web y el escritorio miren a distinto lado.
 
+/** Cómo se llama en la vista cada fase que anuncia el backend. */
+const FASE_DEL_BACKEND: Record<string, string> = {
+  entender: "plan",
+  planificar: "plan",
+  escribir: "escribir",
+  verificar: "verificar",
+  publicar: "arrancar",
+};
+
+/**
+ * Aplica un evento ESTRUCTURADO (`{"t":"fase",…}`) del backend.
+ *
+ * Es la vía fiable: el resto del estado se deduce leyendo los textos con
+ * expresiones regulares, y eso se rompe en silencio en cuanto alguien cambia
+ * una frase de un log. Cuando llega un evento con estructura, manda él.
+ * Devuelve `null` si el texto no era uno de estos eventos.
+ */
+function aplicarFase(s: MonitorState, txt: string): MonitorState | null {
+  if (!txt.startsWith("{")) return null;
+  let ev: { t?: string; fase?: string; detalle?: string; paso?: number; de?: number };
+  try {
+    ev = JSON.parse(txt);
+  } catch {
+    return null;
+  }
+  if (ev.t !== "fase" || !ev.fase) return null;
+  const id = FASE_DEL_BACKEND[ev.fase];
+  if (!id) return null;
+
+  const idx = s.fases.findIndex((f) => f.id === id);
+  const detalle =
+    ev.de && ev.paso ? `${ev.detalle || ""} · ${ev.paso} de ${ev.de}`.trim() : ev.detalle;
+  s.fases = s.fases.map((f, i) => {
+    if (f.id === id) return { ...f, estado: "run", detalle: detalle ?? f.detalle };
+    // Lo anterior a la fase anunciada ya pasó, aunque no llegara su mensaje.
+    // Una fase que falló se respeta: el verde no debe tapar un problema.
+    if (i < idx && f.estado !== "fail") return { ...f, estado: "ok" };
+    return f;
+  });
+  if (s.inicio === null) s.inicio = Date.now();
+  return { ...s };
+}
+
 /** Aplica un mensaje del WS al estado (heurística por el contenido traducido). */
 function aplicar(s: MonitorState, txt: string): MonitorState {
+  const porFase = aplicarFase(s, txt);
+  if (porFase) return porFase;
   const set = (id: string, estado: EstadoFase, detalle?: string) => {
     s.fases = s.fases.map((f) => (f.id === id ? { ...f, estado, detalle: detalle ?? f.detalle } : f));
   };

@@ -128,11 +128,7 @@ class MultiStackProjectRunner(ProjectRunnerPort):
             # El registro guarda SIEMPRE la dirección local: es la que usa el
             # proxy de vista previa para hablar con el proyecto.
             self._urls[project_name] = url
-            if self._base_publica:
-                publica = f"{self._base_publica}/preview/{project_name}/"
-                logger.info("MVP '%s' publicado en %s", project_name, publica)
-                return publica
-        return url
+        return self._entregable(project_name, url)
 
     def stop(self, project_name: str) -> None:
         # No sabemos cuál lo tenía; todos ignoran los nombres desconocidos.
@@ -141,5 +137,34 @@ class MultiStackProjectRunner(ProjectRunnerPort):
         self._static.stop(project_name)
         self._urls.pop(project_name, None)
 
+    def _entregable(self, project_name: str, url: str | None) -> str | None:
+        """La dirección que se le ENSEÑA al usuario.
+
+        En la nube el puerto local no es alcanzable desde fuera, así que se
+        entrega a través del proxy del backend, que sí tiene URL pública.
+        """
+        if not url:
+            return None
+        if not self._base_publica:
+            return url
+        return f"{self._base_publica}/preview/{project_name}/"
+
     def url_activa(self, project_name: str) -> str | None:
+        """La URL que se le enseña al usuario, si el proyecto está corriendo.
+
+        DEBE coincidir con lo que devolvió `start()`. Antes devolvía la
+        dirección LOCAL mientras `start()` devolvía la pública, y el resultado
+        era un fallo que parecía intermitente: al generar el proyecto la URL
+        servía, pero al recargar el aula —que pregunta por el estado— salía un
+        `http://localhost:8100` que fuera del servidor no lleva a ningún sitio.
+        """
+        return self._entregable(project_name, self._urls.get(project_name))
+
+    def url_local(self, project_name: str) -> str | None:
+        """Dirección interna real. La usa el proxy de vista previa.
+
+        Existe para que `vista_previa` no tenga que hurgar en `_urls`: el proxy
+        necesita hablar con el puerto local, y eso es una necesidad legítima que
+        merece un método, no un acceso al atributo privado por la puerta de atrás.
+        """
         return self._urls.get(project_name)

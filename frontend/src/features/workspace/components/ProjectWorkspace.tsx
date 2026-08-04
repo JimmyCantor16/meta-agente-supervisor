@@ -27,6 +27,13 @@ export function ProjectWorkspace({
   // El encargo de la clase que exige tocar código. Vive aquí porque el profesor
   // lo entrega y el aula lo recibe, y son pestañas hermanas.
   const [mision, setMision] = useState<MisionClase | null>(null);
+  // El aula ABIERTA AL LADO del chat, no en otra pestaña.
+  //
+  // Antes, aceptar el encargo te sacaba de la clase: perdías la conversación
+  // justo cuando ibas a necesitarla, y para releer lo que el profesor acababa
+  // de explicar había que volver atrás y perder el código. Son las dos mitades
+  // de la misma clase, así que se miran a la vez.
+  const [aulaAlLado, setAulaAlLado] = useState(false);
 
   return (
     <div className="space-y-5">
@@ -77,13 +84,48 @@ export function ProjectWorkspace({
       <SistemaEnVivo projectName={projectName} />
 
       {tab === "curso" ? (
-        <ProfesorChat
-          projectName={projectName}
-          onIrAlAula={(m) => {
-            setMision(m);
-            setTab("aula");
-          }}
-        />
+        aulaAlLado && mision ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-3.5 py-2">
+              <p className="min-w-0 text-xs text-brand-800">
+                <span className="font-semibold">{t.project.claseYTaller}</span>
+                {mision.archivo && (
+                  <span className="ml-2 font-mono text-[11px] text-brand-700">{mision.archivo}</span>
+                )}
+              </p>
+              <button
+                onClick={() => setAulaAlLado(false)}
+                className="shrink-0 text-xs font-semibold text-brand-700 hover:underline"
+              >
+                {t.project.cerrarAula}
+              </button>
+            </div>
+            {/* El chat se queda estrecho y el aula ancha: ahí van el editor y la
+                vista del sistema, que necesitan sitio para ser útiles. */}
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,430px)_minmax(0,1fr)]">
+              <div className="min-w-0">
+                <ProfesorChat
+                  projectName={projectName}
+                  onIrAlAula={(m) => {
+                    setMision(m);
+                    setAulaAlLado(true);
+                  }}
+                />
+              </div>
+              <div className="min-w-0">
+                <AulaEnVivo projectName={projectName} mision={mision} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ProfesorChat
+            projectName={projectName}
+            onIrAlAula={(m) => {
+              setMision(m);
+              setAulaAlLado(true);
+            }}
+          />
+        )
       ) : tab === "aula" ? (
         <AulaEnVivo projectName={projectName} mision={mision} />
       ) : tab === "metas" ? (

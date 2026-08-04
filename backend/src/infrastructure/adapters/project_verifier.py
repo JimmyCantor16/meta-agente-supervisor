@@ -166,6 +166,71 @@ try:
                 problems.append(
                     method.upper() + " " + url + " lanzo excepcion:\\n" + traceback.format_exc()[-1500:]
                 )
+    # --- ¿SE PUEDE ENTRAR? ---
+    # El recorrido de arriba llama a los endpoints sueltos, pero nunca ejercita
+    # la SECUENCIA de la puerta: registrarse y luego entrar con esa misma cuenta.
+    # Es el fallo que ya costó tres despliegues (un 500 en /register por un pin
+    # incompatible de bcrypt, y un /login que ni existía porque su router no se
+    # incluyó): la API respondía, así que todo parecía verde.
+    rutas = spec.get("paths", {})
+    def _buscar(*claves):
+        for p in rutas:
+            bajo = p.lower()
+            if any(k in bajo for k in claves) and "{" not in p:
+                return p
+        return None
+
+    r_registro = _buscar("register", "registro", "signup", "sign-up")
+    r_entrada = _buscar("login", "entrar", "signin", "sign-in", "token")
+    # Hay puerta para crear cuenta pero ninguna para entrar. Es el caso que
+    # ocurrio de verdad: el router de login existia pero nadie lo incluyo en la
+    # app, asi que /login daba 404 y el sistema quedaba inservible. Si esto se
+    # tratara como "no aplica", la comprobacion se saltaria justo cuando hace falta.
+    if not problems and r_registro and not r_entrada:
+        problems.append(
+            "SE PUEDE CREAR CUENTA PERO NO HAY POR DONDE ENTRAR: existe "
+            + r_registro + " pero la aplicacion no expone ninguna ruta de login.\\n"
+            "Casi siempre es que el router de autenticacion no se incluyo en la app "
+            "(falta un include_router). Anadelo y exponlo como POST /api/login."
+        )
+    if not problems and r_registro and r_entrada:
+        credenciales = {"username": "verificador", "password": "Verifica1234"}
+        try:
+            alta = client.post(r_registro, json=credenciales)
+            # 409/400 = ya existía de una vuelta anterior; sigue siendo válido.
+            if alta.status_code >= 500:
+                problems.append(
+                    "NO SE PUEDE CREAR UNA CUENTA: POST " + r_registro + " -> HTTP "
+                    + str(alta.status_code) + "\\n" + alta.text[:300]
+                    + "\\nSin registro no se puede usar el sistema: arreglalo."
+                )
+            else:
+                entrada = client.post(r_entrada, data=credenciales)
+                if entrada.status_code >= 400:
+                    entrada = client.post(r_entrada, json=credenciales)
+                if entrada.status_code >= 400:
+                    problems.append(
+                        "SE CREA LA CUENTA PERO NO SE PUEDE ENTRAR: POST " + r_entrada
+                        + " -> HTTP " + str(entrada.status_code) + "\\n" + entrada.text[:300]
+                        + "\\nComprueba que el router de login este incluido y que la"
+                        " contrasena se verifique contra el hash guardado."
+                    )
+                else:
+                    cuerpo = {}
+                    try:
+                        cuerpo = entrada.json()
+                    except Exception:
+                        cuerpo = {}
+                    if not any(k in cuerpo for k in ("access_token", "token", "jwt")):
+                        problems.append(
+                            "EL LOGIN RESPONDE 200 PERO NO DEVUELVE NINGUN TOKEN ("
+                            + r_entrada + "): el frontend no tiene con que autenticarse."
+                        )
+        except Exception:
+            problems.append(
+                "LA PUERTA DE ENTRADA REVIENTA:\\n" + traceback.format_exc()[-1500:]
+            )
+
     # Solo se denuncia si TODAS las colecciones vienen vacías: eso es que faltan
     # las semillas. Si unas traen datos y otras no, puede ser legítimo (un
     # buscador, un historial recién creado) y marcarlo mandaría al reparador a

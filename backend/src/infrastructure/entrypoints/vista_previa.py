@@ -37,8 +37,11 @@ def _destino_local(slug: str) -> str | None:
     from src.infrastructure.entrypoints.api import get_project_runner
 
     runner = get_project_runner()
-    url = getattr(runner, "_urls", {}).get(slug)  # noqa: SLF001 - registro del runner
-    return url
+    # `url_local` es parte del contrato del runner. Antes se leía `_urls` con un
+    # getattr: funcionaba, pero cualquier cambio interno del runner rompía la
+    # vista previa en silencio.
+    obtener = getattr(runner, "url_local", None)
+    return obtener(slug) if callable(obtener) else None
 
 
 @router.get("/preview/{slug}", include_in_schema=False)

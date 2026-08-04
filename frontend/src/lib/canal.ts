@@ -34,14 +34,21 @@ export function esEscritorio(): boolean {
 
 /** El canal que este aparato debe escuchar, y si es el de tu propia máquina. */
 export function canalDeEscucha(): { url: string; esLocal: boolean } {
+  // La sesión viaja en la URL porque un navegador no puede poner cabeceras al
+  // abrir un WebSocket. Sin ella se escucha igual, pero solo los eventos
+  // generales: los pasos de una generación son de quien la pidió.
+  const token = credencial();
+  const conSesion = (base: string) =>
+    token ? `${base}?token=${encodeURIComponent(token)}` : base;
+
   // Escritorio: el backend compartido. Ahí llega tanto lo que se genera en la
   // nube como lo que la web local reenvía, así que ve todo.
-  if (esEscritorio()) return { url: PROD_WS, esLocal: false };
+  if (esEscritorio()) return { url: conSesion(PROD_WS), esLocal: false };
   const host = window.location.host;
   // En Render el proxy del sitio estático NO reenvía WebSocket → directo al backend.
-  if (host.endsWith(".onrender.com")) return { url: PROD_WS, esLocal: false };
+  if (host.endsWith(".onrender.com")) return { url: conSesion(PROD_WS), esLocal: false };
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return { url: `${proto}://${host}/api/v1/ws/progreso`, esLocal: true };
+  return { url: conSesion(`${proto}://${host}/api/v1/ws/progreso`), esLocal: true };
 }
 
 function credencial(): string | null {

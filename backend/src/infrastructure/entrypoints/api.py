@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 
 from src.infrastructure.entrypoints.limite_ritmo import limitar_por_ip
-from src.infrastructure.entrypoints.progreso import DIFUSOR, sanear_evento
+from src.infrastructure.entrypoints.progreso import DIFUSOR, DUENO_ACTUAL, sanear_evento
 from src.infrastructure.entrypoints.avisos import reclamar_aviso
 from src.application.account_service import AccountService
 from src.application.experto import ServicioExperto
@@ -1092,6 +1092,11 @@ def generate_project(
     - 422: prompt inválido.
     - 502: fallo del generador o de escritura.
     """
+    # Marca de quién es este trabajo. Todo lo que el pipeline registre a partir
+    # de aquí —incluido lo que ocurre en el hilo del threadpool, porque FastAPI
+    # copia el contexto— se le entrega SOLO a él por el canal de progreso.
+    DUENO_ACTUAL.set(user.sub or "")
+
     # Gate POR USUARIO: bloquea si agotó su cupo gratis y no tiene pago aprobado.
     try:
         account.ensure_can_generate(user)

@@ -29,6 +29,16 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /docs
+    # Disco persistente para los proyectos generados.
+    #
+    # Sin esto, `generated/` vive en el contenedor y se borra en CADA deploy y
+    # en cada reinicio: el MVP que el usuario acaba de recibir desaparece, y su
+    # URL de vista previa pasa a responder «este sistema no está encendido».
+    # Es la diferencia entre entregar un enlace y entregar un enlace que dura.
+    disk:
+      name: metaagente-generated
+      mountPath: /app/generated
+      sizeGB: 1
     envVars:
       # Render inyecta la cadena de conexión: al existir DATABASE_URL, la app
       # usa automáticamente los adaptadores PostgreSQL en vez de los SQLite.
@@ -55,6 +65,17 @@ services:
         sync: false
       # Origen del frontend para CORS. Ajusta al dominio real tras el deploy.
       - key: CORS_ORIGINS
+        sync: false
+      # URL pública del propio backend. Con ella, los MVP se entregan como
+      # <base>/preview/<slug>/ en vez de un localhost inalcanzable.
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # Respaldo de las entregas a GitHub. Con disco persistente ya no es
+      # imprescindible, pero sigue siendo la red de seguridad si se recrea el
+      # servicio: sin él, las ramas `agente/<slug>` solo viven en ese disco.
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_OWNER
         sync: false
       # --- Ajustes no secretos ---
       - key: USE_MOCK_LLM
