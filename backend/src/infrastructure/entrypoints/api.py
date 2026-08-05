@@ -1488,12 +1488,24 @@ class CursoResponse(BaseModel):
     titulo_curso: str
     resumen: str
     arquetipo: str = ""
+    #: Relleno si el curso es sobre un tema externo; vacío si es sobre un
+    #: proyecto. El frontend lo usa para no ofrecer «ir al aula» cuando no hay
+    #: código que abrir.
+    tema: str = ""
     clases: list[ClaseDTO]
     progreso: ProgresoDTO
 
 
 class CursoRequest(BaseModel):
-    project_name: str = Field(..., min_length=1)
+    # Uno de los dos manda: el proyecto del alumno, o un tema libre. Por eso
+    # `project_name` deja de ser obligatorio — pedir un curso de n8n no puede
+    # exigir que antes te hayas generado un proyecto.
+    project_name: str = Field(default="")
+    tema: str = Field(
+        default="",
+        max_length=120,
+        description="Tema externo a enseñar (n8n, SQL…). Si viene, no hace falta proyecto.",
+    )
     arquetipo: str = Field(default="")
     language: Literal["es", "en"] = "es"
     nivel: str = Field(default="desconocido", description="Nivel medido antes de generar.")
@@ -1509,6 +1521,7 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
         titulo_curso=syllabus.titulo_curso,
         resumen=syllabus.resumen,
         arquetipo=syllabus.arquetipo,
+        tema=getattr(syllabus, "tema", ""),
         clases=[
             ClaseDTO(
                 numero=c.numero, titulo=c.titulo, objetivo=c.objetivo,
@@ -1538,7 +1551,7 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
 @router.post(
     "/curso/iniciar",
     response_model=CursoResponse,
-    summary="Genera (o recupera) el curso del profesor para un proyecto del alumno.",
+    summary="Genera (o recupera) un curso: sobre un proyecto del alumno o sobre un tema.",
 )
 def iniciar_curso(
     request: CursoRequest,
@@ -1554,7 +1567,7 @@ def iniciar_curso(
     try:
         syllabus, progreso = use_case.execute(
             user.sub, request.project_name, user.plan or "free",
-            request.arquetipo, request.language, request.nivel,
+            request.arquetipo, request.language, request.nivel, request.tema,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

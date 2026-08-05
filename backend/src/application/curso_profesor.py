@@ -66,13 +66,21 @@ class GenerarCursoUseCase:
         arquetipo: str = "",
         language: str = "es",
         nivel: str = "desconocido",
+        tema: str = "",
     ) -> tuple[Syllabus, ProgresoCurso]:
-        nombre = (proyecto or "").strip()
+        """Crea el curso de un PROYECTO del alumno o, si viene `tema`, de un tema.
+
+        Es el mismo circuito para los dos: mismas clases, mismos quizzes, misma
+        superación verificable y mismo progreso. Lo único que cambia es de dónde
+        sale el material — del código del alumno o de lo que se sabe del tema.
+        """
+        tema = (tema or "").strip()
+        nombre = (proyecto or "").strip() or tema
         if not nombre:
-            raise ValueError("Falta el nombre del proyecto.")
+            raise ValueError("Falta el nombre del proyecto o el tema del curso.")
         cid = _curso_id(usuario_sub, nombre)
 
-        # ¿Ya tiene curso para este proyecto? Se reutiliza (no se regenera).
+        # ¿Ya tiene curso para esto? Se reutiliza (no se regenera).
         existente = self._repo.cargar_syllabus(cid)
         if existente is not None:
             progreso = self._repo.cargar_progreso(cid) or ProgresoCurso(
@@ -81,14 +89,20 @@ class GenerarCursoUseCase:
             )
             return existente, progreso
 
-        archivos = self._reader.read(nombre)
-        if not archivos:
-            raise AuditError(f"El proyecto '{nombre}' no existe o está vacío.")
+        # Un curso de tema no tiene proyecto en disco: pedirle archivos sería
+        # exigirle al alumno que ya tenga hecho lo que viene a aprender.
+        archivos = []
+        if not tema:
+            archivos = self._reader.read(nombre)
+            if not archivos:
+                raise AuditError(f"El proyecto '{nombre}' no existe o está vacío.")
 
         num = CLASES_POR_PLAN.get(plan, 10)
         # El temario se genera ADAPTADO al nivel: a un principiante no se le
         # exigen pruebas técnicas duras (git/URL) de golpe.
-        syllabus = self._generador.generar(nombre, arquetipo, archivos, num, language, nivel)
+        syllabus = self._generador.generar(
+            nombre, arquetipo, archivos, num, language, nivel, tema
+        )
         # Se renumeran las clases por si el modelo se desordenó.
         for i, c in enumerate(syllabus.clases, start=1):
             c.numero = i
@@ -104,8 +118,10 @@ class GenerarCursoUseCase:
             nivel=nivel_val,
         )
         self._repo.guardar_progreso(progreso)
-        logger.info("Curso creado para '%s' (%d clases, plan %s).",
-                    nombre, len(syllabus.clases), plan)
+        logger.info(
+            "Curso creado sobre %s '%s' (%d clases, plan %s).",
+            "el tema" if tema else "el proyecto", nombre, len(syllabus.clases), plan,
+        )
         return syllabus, progreso
 
 
@@ -142,7 +158,7 @@ class ChatProfesorUseCase:
         nivel = (progreso.nivel.value if progreso and hasattr(progreso.nivel, "value")
                  else (progreso.nivel if progreso else "desconocido"))
 
-        contexto = _contexto_breve(self._reader, syllabus.proyecto)
+        contexto = _contexto_del_curso(self._reader, syllabus)
         respuesta = self._chat.responder(clase, historial, texto, contexto, language, nivel)
         msg = MensajeChat(rol="profesor", texto=respuesta)
         self._repo.guardar_mensaje(curso_id, numero_clase, msg)
@@ -229,9 +245,14 @@ class VerificarClaseUseCase:
         self._repo.guardar_progreso(progreso)
 
         cierre = mensaje + (
-            "\n\n🎓 **¡Te graduaste!** Completaste TODO el curso: tu sistema vive "
-            "en internet, en tu cuenta, y ahora entiendes cómo funciona por dentro. "
-            "Eso ya te hace desarrollador."
+            (
+                "\n\n🎓 **¡Te graduaste!** Completaste TODO el curso sobre "
+                f"{syllabus.tema}. Ya no es teoría: lo has hecho tú."
+                if syllabus.sobre_un_tema else
+                "\n\n🎓 **¡Te graduaste!** Completaste TODO el curso: tu sistema vive "
+                "en internet, en tu cuenta, y ahora entiendes cómo funciona por dentro. "
+                "Eso ya te hace desarrollador."
+            )
             if graduado else
             f"\n\n✅ **¡Clase {numero_clase} superada!** Desbloqueaste la siguiente. "
             "Cuando quieras, seguimos."
@@ -300,6 +321,22 @@ def _clase(syllabus: Syllabus, numero: int) -> Clase:
         if c.numero == numero:
             return c
     raise AuditError(f"La clase {numero} no existe en este curso.")
+
+
+def _contexto_del_curso(reader: ProjectReaderPort, syllabus: Syllabus) -> str:
+    """Lo que sitúa al profesor: el código del alumno, o el tema del curso.
+
+    En un curso de tema no hay disco al que ir; ir de todas formas devolvía
+    «(no se pudo leer el proyecto)» y el profesor respondía disculpándose por
+    un proyecto que nunca existió.
+    """
+    if syllabus.sobre_un_tema:
+        return (
+            f"CURSO SOBRE EL TEMA: {syllabus.tema}\n"
+            "El alumno NO tiene un proyecto propio: enseña el tema en sí, con "
+            "ejemplos concretos y reales. No le pidas que abra archivos suyos."
+        )
+    return _contexto_breve(reader, syllabus.proyecto)
 
 
 def _contexto_breve(reader: ProjectReaderPort, proyecto: str) -> str:

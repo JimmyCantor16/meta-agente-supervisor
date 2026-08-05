@@ -409,11 +409,18 @@ class GeneradorSyllabusPort(ABC):
         num_clases: int,
         language: str = "es",
         nivel: str = "desconocido",
+        tema: str = "",
     ) -> Syllabus:
         """Diseña el temario, ADAPTADO al nivel del alumno.
 
         Con `nivel='bajo'` los retos avanzados (git, publicar) se plantean de
         forma suave (reflexión) en vez de exigir repo/URL reales de golpe.
+
+        Con `tema` relleno el curso es sobre un TEMA EXTERNO (n8n, SQL): no hay
+        `files` que leer, así que ningún criterio puede pedir tocar un archivo
+        concreto. El resto del circuito —clases, quizzes, progreso, superación—
+        es el mismo.
+
         Raises AuditError si falla.
         """
         raise NotImplementedError

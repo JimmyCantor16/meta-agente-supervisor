@@ -61,7 +61,7 @@ def _parece_pregunta_examen(clase, mensaje: str) -> bool:
 
 class MockGeneradorSyllabus(GeneradorSyllabusPort):
     def generar(self, proyecto, arquetipo, files, num_clases, language="es",
-                nivel="desconocido") -> Syllabus:
+                nivel="desconocido", tema="") -> Syllabus:
         base = [
             ("Conoce tu sistema", "Entender qué hace tu proyecto y sus partes.",
              f"Tu proyecto **{proyecto}** tiene un backend (el que atiende) y un frontend "
@@ -180,6 +180,13 @@ class MockGeneradorSyllabus(GeneradorSyllabusPort):
                         descripcion="Cuéntame con tus palabras cómo lo harías (sin prisa).",
                         pista=cl.criterio.pista,
                     )
+        if tema:
+            return Syllabus(
+                proyecto=proyecto, arquetipo=arquetipo, tema=tema,
+                titulo_curso=f"Aprende {tema} desde cero",
+                resumen=f"Un curso simulado sobre {tema}, para probar la mecánica sin gastar cupo.",
+                clases=clases,
+            )
         return Syllabus(
             proyecto=proyecto, arquetipo=arquetipo,
             titulo_curso=f"De cero a producción con {proyecto}",

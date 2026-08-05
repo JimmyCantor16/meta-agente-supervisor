@@ -52,10 +52,17 @@ import type { ClaseCurso, CursoResult, DiagnosticoMVP, MensajeChat, MisionClase 
 export function ProfesorChat({
   projectName,
   onIrAlAula,
+  tema = "",
 }: {
   projectName: string;
   /** Lleva al alumno al aula con el archivo de la clase ya abierto. */
   onIrAlAula?: (m: MisionClase) => void;
+  /**
+   * Tema externo a enseñar (n8n, SQL…). Con esto el curso no necesita
+   * proyecto: no se diagnostica ningún MVP ni se ofrece ir al aula, porque no
+   * hay código del alumno que abrir.
+   */
+  tema?: string;
 }) {
   const { t, lang } = useLanguage();
   const g = t.curso;
@@ -87,10 +94,12 @@ export function ProfesorChat({
       setCargando(true);
       setError(null);
       try {
-        const info = await existeCurso(projectName);
+        // El curso se guarda bajo el proyecto o, si no hay, bajo el tema.
+        const clave = projectName || tema;
+        const info = await existeCurso(clave);
         if (!vivo) return;
         if (info.existe) {
-          const c = await iniciarCurso(projectName, "", lang);
+          const c = await iniciarCurso(projectName, "", lang, "desconocido", tema);
           if (vivo) await abrirCurso(c);
         } else {
           setNivelPrimero(true);
@@ -105,13 +114,13 @@ export function ProfesorChat({
       vivo = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName]);
+  }, [projectName, tema]);
 
   // Tras nivelar a un curso nuevo: se genera el temario con ese nivel.
   const generarConNivel = async (nivel: "bajo" | "medio" | "alto") => {
     setCargando(true);
     try {
-      const c = await iniciarCurso(projectName, "", lang, nivel);
+      const c = await iniciarCurso(projectName, "", lang, nivel, tema);
       await abrirCurso(c);
       setNivelPrimero(false);
     } catch (err) {
@@ -123,7 +132,9 @@ export function ProfesorChat({
 
   // El profesor RETOMA el proyecto y diagnostica, honesto, si el MVP sirve.
   // No bloquea el curso: corre en paralelo y aparece como aviso arriba.
+  // En un curso de TEMA no hay MVP que diagnosticar: se salta.
   useEffect(() => {
+    if (tema) return;
     let vivo = true;
     (async () => {
       try {
@@ -137,7 +148,7 @@ export function ProfesorChat({
       vivo = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName]);
+  }, [projectName, tema]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -329,7 +340,9 @@ export function ProfesorChat({
             <SuperarClase
               curso={curso}
               clase={clase}
-              onIrAlAula={onIrAlAula}
+              // En un curso de tema no hay proyecto que abrir: el enlace al
+              // aula llevaría a un editor vacío.
+              onIrAlAula={tema ? undefined : onIrAlAula}
               yaHecha={completadas.has(clase.numero)}
               onSuperada={(actualizado) => {
                 setCurso(actualizado);

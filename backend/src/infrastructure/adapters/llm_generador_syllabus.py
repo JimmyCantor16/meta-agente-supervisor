@@ -115,6 +115,55 @@ REGLAS:
 - Todo en el idioma indicado.
 """
 
+# --- FASE 1 bis: el índice cuando el curso es sobre un TEMA, no un proyecto. ---
+SYSTEM_INDICE_TEMA = _QUIEN_ERES + """
+Diseña SOLO EL ÍNDICE de un curso sobre el TEMA que se te indica. NO escribas
+todavía el contenido ni los quiz — eso viene después, clase por clase.
+
+Aquí NO hay proyecto ni archivos del alumno: el material es el tema en sí.
+
+Devuelve EXCLUSIVAMENTE un JSON válido (sin markdown):
+{
+  "titulo_curso": "Nombre motivador del curso sobre el tema",
+  "resumen": "1-2 frases de qué sabrá hacer el alumno al terminar",
+  "clases": [
+    {
+      "titulo": "Título corto y claro",
+      "objetivo": "Qué logras en esta clase, en una frase, en cristiano",
+      "concepto_clave": "El concepto que se aprende",
+      "tipo": "quiz | reflexion | repo_git | url_publicada"
+    }
+  ]
+}
+
+DISEÑO DEL ARCO (adáptalo al tema, pero respeta el viaje):
+1. Qué es y para qué sirve de verdad. Con un ejemplo que se entienda.
+2. Instalarlo / entrar por primera vez y ver algo funcionando.
+3-4. Los dos o tres conceptos que sostienen todo lo demás.
+5-7. Construir algo pequeño de punta a punta, por partes.
+8-9. Los errores típicos y cómo salir de ellos.
+10+. Llevarlo a lo real (compartirlo, publicarlo, automatizarlo) y repaso final.
+
+REGLAS:
+- EXACTAMENTE el número de clases pedido, ni una más ni una menos.
+- **NUNCA uses el tipo "cambio"**: ese exige tocar un archivo de un proyecto, y
+  aquí no hay proyecto. Usa "quiz" o "reflexion"; usa "repo_git" o
+  "url_publicada" SOLO si el tema lleva de forma natural a publicar algo.
+- **AL MENOS LA MITAD DE LAS CLASES DEBEN SER "quiz"**, y la primera SIEMPRE.
+  Es lo que separa este curso de leer un tutorial: con "reflexion" el alumno
+  escribe lo que sea y sigue; con "quiz" hay que haber entendido de verdad.
+  Un quiz sobre el TEMA no es duro ni para un principiante — lo duro es pedir
+  un repositorio o una URL publicada, y eso sí se reserva para quien va bien.
+- Alterna: no pongas todas las de quiz al principio y todas las de reflexión al
+  final. La comprobación tiene que estar repartida por todo el curso.
+- CONCRETO SIEMPRE: nombra las herramientas, pantallas y piezas REALES del
+  tema. Un índice que serviría para cualquier tema no sirve para ninguno.
+- Cada clase deja algo HECHO, no solo leído.
+- Tono del profesor paciente: celebra, motiva, cero jerga sin explicar.
+- Todo en el idioma indicado.
+"""
+
+
 # --- FASE 2: el detalle, en lotes de pocas clases. ---
 SYSTEM_DETALLE = _QUIEN_ERES + """
 Ya existe el índice del curso. Ahora ESCRIBE EL CONTENIDO COMPLETO de las pocas
@@ -159,11 +208,16 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
         self._llm = MultiModelLLM(role="prompt")
 
     def generar(self, proyecto, arquetipo, files, num_clases, language="es",
-                nivel="desconocido") -> Syllabus:
-        contexto = self._contexto(proyecto, arquetipo, files, language, nivel)
-        rutas_reales = [f.path for f in files]
+                nivel="desconocido", tema="") -> Syllabus:
+        tema = (tema or "").strip()
+        if tema:
+            contexto = self._contexto_tema(tema, language, nivel)
+            rutas_reales: list[str] = []  # sin archivos, ningún criterio puede pedirlos
+        else:
+            contexto = self._contexto(proyecto, arquetipo, files, language, nivel)
+            rutas_reales = [f.path for f in files]
 
-        indice = self._pedir_indice(contexto, num_clases)
+        indice = self._pedir_indice(contexto, num_clases, tema)
         cabeceras = (indice.get("clases") or [])[:num_clases]
         if not cabeceras:
             raise AuditError("El diseñador de cursos no devolvió clases válidas.")
@@ -192,9 +246,13 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
         return Syllabus(
             proyecto=proyecto,
             arquetipo=arquetipo,
-            titulo_curso=str(indice.get("titulo_curso") or f"Aprende con {proyecto}"),
+            titulo_curso=str(
+                indice.get("titulo_curso")
+                or (f"Aprende {tema}" if tema else f"Aprende con {proyecto}")
+            ),
             resumen=str(indice.get("resumen") or ""),
             clases=clases,
+            tema=tema,
         )
 
     # ------------------------------------------------------------------ fases
@@ -216,11 +274,38 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
             f"CÓDIGO CLAVE:\n{fragmentos}"
         )
 
-    def _pedir_indice(self, contexto: str, num_clases: int) -> dict:
+    @staticmethod
+    def _contexto_tema(tema: str, language: str, nivel: str) -> str:
+        """Contexto de un curso sobre un TEMA, sin proyecto que leer.
+
+        Aquí el material no está en disco: está en lo que el modelo sabe del
+        tema. Por eso se le pide explícitamente que aterrice en ejemplos y
+        herramientas REALES — un curso de n8n que no nombra un nodo de n8n es
+        justo el resultado genérico que hay que evitar.
+        """
+        idioma = "español" if language == "es" else "English"
+        guia_nivel = _GUIA_NIVEL.get(nivel, "")
+        return (
+            f"[Redacta TODO en {idioma}]\n"
+            + (f"NIVEL DEL ALUMNO: {guia_nivel}\n" if guia_nivel else "")
+            + f"TEMA DEL CURSO: {tema}\n\n"
+            "NO hay proyecto ni archivos: el curso enseña este tema desde cero.\n"
+            "OJO con el nivel: aunque el alumno sea principiante, los QUIZ siguen "
+            "siendo obligatorios (son preguntas sobre el tema, no pruebas técnicas). "
+            "Lo que se suaviza para un principiante es pedirle un repositorio o "
+            "publicar algo, no comprobar que entendió.\n"
+            "Aterriza SIEMPRE en lo concreto y real del tema (sus herramientas, "
+            "sus nombres propios, sus pantallas, sus errores típicos). Un curso "
+            "que podría valer para cualquier otro tema no sirve para ninguno.\n"
+            "Cada clase debe dejar algo HECHO, no solo leído."
+        )
+
+    def _pedir_indice(self, contexto: str, num_clases: int, tema: str = "") -> dict:
         """Fase 1: títulos y tipo de criterio. Sin esto no hay curso."""
+        sistema = SYSTEM_INDICE_TEMA if tema else SYSTEM_INDICE
         try:
             return self._llm.chat_json(
-                SYSTEM_INDICE + "\n\n" + skill("profesor_paciente.md"),
+                sistema + "\n\n" + skill("profesor_paciente.md"),
                 f"{contexto}\n\nNÚMERO EXACTO DE CLASES: {num_clases}",
                 temperature=0.4,
                 validar=_indice_valido,
@@ -302,6 +387,12 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
                 crit = c.get("criterio") or {}
                 tipo = str(crit.get("tipo", "reflexion")).lower()
                 if tipo not in _TIPOS:
+                    tipo = "reflexion"
+                # Sin archivos no hay archivo que tocar. Un criterio "cambio" en
+                # un curso de tema mandaría al alumno al aula a editar un
+                # proyecto que no existe: se convierte en reflexión, que es la
+                # misma tarea contada con palabras.
+                if tipo == "cambio" and not rutas_reales:
                     tipo = "reflexion"
                 quiz = []
                 for q in (crit.get("quiz") or [])[:5]:

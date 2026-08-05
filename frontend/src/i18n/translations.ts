@@ -76,6 +76,13 @@ const es = {
     reviewChecking: "Visitando tu página…",
   },
   learn: {
+    temaTitulo: "¿Qué quieres aprender?",
+    temaIntro:
+      "Escribe un tema y el profesor te arma un curso completo: clases con un reto cada una, y no avanzas hasta que compruebe que lo entendiste. No hace falta que tengas ningún proyecto.",
+    temaPlaceholder: "Ej: automatizar tareas con n8n",
+    temaBoton: "Enséñame",
+    temaVolver: "Elegir otro tema",
+    temaEnCurso: "Aprendiendo:",
     deployedTitle: "Desplegado · ya puedes probar",
     deployedBody:
       "Estos sistemas están vivos en internet ahora mismo. Ábrelos, crea una cuenta y úsalos: los construyó el agente a partir de una idea escrita en español.",
@@ -594,6 +601,13 @@ const en: Translation = {
     reviewChecking: "Visiting your page…",
   },
   learn: {
+    temaTitulo: "What do you want to learn?",
+    temaIntro:
+      "Type a topic and the teacher builds you a full course: lessons with a challenge each, and you don't move on until it checks that you got it. You don't need to have any project.",
+    temaPlaceholder: "E.g. automating tasks with n8n",
+    temaBoton: "Teach me",
+    temaVolver: "Pick another topic",
+    temaEnCurso: "Learning:",
     deployedTitle: "Deployed · ready to try",
     deployedBody:
       "These systems are live on the internet right now. Open them, create an account and use them: the agent built them from an idea written in plain language.",

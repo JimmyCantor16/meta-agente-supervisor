@@ -696,10 +696,13 @@ export function iniciarCurso(
   projectName: string,
   arquetipo: string,
   language: Language,
-  nivel: string = "desconocido"
+  nivel: string = "desconocido",
+  /** Tema externo (n8n, SQL…). Si viene, el curso no necesita proyecto. */
+  tema: string = ""
 ): Promise<CursoResult> {
   return cursoPost<CursoResult>("iniciar", {
     project_name: projectName,
+    tema,
     arquetipo,
     language,
     nivel,

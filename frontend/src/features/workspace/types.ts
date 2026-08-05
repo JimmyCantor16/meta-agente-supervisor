@@ -189,6 +189,8 @@ export interface CursoResult {
   titulo_curso: string;
   resumen: string;
   arquetipo: string;
+  /** Relleno si el curso es sobre un tema externo (n8n, SQL). Vacío = sobre un proyecto. */
+  tema?: string;
   clases: ClaseCurso[];
   progreso: ProgresoCurso;
 }

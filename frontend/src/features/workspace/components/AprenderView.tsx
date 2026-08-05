@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import { useAuth } from "../../auth/AuthProvider";
+import { ProfesorChat } from "./ProfesorChat";
 
 /** Un despliegue listo para probar (los que ya están en producción). */
 interface Despliegue {
@@ -102,6 +103,10 @@ export function AprenderView() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const [esAdmin, setEsAdmin] = useState(false);
+  // El tema que el alumno quiere aprender. Con esto el profesor deja de estar
+  // atado a un proyecto generado: enseña n8n, SQL o lo que le pidan.
+  const [tema, setTema] = useState("");
+  const [temaActivo, setTemaActivo] = useState("");
 
   // El aviso de «listo para probar» es para quien administra: confirma que lo
   // que se acaba de desplegar está en pie.
@@ -110,8 +115,65 @@ export function AprenderView() {
     setEsAdmin(true);
   }, [user]);
 
+  // Con un tema elegido, la vista ES la clase: el profesor ocupa la pantalla.
+  if (temaActivo) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            onClick={() => setTemaActivo("")}
+            className="flex items-center gap-2 rounded-lg border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink-body transition hover:border-brand-600 hover:text-brand-700"
+          >
+            ← {t.learn.temaVolver}
+          </button>
+          <p className="text-sm text-ink-muted">
+            {t.learn.temaEnCurso} <b className="text-ink">{temaActivo}</b>
+          </p>
+        </div>
+        <ProfesorChat projectName="" tema={temaActivo} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      {/* --- Pedir un curso sobre CUALQUIER tema ---
+          Antes el profesor solo enseñaba proyectos generados aquí: quien pedía
+          «enséñame n8n» recibía una app de gestión con login, que es lo que
+          menos se parece a aprender n8n. */}
+      <div className="rounded-lg bg-white p-5 shadow-card">
+        <p className="text-subhead text-ink">{t.learn.temaTitulo}</p>
+        <p className="mt-1 text-sm leading-relaxed text-ink-muted">{t.learn.temaIntro}</p>
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          {["n8n", "SQL", "Python", "Excel avanzado"].map((sugerencia) => (
+            <button
+              key={sugerencia}
+              onClick={() => setTemaActivo(sugerencia)}
+              className="rounded border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink-body transition hover:border-brand-600 hover:text-brand-700"
+            >
+              {sugerencia}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input
+            value={tema}
+            onChange={(e) => setTema(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && tema.trim() && setTemaActivo(tema.trim())}
+            placeholder={t.learn.temaPlaceholder}
+            maxLength={120}
+            className="flex-1 rounded border border-black/10 bg-white px-3.5 py-2 text-sm text-ink-body transition placeholder:text-ink-faint focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/15"
+          />
+          <button
+            onClick={() => tema.trim() && setTemaActivo(tema.trim())}
+            disabled={!tema.trim()}
+            className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-40"
+          >
+            {t.learn.temaBoton}
+          </button>
+        </div>
+      </div>
+
       {/* --- Aviso de despliegue (admin) --- */}
       {esAdmin && (
         <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5">

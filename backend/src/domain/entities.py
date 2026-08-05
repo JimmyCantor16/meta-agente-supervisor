@@ -394,13 +394,31 @@ class Clase(BaseModel):
 
 
 class Syllabus(BaseModel):
-    """El plan de estudios completo, generado a partir del proyecto real."""
+    """El plan de estudios completo.
+
+    Nace de dos sitios distintos, y por eso `tema` existe:
+      · de un PROYECTO del alumno — el curso habla de SU código;
+      · de un TEMA libre ("n8n", "SQL") — no hay código que leer.
+
+    En el segundo caso `proyecto` guarda el nombre del tema (es la clave con la
+    que se almacena el curso) y `tema` queda relleno para que todo el circuito
+    sepa que no debe ir a buscar archivos a disco.
+    """
 
     proyecto: str
     arquetipo: str = Field(default="")
     titulo_curso: str
     resumen: str
     clases: list[Clase] = Field(default_factory=list)
+    tema: str = Field(
+        default="",
+        description="Tema externo del curso. Vacío = el curso es sobre un proyecto del alumno.",
+    )
+
+    @property
+    def sobre_un_tema(self) -> bool:
+        """True si el curso enseña un tema externo y no hay proyecto que leer."""
+        return bool(self.tema.strip())
 
 
 class MensajeChat(BaseModel):
