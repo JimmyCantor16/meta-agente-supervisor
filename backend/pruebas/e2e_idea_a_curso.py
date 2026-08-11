@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -67,9 +68,13 @@ class Paso:
 
 
 class Circuito:
-    def __init__(self, api: str, idioma: str) -> None:
+    def __init__(self, api: str, idioma: str, token: str = "dev-local") -> None:
         self.api = api.rstrip("/")
         self.idioma = idioma
+        # `dev-local` solo abre la puerta en local (ver `_bypass_local_activo`).
+        # Contra producción hay que pasar una sesión de verdad con `--token`, o
+        # el paso de generar corta con un 401 y la prueba no dice nada útil.
+        self.token = token
         self.pasos: list[Paso] = []
 
     # ------------------------------------------------------------------ HTTP
@@ -85,7 +90,7 @@ class Circuito:
         url = ruta if ruta.startswith("http") else f"{self.api}{ruta}"
         datos = json.dumps(cuerpo, ensure_ascii=False).encode("utf-8") if cuerpo is not None else None
         req = urllib.request.Request(url, data=datos, method="POST" if datos else "GET")
-        req.add_header("Authorization", "Bearer dev-local")
+        req.add_header("Authorization", f"Bearer {self.token}")
         if datos:
             req.add_header("Content-Type", "application/json; charset=utf-8")
         try:
@@ -362,9 +367,14 @@ def main() -> int:
         default="",
         help="Salta evaluar+generar y usa un proyecto ya existente (prueba solo la mitad docente).",
     )
+    ap.add_argument(
+        "--token",
+        default=os.environ.get("E2E_TOKEN", "dev-local"),
+        help="Sesión real (ID token de Google). Obligatorio contra producción.",
+    )
     args = ap.parse_args()
 
-    c = Circuito(args.api, args.idioma)
+    c = Circuito(args.api, args.idioma, args.token)
     print(f"Backend : {c.api}")
     print(f"Idea    : {args.idea if not args.proyecto else '(saltada)'}")
 
