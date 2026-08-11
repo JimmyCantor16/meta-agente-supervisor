@@ -9,6 +9,7 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'diseno.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Una construcción YA terminada, guardada para poder mirarla después.
@@ -324,14 +325,6 @@ class EstadoAuditoria {
 // Widgets
 // ---------------------------------------------------------------------------
 
-const _fondo = Color(0xFF0E141A);
-const _tarjeta = Color(0xFF161E26);
-const _linea = Color(0xFF26333F);
-const _tinta = Color(0xFFE4EAF0);
-const _tinta2 = Color(0xFF9BA9B5);
-const _acento = Color(0xFF5CC4C4);
-const _ok = Color(0xFF4ADE80);
-const _aviso = Color(0xFFE9A24C);
 
 /// Panel del auditor: avance, fases y estado de la cadena de IA.
 class PanelAuditor extends StatelessWidget {
@@ -373,13 +366,13 @@ class _Avance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = estado.conAvisos ? _aviso : (estado.terminado ? _ok : _acento);
+    final color = estado.conAvisos ? aviso : (estado.terminado ? exito : marca);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _tarjeta,
+        color: tarjeta,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _linea),
+        border: Border.all(color: linea),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,7 +383,7 @@ class _Avance extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: conectado ? _ok : _tinta2,
+                  color: conectado ? exito : tintaSuave,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -398,7 +391,7 @@ class _Avance extends StatelessWidget {
               Text(
                 conectado ? 'AUDITANDO EN VIVO' : 'SIN CONEXIÓN',
                 style: const TextStyle(
-                  color: _tinta2, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w700),
+                  color: tintaSuave, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w700),
               ),
               const Spacer(),
               Text('${estado.porcentaje}%',
@@ -412,7 +405,7 @@ class _Avance extends StatelessWidget {
             child: LinearProgressIndicator(
               value: estado.porcentaje / 100,
               minHeight: 8,
-              backgroundColor: _linea,
+              backgroundColor: linea,
               valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
@@ -420,13 +413,13 @@ class _Avance extends StatelessWidget {
             const SizedBox(height: 12),
             Text(estado.faseActual,
                 style: const TextStyle(
-                    color: _tinta, fontSize: 15, fontWeight: FontWeight.w600)),
+                    color: tinta, fontSize: 15, fontWeight: FontWeight.w600)),
           ],
           if (estado.detalle.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(estado.detalle,
-                  style: const TextStyle(color: _tinta2, fontSize: 12)),
+                  style: const TextStyle(color: tintaSuave, fontSize: 12)),
             ),
         ],
       ),
@@ -443,10 +436,10 @@ class _Fases extends StatelessWidget {
     return Column(
       children: fases.map((f) {
         final (color, icono) = switch (f.estado) {
-          EstadoFase.hecha => (_ok, Icons.check_circle),
-          EstadoFase.enCurso => (_acento, Icons.autorenew),
-          EstadoFase.fallida => (_aviso, Icons.error_outline),
-          EstadoFase.pendiente => (_tinta2, Icons.circle_outlined),
+          EstadoFase.hecha => (exito, Icons.check_circle),
+          EstadoFase.enCurso => (marca, Icons.autorenew),
+          EstadoFase.fallida => (aviso, Icons.error_outline),
+          EstadoFase.pendiente => (tintaSuave, Icons.circle_outlined),
         };
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -457,12 +450,12 @@ class _Fases extends StatelessWidget {
               Expanded(
                 child: Text(f.nombre,
                     style: TextStyle(
-                        color: f.estado == EstadoFase.pendiente ? _tinta2 : _tinta,
+                        color: f.estado == EstadoFase.pendiente ? tintaSuave : tinta,
                         fontSize: 14)),
               ),
               if (f.detalle.isNotEmpty)
                 Text(f.detalle,
-                    style: const TextStyle(color: _tinta2, fontSize: 11)),
+                    style: const TextStyle(color: tintaSuave, fontSize: 11)),
             ],
           ),
         );
@@ -479,7 +472,7 @@ class _Cadena extends StatelessWidget {
   Widget build(BuildContext context) {
     if (estado.proveedores.isEmpty) {
       return const Text('Ningún modelo ha respondido todavía.',
-          style: TextStyle(color: _tinta2, fontSize: 13));
+          style: TextStyle(color: tintaSuave, fontSize: 13));
     }
     final tasa = estado.tasaAcierto;
     return Column(
@@ -489,24 +482,24 @@ class _Cadena extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text('$tasa % de acierto · ${estado.aciertos} ✓ · ${estado.fallos} ✕',
-                style: const TextStyle(color: _acento, fontSize: 12, fontWeight: FontWeight.w700)),
+                style: const TextStyle(color: marca, fontSize: 12, fontWeight: FontWeight.w700)),
           ),
         ...estado.proveedores.values.map((p) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(
                 children: [
-                  const Icon(Icons.memory, size: 15, color: _tinta2),
+                  const Icon(Icons.memory, size: 15, color: tintaSuave),
                   const SizedBox(width: 8),
                   Expanded(
                       child: Text(p.nombre,
-                          style: const TextStyle(color: _tinta, fontSize: 13))),
+                          style: const TextStyle(color: tinta, fontSize: 13))),
                   Text('${p.aciertos}',
-                      style: const TextStyle(color: _ok, fontSize: 12, fontWeight: FontWeight.w700)),
+                      style: const TextStyle(color: exito, fontSize: 12, fontWeight: FontWeight.w700)),
                   if (p.fallos > 0) ...[
                     const SizedBox(width: 8),
                     Text('${p.fallos}',
                         style: const TextStyle(
-                            color: _aviso, fontSize: 12, fontWeight: FontWeight.w700)),
+                            color: aviso, fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
                 ],
               ),
@@ -541,13 +534,13 @@ class _Historial extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('$buenas de ${corridas.length} llegaron a estar en vivo',
-            style: const TextStyle(color: _acento, fontSize: 12, fontWeight: FontWeight.w700)),
+            style: const TextStyle(color: marca, fontSize: 12, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         ...corridas.map((c) {
           final (color, icono) = switch (c.desenlace) {
-            'listo' => (_ok, Icons.check_circle),
-            'avisos' => (_aviso, Icons.error_outline),
-            _ => (_tinta2, Icons.remove_circle_outline),
+            'listo' => (exito, Icons.check_circle),
+            'avisos' => (aviso, Icons.error_outline),
+            _ => (tintaSuave, Icons.remove_circle_outline),
           };
           final modelos = c.modelos.isEmpty ? 'sin modelos registrados' : c.modelos.join(' · ');
           return Padding(
@@ -565,18 +558,18 @@ class _Historial extends StatelessWidget {
                         children: [
                           Text(_fecha(c.cuando),
                               style: const TextStyle(
-                                  color: _tinta, fontSize: 13.5, fontWeight: FontWeight.w600)),
+                                  color: tinta, fontSize: 13.5, fontWeight: FontWeight.w600)),
                           const SizedBox(width: 8),
                           Text(c.duracion,
-                              style: const TextStyle(color: _tinta2, fontSize: 11.5)),
+                              style: const TextStyle(color: tintaSuave, fontSize: 11.5)),
                         ],
                       ),
                       const SizedBox(height: 2),
                       Text(modelos,
-                          style: const TextStyle(color: _tinta2, fontSize: 11.5, height: 1.35)),
+                          style: const TextStyle(color: tintaSuave, fontSize: 11.5, height: 1.35)),
                       if (c.aciertos + c.fallos > 0)
                         Text('${c.aciertos} ✓ · ${c.fallos} ✕',
-                            style: const TextStyle(color: _tinta2, fontSize: 11)),
+                            style: const TextStyle(color: tintaSuave, fontSize: 11)),
                     ],
                   ),
                 ),
@@ -603,16 +596,16 @@ class _Seccion extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _tarjeta,
+        color: tarjeta,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _linea),
+        border: Border.all(color: linea),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(titulo.toUpperCase(),
               style: const TextStyle(
-                  color: _tinta2, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
+                  color: tintaSuave, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           hijo,
         ],
@@ -630,19 +623,19 @@ class _SinActividad extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _linea, style: BorderStyle.solid),
+        border: Border.all(color: linea, style: BorderStyle.solid),
       ),
       child: const Column(
         children: [
-          Icon(Icons.radar, size: 40, color: _tinta2),
+          Icon(Icons.radar, size: 40, color: tintaSuave),
           SizedBox(height: 12),
           Text('Vigilando',
-              style: TextStyle(color: _tinta, fontSize: 16, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: tinta, fontSize: 16, fontWeight: FontWeight.w600)),
           SizedBox(height: 6),
           Text(
             'Cuando alguien construya algo desde la web o el escritorio, lo verás aquí paso a paso.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: _tinta2, fontSize: 13, height: 1.4),
+            style: TextStyle(color: tintaSuave, fontSize: 13, height: 1.4),
           ),
         ],
       ),
@@ -650,4 +643,4 @@ class _SinActividad extends StatelessWidget {
   }
 }
 
-const fondoAuditor = _fondo;
+const fondoAuditor = fondo;

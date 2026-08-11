@@ -201,9 +201,9 @@ export function AprenderView() {
       )}
 
       {/* --- Qué puedes probar ahora --- */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-900">🎓 {t.nav.learn}</h2>
-        <p className="mt-2 max-w-2xl text-sm text-slate-500">{t.learn.intro}</p>
+      <section className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-bold text-ink">🎓 {t.nav.learn}</h2>
+        <p className="mt-2 max-w-2xl text-sm text-ink-muted">{t.learn.intro}</p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           {DESPLIEGUES.map((d) => (
@@ -212,13 +212,13 @@ export function AprenderView() {
               href={d.url}
               target="_blank"
               rel="noreferrer"
-              className="group rounded-xl border border-slate-200 p-4 transition hover:border-brand-300 hover:bg-brand-50/40"
+              className="group rounded-xl border border-black/10 p-4 transition hover:border-brand-300 hover:bg-brand-50/40"
             >
-              <p className="font-semibold text-slate-800 group-hover:text-brand-700">
+              <p className="font-semibold text-ink group-hover:text-brand-700">
                 {d.nombre} <span aria-hidden>↗</span>
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-slate-500">{d.nota}</p>
-              <p className="mt-2 font-mono text-[11px] text-slate-400">
+              <p className="mt-1 text-xs leading-relaxed text-ink-muted">{d.nota}</p>
+              <p className="mt-2 font-mono text-[11px] text-ink-faint">
                 {t.learn.publishedOn} {d.publicado}
               </p>
             </a>
@@ -230,8 +230,8 @@ export function AprenderView() {
       {esAdmin && <RegistroAuditoria />}
 
       {/* --- Cómo funciona el ciclo --- */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
+      <section className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-ink-faint">
           {t.learn.cycleTitle}
         </h3>
         <ol className="mt-4 space-y-3">
@@ -240,18 +240,18 @@ export function AprenderView() {
               <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">
                 {i + 1}
               </span>
-              <span className="text-sm leading-relaxed text-slate-600">{paso}</span>
+              <span className="text-sm leading-relaxed text-ink-body">{paso}</span>
             </li>
           ))}
         </ol>
       </section>
 
       {/* --- El modo profesor --- */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
+      <section className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-ink-faint">
           {t.learn.teacherTitle}
         </h3>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-body">
           {t.learn.teacherBody}
         </p>
       </section>
@@ -300,12 +300,12 @@ function RegistroAuditoria() {
   const hechos = AUDITORIA.filter((a) => revisados.includes(a.fecha)).length;
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-ink-faint">
           {t.learn.auditTitle}
         </h3>
-        <span className="font-mono text-xs text-slate-400">
+        <span className="font-mono text-xs text-ink-faint">
           {hechos}/{AUDITORIA.length} {t.learn.auditChecked}
         </span>
       </div>
@@ -319,7 +319,7 @@ function RegistroAuditoria() {
                 className={`flex cursor-pointer gap-3 rounded-xl border p-3 transition ${
                   marcado
                     ? "border-emerald-200 bg-emerald-50/60"
-                    : "border-slate-200 hover:border-slate-300"
+                    : "border-black/10 hover:border-black/10"
                 }`}
               >
                 <input
@@ -332,14 +332,14 @@ function RegistroAuditoria() {
                   <span className="flex flex-wrap items-baseline gap-x-2">
                     <span
                       className={`text-sm font-semibold ${
-                        marcado ? "text-emerald-800" : "text-slate-800"
+                        marcado ? "text-emerald-800" : "text-ink"
                       }`}
                     >
                       {a.titulo}
                     </span>
-                    <span className="font-mono text-[11px] text-slate-400">{a.fecha}</span>
+                    <span className="font-mono text-[11px] text-ink-faint">{a.fecha}</span>
                   </span>
-                  <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                  <span className="mt-0.5 block text-xs leading-relaxed text-ink-muted">
                     {a.detalle}
                   </span>
                 </span>

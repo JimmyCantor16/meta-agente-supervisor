@@ -20,12 +20,12 @@ export function Card({
 }: PropsWithChildren<CardProps>) {
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}
+      className={`rounded-2xl border border-black/10 bg-white shadow-sm ${className}`}
     >
       {title && (
-        <header className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
+        <header className="flex items-center gap-2 border-b border-black/10 px-5 py-3">
           {icon}
-          <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+          <h2 className="text-sm font-semibold text-ink-body">{title}</h2>
         </header>
       )}
       <div className="p-5">{children}</div>

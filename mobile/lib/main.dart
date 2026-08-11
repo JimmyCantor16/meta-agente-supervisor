@@ -8,6 +8,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'diseno.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -16,9 +17,6 @@ import 'auditor.dart';
 import 'multimedia.dart';
 import 'package:web_socket_channel/io.dart';
 
-const _brand = Color(0xFF6366F1);
-const _bg = Color(0xFF0E1020);
-const _panel = Color(0xFF1A1D33);
 
 // Backend del PC en la Wi-Fi de casa. FIJO (el usuario no lo edita).
 // Backend COMPARTIDO en producción: así el móvil ve en tiempo real lo mismo que
@@ -62,7 +60,7 @@ class MetaAgenteApp extends StatelessWidget {
     return MaterialApp(
       title: 'Meta-Agente · Jamz',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: _brand, scaffoldBackgroundColor: _bg, brightness: Brightness.dark),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: marca, scaffoldBackgroundColor: fondo, brightness: Brightness.dark),
       home: const HomeScreen(),
     );
   }
@@ -258,8 +256,8 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(height: 16),
           _cajaIdea(),
           const SizedBox(height: 12),
-          if (_error != null) _bloque(const Color(0xFF3A1214), Text(_error!, style: const TextStyle(color: Color(0xFFFF9B9B)))),
-          if (_resultado != null) _bloque(_panel, Text(_resultado!, style: const TextStyle(height: 1.45, color: Colors.white70))),
+          if (_error != null) _bloque(tarjeta, Text(_error!, style: const TextStyle(color: alerta))),
+          if (_resultado != null) _bloque(tarjeta, Text(_resultado!, style: const TextStyle(height: 1.45, color: Colors.white70))),
           const SizedBox(height: 8),
           _seccionEnVivo(),
         ],
@@ -275,8 +273,8 @@ class _HomeScreenState extends State<HomeScreen>
       bottomNavigationBar: NavigationBar(
         selectedIndex: _pestana,
         onDestinationSelected: (i) => setState(() => _pestana = i),
-        backgroundColor: const Color(0xFF161E26),
-        indicatorColor: const Color(0xFF5CC4C4).withValues(alpha: 0.2),
+        backgroundColor: tarjeta,
+        indicatorColor: marca.withValues(alpha: 0.2),
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.auto_awesome_outlined),
@@ -299,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           Container(
             width: 42, height: 42,
-            decoration: BoxDecoration(gradient: const LinearGradient(colors: [_brand, Color(0xFF22D3EE)]), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: marca, borderRadius: BorderRadius.circular(12)),
             child: const Icon(Icons.auto_awesome, color: Colors.white),
           ),
           const SizedBox(width: 12),
@@ -317,18 +315,18 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _pill() => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: _conectado ? const Color(0xFF10331F) : const Color(0xFF2A2E45),
+          color: _conectado ? tarjeta : tarjeta,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: _conectado ? const Color(0xFF1F7A46) : Colors.white12),
+          border: Border.all(color: _conectado ? marca : Colors.white12),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           FadeTransition(
             opacity: _conectado ? _pulso : const AlwaysStoppedAnimation(0.4),
-            child: Container(width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle, color: _conectado ? const Color(0xFF34D399) : Colors.white38)),
+            child: Container(width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle, color: _conectado ? exito : Colors.white38)),
           ),
           const SizedBox(width: 7),
           Text(_conectado ? 'EN VIVO' : 'Conectando…',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: .5, color: _conectado ? const Color(0xFF6EE7B7) : Colors.white54)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: .5, color: _conectado ? acento : Colors.white54)),
         ]),
       );
 
@@ -336,12 +334,12 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _tarjetaEstado() => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [_panel, const Color(0xFF15182B)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          color: marca,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white10),
         ),
         child: Row(children: [
-          Icon(_conectado ? Icons.wifi_tethering : Icons.wifi_tethering_off, color: _conectado ? const Color(0xFF34D399) : Colors.white38, size: 30),
+          Icon(_conectado ? Icons.wifi_tethering : Icons.wifi_tethering_off, color: _conectado ? exito : Colors.white38, size: 30),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -358,7 +356,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _cajaIdea() => Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white10)),
+        decoration: BoxDecoration(color: tarjeta, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white10)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Text('Evalúa tu idea', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
           const SizedBox(height: 10),
@@ -369,13 +367,13 @@ class _HomeScreenState extends State<HomeScreen>
             decoration: InputDecoration(
               hintText: 'Ej: una tienda online con carrito y pagos',
               hintStyle: const TextStyle(color: Colors.white30),
-              filled: true, fillColor: _bg,
+              filled: true, fillColor: fondo,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             ),
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: _brand, minimumSize: const Size.fromHeight(48)),
+            style: FilledButton.styleFrom(backgroundColor: marca, minimumSize: const Size.fromHeight(48)),
             onPressed: _cargando ? null : _evaluar,
             icon: _cargando
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -397,11 +395,11 @@ class _HomeScreenState extends State<HomeScreen>
         const Text('📡 Actividad en vivo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         const Spacer(),
         if (_generando)
-          const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: _brand)),
+          const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: marca)),
       ]),
       const SizedBox(height: 10),
       if (_feed.isEmpty)
-        _bloque(_panel, const Row(children: [
+        _bloque(tarjeta, const Row(children: [
           Icon(Icons.hourglass_empty, color: Colors.white30, size: 18),
           SizedBox(width: 10),
           Expanded(child: Text('Sin actividad todavía. Genera un proyecto en el PC y verás cada paso aquí, en vivo.', style: TextStyle(color: Colors.white54, fontSize: 13))),
@@ -415,13 +413,13 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _lineaEvento(_Evento e) {
     final listo = RegExp(r'VIVO|🚀').hasMatch(e.texto);
     final malo = RegExp(r'RETENIDA|no se entrega|falló').hasMatch(e.texto);
-    final color = listo ? const Color(0xFF34D399) : malo ? const Color(0xFFFF6B6B) : _brand;
+    final color = listo ? exito : malo ? alerta : marca;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _panel,
+        color: tarjeta,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: color, width: 3)),
       ),

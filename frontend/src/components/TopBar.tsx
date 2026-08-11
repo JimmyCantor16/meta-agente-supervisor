@@ -19,11 +19,11 @@ export function TopBar({ onMenu }: TopBarProps) {
   const { user, logout } = useAuth();
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur sm:px-6">
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-black/10 bg-white/80 px-4 py-3 backdrop-blur sm:px-6">
       {/* Menú móvil */}
       <button
         onClick={onMenu}
-        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
+        className="rounded-lg p-2 text-ink-muted hover:bg-surface-muted lg:hidden"
         aria-label="Menú"
       >
         ☰
@@ -33,9 +33,9 @@ export function TopBar({ onMenu }: TopBarProps) {
 
       <div className="flex items-center gap-3">
         {/* Toggle Web/Escritorio (cosmético por ahora) */}
-        <div className="hidden items-center overflow-hidden rounded-lg border border-slate-200 text-xs font-medium sm:flex">
+        <div className="hidden items-center overflow-hidden rounded-lg border border-black/10 text-xs font-medium sm:flex">
           <span className="bg-brand-50 px-3 py-1.5 text-brand-700">{t.topbar.web}</span>
-          <span className="px-3 py-1.5 text-slate-400" title="Próximamente">
+          <span className="px-3 py-1.5 text-ink-faint" title="Próximamente">
             {t.topbar.desktop}
           </span>
         </div>
@@ -50,16 +50,16 @@ export function TopBar({ onMenu }: TopBarProps) {
               <img
                 src={user.picture}
                 alt={user.name}
-                className="h-8 w-8 rounded-full border border-slate-200"
+                className="h-8 w-8 rounded-full border border-black/10"
                 referrerPolicy="no-referrer"
               />
             )}
-            <span className="hidden text-sm font-medium text-slate-700 sm:block">
+            <span className="hidden text-sm font-medium text-ink-body sm:block">
               {user.name}
             </span>
             <button
               onClick={logout}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+              className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-semibold text-ink-muted transition hover:bg-surface-muted"
             >
               {t.topbar.logout}
             </button>

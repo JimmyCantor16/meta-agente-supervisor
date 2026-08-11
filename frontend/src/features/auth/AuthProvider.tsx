@@ -208,8 +208,8 @@ function PermisoPuente() {
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/60 p-4">
       <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <h2 className="text-lg font-bold text-slate-900">{t.auth.bridgeConsentTitle}</h2>
-        <p className="mt-2 text-sm text-slate-600">{t.auth.bridgeConsentBody}</p>
+        <h2 className="text-lg font-bold text-ink">{t.auth.bridgeConsentTitle}</h2>
+        <p className="mt-2 text-sm text-ink-body">{t.auth.bridgeConsentBody}</p>
 
         <div className="my-4 rounded-xl border-2 border-brand-200 bg-brand-50 py-4 text-center">
           <p className="text-xs font-semibold uppercase tracking-wider text-brand-600">
@@ -228,7 +228,7 @@ function PermisoPuente() {
           <button
             type="button"
             onClick={cancelarPuente}
-            className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="flex-1 rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink-body hover:bg-surface-muted"
           >
             {t.auth.bridgeConsentCancel}
           </button>

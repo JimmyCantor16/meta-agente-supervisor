@@ -130,6 +130,9 @@ class {d.clase}Repository(ABC):
     @abstractmethod
     def delete(self, registro_id: int, owner_id: int) -> bool: ...
     @abstractmethod
+    def update_any(self, registro_id: int, datos: dict) -> {d.clase} | None:
+        """Actualiza sin mirar el dueño. SOLO lo usa el administrador."""
+    @abstractmethod
     def delete_any(self, registro_id: int) -> bool:
         """Borra sin mirar el dueño. SOLO lo usa el administrador."""
 
@@ -418,8 +421,17 @@ class {d.clase}Service:
     def create(self, owner_id: int, datos: dict) -> {d.clase}:
         return self._repo.create(owner_id, self._validar_relaciones(validar_{d.tabla}(datos)))
 
-    def update(self, registro_id: int, owner_id: int, datos: dict) -> {d.clase} | None:
-        return self._repo.update(registro_id, owner_id, self._validar_relaciones(validar_{d.tabla}(datos)))
+    def update_como(self, user: User, registro_id: int, datos: dict) -> {d.clase} | None:
+        """El admin corrige el registro de cualquiera; los demás, solo el suyo.
+
+        Tiene que ser simétrico con `delete_como`: si el administrador ve todos
+        los registros y puede cancelarlos, no poder CORREGIR uno sería una
+        asimetría sin explicación — vería la errata y no podría tocarla.
+        """
+        limpio = self._validar_relaciones(validar_{d.tabla}(datos))
+        if user.es_admin:
+            return self._repo.update_any(registro_id, limpio)
+        return self._repo.update(registro_id, user.id, limpio)
 
     def delete_como(self, user: User, registro_id: int) -> bool:
         """El admin puede cancelar el registro de cualquiera; los demás, el suyo."""
@@ -717,6 +729,16 @@ class Sql{d.clase}Repository({d.clase}Repository):
         self._s.commit()
         return True
 
+    def update_any(self, registro_id: int, datos: dict) -> {d.clase} | None:
+        """Sin filtro de dueño. El servicio ya comprobó que quien pide es admin."""
+        row = self._s.query({d.clase}Model).filter({d.clase}Model.id == registro_id).first()
+        if row is None:
+            return None
+{asignaciones}
+        self._s.commit()
+        self._s.refresh(row)
+        return _a_entidad(row)
+
     def delete_any(self, registro_id: int) -> bool:
         """Sin filtro de dueño. El servicio ya comprobó que quien pide es admin."""
         row = self._s.query({d.clase}Model).filter({d.clase}Model.id == registro_id).first()
@@ -940,7 +962,8 @@ def crear(body: RegistroIn, user: User = Depends(current_user),
 def actualizar(registro_id: int, body: RegistroIn, user: User = Depends(current_user),
                svc: {d.clase}Service = Depends(get_servicio)):
     try:
-        r = svc.update(registro_id, user.id, body.model_dump())
+        # El admin corrige el de cualquiera; los demás, solo el suyo.
+        r = svc.update_como(user, registro_id, body.model_dump())
     except ValidacionError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if r is None:

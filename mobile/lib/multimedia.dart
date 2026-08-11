@@ -11,6 +11,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'diseno.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -42,12 +43,6 @@ const List<Emisora> canales = [
       'https://stmv6.voxtvhd.com.br/xtremacartoons/xtremacartoons/playlist.m3u8', Icons.tv),
 ];
 
-const _fondo = Color(0xFF0E141A);
-const _tarjeta = Color(0xFF161E26);
-const _linea = Color(0xFF26333F);
-const _tinta = Color(0xFFE4EAF0);
-const _tinta2 = Color(0xFF9BA9B5);
-const _acento = Color(0xFF5CC4C4);
 
 class PanelMultimedia extends StatelessWidget {
   const PanelMultimedia({super.key});
@@ -104,19 +99,19 @@ class _Nota extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _acento.withValues(alpha: 0.08),
+        color: marca.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _acento.withValues(alpha: 0.3)),
+        border: Border.all(color: marca.withValues(alpha: 0.3)),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, size: 18, color: _acento),
+          Icon(Icons.info_outline, size: 18, color: marca),
           SizedBox(width: 10),
           Expanded(
             child: Text(
               'Suena en el reproductor de tu teléfono, así que sigue sonando aunque cambies de pantalla. Mientras tanto, el auditor sigue vigilando.',
-              style: TextStyle(color: _tinta2, fontSize: 12.5, height: 1.45),
+              style: TextStyle(color: tintaSuave, fontSize: 12.5, height: 1.45),
             ),
           ),
         ],
@@ -143,16 +138,16 @@ class _Grupo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _tarjeta,
+        color: tarjeta,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _linea),
+        border: Border.all(color: linea),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(titulo.toUpperCase(),
               style: const TextStyle(
-                  color: _tinta2, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
+                  color: tintaSuave, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           ...items.map((e) => InkWell(
                 onTap: () => onAbrir(e),
@@ -162,7 +157,7 @@ class _Grupo extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                   child: Row(
                     children: [
-                      Icon(e.icono, size: 20, color: _acento),
+                      Icon(e.icono, size: 20, color: marca),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -170,13 +165,13 @@ class _Grupo extends StatelessWidget {
                           children: [
                             Text(e.nombre,
                                 style: const TextStyle(
-                                    color: _tinta, fontSize: 14.5, fontWeight: FontWeight.w600)),
+                                    color: tinta, fontSize: 14.5, fontWeight: FontWeight.w600)),
                             Text(e.descripcion,
-                                style: const TextStyle(color: _tinta2, fontSize: 11.5)),
+                                style: const TextStyle(color: tintaSuave, fontSize: 11.5)),
                           ],
                         ),
                       ),
-                      const Icon(Icons.play_circle_outline, size: 22, color: _tinta2),
+                      const Icon(Icons.play_circle_outline, size: 22, color: tintaSuave),
                     ],
                   ),
                 ),
@@ -187,4 +182,4 @@ class _Grupo extends StatelessWidget {
   }
 }
 
-const fondoMultimedia = _fondo;
+const fondoMultimedia = fondo;

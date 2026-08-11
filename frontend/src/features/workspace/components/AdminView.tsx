@@ -40,24 +40,24 @@ export function AdminView() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-slate-900">🛡️ {t.admin.title}</h2>
-      <p className="mt-1 text-sm text-slate-500">{t.admin.subtitle}</p>
+      <h2 className="text-xl font-bold text-ink">🛡️ {t.admin.title}</h2>
+      <p className="mt-1 text-sm text-ink-muted">{t.admin.subtitle}</p>
 
       <div className="mt-5 space-y-3">
         {loading ? (
-          <p className="text-sm text-slate-400">…</p>
+          <p className="text-sm text-ink-faint">…</p>
         ) : pending.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+          <div className="rounded-2xl border border-dashed border-black/10 bg-white p-8 text-center text-sm text-ink-faint">
             {t.admin.empty}
           </div>
         ) : (
           pending.map((u) => (
             <div
               key={u.sub}
-              className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-2xl border border-black/10 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <p className="font-semibold text-slate-800">
+                <p className="font-semibold text-ink">
                   {u.name || u.email}
                   {u.requested_plan && (
                     <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 ring-1 ring-brand-100">
@@ -65,8 +65,8 @@ export function AdminView() {
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-slate-400">{u.email}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-xs text-ink-faint">{u.email}</p>
+                <p className="mt-1 text-xs text-ink-muted">
                   {u.generations_used} proyectos · {u.lessons_used} clases {t.admin.used}
                 </p>
               </div>

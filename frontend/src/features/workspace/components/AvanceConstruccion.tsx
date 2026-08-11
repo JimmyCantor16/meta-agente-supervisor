@@ -32,7 +32,7 @@ export function AvanceConstruccion({ progreso }: Props) {
             {avance.fase || t.avance.preparando}
           </p>
           {avance.detalle && (
-            <p className="mt-0.5 text-xs text-slate-500">{avance.detalle}</p>
+            <p className="mt-0.5 text-xs text-ink-muted">{avance.detalle}</p>
           )}
         </div>
         <p className="font-mono text-2xl font-extrabold tabular-nums text-brand-700">
@@ -60,7 +60,7 @@ export function AvanceConstruccion({ progreso }: Props) {
       {/* Acompañar la espera: el sistema avisa cuando termine */}
       {!terminado && (
         <div className="mt-4 rounded-xl bg-white/70 p-3 ring-1 ring-brand-100">
-          <p className="text-xs leading-relaxed text-slate-600">
+          <p className="text-xs leading-relaxed text-ink-body">
             <span aria-hidden>☕ </span>
             {t.avance.acompanamiento}
           </p>

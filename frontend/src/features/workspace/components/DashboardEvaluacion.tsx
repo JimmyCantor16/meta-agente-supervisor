@@ -118,7 +118,7 @@ export function DashboardEvaluacion({
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-slate-500">{t.dashboard.verdict}</span>
+        <span className="text-sm font-medium text-ink-muted">{t.dashboard.verdict}</span>
         {needsChanges ? (
           <Badge tone="warning">{t.dashboard.needsChanges}</Badge>
         ) : (
@@ -128,14 +128,14 @@ export function DashboardEvaluacion({
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card title={t.dashboard.criticalAnalysis} icon={<span>🧠</span>}>
-          <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">
+          <p className="whitespace-pre-line text-sm leading-relaxed text-ink-body">
             {analisis_critico}
           </p>
         </Card>
 
         <Card title={t.dashboard.suggestions} icon={<span>💡</span>}>
           {sugerencias_mejora.length === 0 ? (
-            <p className="text-sm text-slate-400">{t.dashboard.noSuggestions}</p>
+            <p className="text-sm text-ink-faint">{t.dashboard.noSuggestions}</p>
           ) : (
             <ul className="space-y-2.5">
               {sugerencias_mejora.map((s, i) => (
@@ -144,7 +144,7 @@ export function DashboardEvaluacion({
                   className={`flex gap-2.5 rounded-lg border px-3 py-2.5 text-sm leading-relaxed ${
                     needsChanges
                       ? "border-amber-200 bg-amber-50 text-amber-800"
-                      : "border-slate-200 bg-slate-50 text-slate-600"
+                      : "border-black/10 bg-surface-muted text-ink-body"
                   }`}
                 >
                   <span className={needsChanges ? "text-amber-500" : "text-brand-500"} aria-hidden>
@@ -161,7 +161,7 @@ export function DashboardEvaluacion({
       {/* Pre-Flight: la conversación que aterriza la idea con datos reales */}
       {preguntas.length > 0 && (
         <Card title={t.preflight.title} icon={<span>💬</span>}>
-          <p className="mb-4 text-sm text-slate-500">{t.preflight.hint}</p>
+          <p className="mb-4 text-sm text-ink-muted">{t.preflight.hint}</p>
           <div className="space-y-5">
             {preguntas.map((pregunta, i) => (
               <div key={i} className="space-y-2">
@@ -181,7 +181,7 @@ export function DashboardEvaluacion({
                             className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
                               activa
                                 ? "border-brand-400 bg-brand-50 text-brand-800"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-brand-200"
+                                : "border-black/10 bg-white text-ink-body hover:border-brand-200"
                             }`}
                           >
                             <input
@@ -206,14 +206,14 @@ export function DashboardEvaluacion({
                           ? t.preflight.otherPlaceholder
                           : t.preflight.answerPlaceholder
                       }
-                      className="block w-full rounded-2xl rounded-br-sm border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      className="block w-full rounded-2xl rounded-br-sm border border-black/10 bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
                     />
                   )}
                 </div>
               </div>
             ))}
           </div>
-          <p className="mt-4 text-xs font-medium text-slate-400">
+          <p className="mt-4 text-xs font-medium text-ink-faint">
             {t.preflight.answeredNote(contestadas.length, preguntas.length)}
           </p>
         </Card>
@@ -222,7 +222,7 @@ export function DashboardEvaluacion({
       {/* Plantillas: elige una, combina varias, o trae tu propia referencia */}
       {plantillas.length > 0 && (
         <Card title={t.plantillas.title} icon={<span>🎨</span>}>
-          <p className="mb-4 text-sm text-slate-500">{t.plantillas.hint}</p>
+          <p className="mb-4 text-sm text-ink-muted">{t.plantillas.hint}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {plantillas.map((p, i) => {
               const activa = plantillasSel.includes(i);
@@ -235,11 +235,11 @@ export function DashboardEvaluacion({
                   className={`rounded-2xl border-2 p-4 text-left transition ${
                     activa
                       ? "border-brand-500 bg-brand-50 shadow-sm"
-                      : "border-slate-200 bg-white hover:border-brand-200"
+                      : "border-black/10 bg-white hover:border-brand-200"
                   }`}
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-800">{p.nombre}</span>
+                    <span className="font-bold text-ink">{p.nombre}</span>
                     {activa && <span aria-hidden>✅</span>}
                   </div>
                   <div className="mb-2 flex gap-1.5">
@@ -247,12 +247,12 @@ export function DashboardEvaluacion({
                       <span
                         key={c}
                         title={c}
-                        className="h-6 w-6 rounded-full border border-slate-200"
+                        className="h-6 w-6 rounded-full border border-black/10"
                         style={{ backgroundColor: c }}
                       />
                     ))}
                   </div>
-                  <p className="text-sm text-slate-500">{p.descripcion}</p>
+                  <p className="text-sm text-ink-muted">{p.descripcion}</p>
                   {p.estilo && (
                     <p className="mt-1.5 text-xs font-medium uppercase tracking-wide text-brand-600">
                       {p.estilo}
@@ -270,7 +270,7 @@ export function DashboardEvaluacion({
             value={referenciaPropia}
             onChange={(e) => setReferenciaPropia(e.target.value)}
             placeholder={t.plantillas.refPlaceholder}
-            className="mt-4 block w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="mt-4 block w-full rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
           />
         </Card>
       )}
@@ -288,8 +288,8 @@ export function DashboardEvaluacion({
       />
 
       {/* Feedback */}
-      <div className="flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm sm:flex-row sm:justify-between">
-        <span className="text-sm text-slate-500">{t.dashboard.feedbackQuestion}</span>
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/10 bg-white px-5 py-4 shadow-sm sm:flex-row sm:justify-between">
+        <span className="text-sm text-ink-muted">{t.dashboard.feedbackQuestion}</span>
         {feedback === null ? (
           <div className="flex gap-2">
             <button
@@ -317,7 +317,7 @@ function priorityTone(priority: string): string {
   const p = priority.toLowerCase();
   if (p.startsWith("alt") || p.startsWith("hig")) return "bg-red-50 text-red-700 ring-red-200";
   if (p.startsWith("med")) return "bg-amber-50 text-amber-700 ring-amber-200";
-  return "bg-slate-100 text-slate-600 ring-slate-200";
+  return "bg-surface-muted text-ink-body ring-black/10";
 }
 
 function GenerateProjectSection({
@@ -371,7 +371,7 @@ function GenerateProjectSection({
 
   return (
     <Card title={t.dashboard.generatedTitle} icon={<span>🏗️</span>}>
-      <p className="mb-4 text-sm text-slate-500">{t.dashboard.generateHint}</p>
+      <p className="mb-4 text-sm text-ink-muted">{t.dashboard.generateHint}</p>
 
       {!isLoggedIn ? (
         <div className="flex flex-col items-start gap-3 rounded-xl border border-brand-100 bg-brand-50 px-4 py-4">
@@ -387,7 +387,7 @@ function GenerateProjectSection({
             {loading ? t.dashboard.generating : t.dashboard.generateButton}
           </Button>
           <label
-            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink-body"
             title={t.dashboard.inquietoHint}
           >
             <input
@@ -436,10 +436,10 @@ function GenerateProjectSection({
       )}
 
       {data && !loading && (
-        <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <div className="mt-4 space-y-3 rounded-xl border border-black/10 bg-surface-muted p-4 text-sm">
           <div>
-            <span className="font-semibold text-slate-800">{data.name}</span>
-            <span className="text-slate-500"> — {data.summary}</span>
+            <span className="font-semibold text-ink">{data.name}</span>
+            <span className="text-ink-muted"> — {data.summary}</span>
           </div>
 
           {/* El entregable: tu sistema YA corriendo, listo para abrir */}
@@ -473,8 +473,8 @@ function GenerateProjectSection({
           )}
 
           <div>
-            <span className="text-slate-400">{t.dashboard.generatedFiles}</span>
-            <ul className="mt-1 grid grid-cols-1 gap-x-4 font-mono text-xs text-slate-500 sm:grid-cols-2">
+            <span className="text-ink-faint">{t.dashboard.generatedFiles}</span>
+            <ul className="mt-1 grid grid-cols-1 gap-x-4 font-mono text-xs text-ink-muted sm:grid-cols-2">
               {data.files.map((f) => (
                 <li key={f}>· {f}</li>
               ))}
@@ -547,8 +547,8 @@ export function AuditSubsection({ projectName }: { projectName: string }) {
   const improve = useImproveProject();
 
   return (
-    <div className="mt-2 border-t border-slate-200 pt-4">
-      <p className="mb-3 text-slate-500">{t.dashboard.auditHint}</p>
+    <div className="mt-2 border-t border-black/10 pt-4">
+      <p className="mb-3 text-ink-muted">{t.dashboard.auditHint}</p>
       <Button variant="ghost" onClick={() => audit(projectName)} loading={loading}>
         {loading ? t.dashboard.auditing : t.dashboard.auditButton}
       </Button>
@@ -557,10 +557,10 @@ export function AuditSubsection({ projectName }: { projectName: string }) {
 
       {data && !loading && (
         <div className="mt-4 space-y-3">
-          <p className="italic text-slate-500">{data.summary}</p>
+          <p className="italic text-ink-muted">{data.summary}</p>
           <ul className="space-y-2">
             {data.suggestions.map((s: AuditSuggestion, i: number) => (
-              <li key={i} className="rounded-lg border border-slate-200 bg-white p-3">
+              <li key={i} className="rounded-lg border border-black/10 bg-white p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-semibold uppercase ring-1 ring-inset ${priorityTone(
@@ -569,11 +569,11 @@ export function AuditSubsection({ projectName }: { projectName: string }) {
                   >
                     {s.priority}
                   </span>
-                  <span className="text-xs text-slate-400">{s.category}</span>
-                  {s.file && <code className="font-mono text-xs text-slate-400">· {s.file}</code>}
+                  <span className="text-xs text-ink-faint">{s.category}</span>
+                  {s.file && <code className="font-mono text-xs text-ink-faint">· {s.file}</code>}
                 </div>
-                <p className="mt-1.5 font-semibold text-slate-700">{s.title}</p>
-                {s.suggestion && <p className="mt-1 text-slate-500">{s.suggestion}</p>}
+                <p className="mt-1.5 font-semibold text-ink-body">{s.title}</p>
+                {s.suggestion && <p className="mt-1 text-ink-muted">{s.suggestion}</p>}
               </li>
             ))}
           </ul>
@@ -600,13 +600,13 @@ function MejoraResumen({ data }: { data: MejoraResult }) {
     data.aplicadas.length === 0 && data.revertidas.length === 0 && data.sin_cambios.length === 0;
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <p className="italic text-slate-600">
+      <p className="italic text-ink-body">
         <span className="font-semibold not-italic text-emerald-800">
           {t.dashboard.improveDiagnosis}:
         </span>{" "}
         {data.diagnostico}
       </p>
-      {vacio && <p className="text-slate-500">{t.dashboard.improveNothing}</p>}
+      {vacio && <p className="text-ink-muted">{t.dashboard.improveNothing}</p>}
       {data.aplicadas.length > 0 && (
         <ResultadoLista titulo={t.dashboard.improveApplied} items={data.aplicadas} icon="✅" />
       )}
@@ -623,8 +623,8 @@ function MejoraResumen({ data }: { data: MejoraResult }) {
 function ResultadoLista({ titulo, items, icon }: { titulo: string; items: string[]; icon: string }) {
   return (
     <div>
-      <p className="font-semibold text-slate-700">{titulo}</p>
-      <ul className="mt-1 space-y-1 text-slate-600">
+      <p className="font-semibold text-ink-body">{titulo}</p>
+      <ul className="mt-1 space-y-1 text-ink-body">
         {items.map((it, i) => (
           <li key={i}>
             {icon} {it}
@@ -649,7 +649,7 @@ export function TeacherSubsection({ projectName }: { projectName: string }) {
 
       {data && !loading && (
         <div className="mt-4 space-y-4 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
-          <p className="text-sm text-slate-700">{data.summary}</p>
+          <p className="text-sm text-ink-body">{data.summary}</p>
           <TeachingList title={t.dashboard.teachingSteps} items={data.steps} icon="👣" ordered />
           <TeachingList title={t.dashboard.teachingConcepts} items={data.concepts} icon="📚" />
           <TeachingList title={t.dashboard.teachingNext} items={data.next_steps} icon="🎯" />
@@ -693,15 +693,15 @@ function AdjustPanel({ projectName }: { projectName: string }) {
 
   return (
     <div className="mt-4 rounded-xl border border-brand-100 bg-white p-4">
-      <p className="text-sm font-bold text-slate-700">🛠 {t.dashboard.adjustTitle}</p>
-      <p className="mt-1 text-sm text-slate-500">{t.dashboard.adjustHint}</p>
+      <p className="text-sm font-bold text-ink-body">🛠 {t.dashboard.adjustTitle}</p>
+      <p className="mt-1 text-sm text-ink-muted">{t.dashboard.adjustHint}</p>
 
       <textarea
         value={ajuste}
         onChange={(e) => setAjuste(e.target.value)}
         placeholder={t.dashboard.adjustPlaceholder}
         rows={2}
-        className="mt-3 w-full resize-y rounded-lg border border-slate-200 p-2.5 text-sm text-slate-700 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+        className="mt-3 w-full resize-y rounded-lg border border-black/10 p-2.5 text-sm text-ink-body outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
       />
 
       <div className="mt-2 flex flex-wrap gap-2">
@@ -718,7 +718,7 @@ function AdjustPanel({ projectName }: { projectName: string }) {
         ))}
       </div>
       {loading && (
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-ink-muted">
           {activeNivel === "ejecutar" ? t.dashboard.adjustWorkingExec : t.dashboard.adjustWorking}
         </p>
       )}
@@ -726,9 +726,9 @@ function AdjustPanel({ projectName }: { projectName: string }) {
 
       {data && !loading && (
         <div className="mt-4 space-y-3 text-sm">
-          <p className="whitespace-pre-wrap text-slate-700">{data.explicacion}</p>
+          <p className="whitespace-pre-wrap text-ink-body">{data.explicacion}</p>
           {data.concepto && (
-            <p className="text-slate-600">
+            <p className="text-ink-body">
               <span className="font-semibold text-brand-700">📚 {t.dashboard.adjustConcept}:</span>{" "}
               {data.concepto}
             </p>
@@ -754,7 +754,7 @@ function AdjustPanel({ projectName }: { projectName: string }) {
               )}
             </p>
           )}
-          {data.detalle && <p className="text-xs italic text-slate-400">{data.detalle}</p>}
+          {data.detalle && <p className="text-xs italic text-ink-faint">{data.detalle}</p>}
 
           {data.cambios.length > 0 && (
             <div>
@@ -763,8 +763,8 @@ function AdjustPanel({ projectName }: { projectName: string }) {
               </p>
               <div className="space-y-2">
                 {data.cambios.map((c: CambioArchivo) => (
-                  <details key={c.path} className="rounded-lg border border-slate-200 bg-slate-50">
-                    <summary className="cursor-pointer px-3 py-2 font-mono text-xs text-slate-600">
+                  <details key={c.path} className="rounded-lg border border-black/10 bg-surface-muted">
+                    <summary className="cursor-pointer px-3 py-2 font-mono text-xs text-ink-body">
                       {c.path}
                       {c.es_nuevo && (
                         <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
@@ -772,7 +772,7 @@ function AdjustPanel({ projectName }: { projectName: string }) {
                         </span>
                       )}
                     </summary>
-                    <pre className="max-h-72 overflow-auto border-t border-slate-200 bg-slate-900 p-3 text-xs leading-relaxed">
+                    <pre className="max-h-72 overflow-auto border-t border-black/10 bg-slate-900 p-3 text-xs leading-relaxed">
                       {(c.diff || c.contenido_nuevo).split("\n").map((linea, i) => (
                         <div key={i} className={diffTone(linea)}>
                           {linea || " "}
@@ -795,7 +795,7 @@ function diffTone(linea: string): string {
   if (linea.startsWith("+") && !linea.startsWith("+++")) return "text-emerald-400";
   if (linea.startsWith("-") && !linea.startsWith("---")) return "text-red-400";
   if (linea.startsWith("@@")) return "text-sky-400";
-  return "text-slate-300";
+  return "text-ink-faint";
 }
 
 function TeachingList({
@@ -817,7 +817,7 @@ function TeachingList({
         {icon} {title}
       </p>
       <ListTag
-        className={`space-y-1 pl-5 text-sm text-slate-600 ${ordered ? "list-decimal" : "list-disc"}`}
+        className={`space-y-1 pl-5 text-sm text-ink-body ${ordered ? "list-decimal" : "list-disc"}`}
       >
         {items.map((it, i) => (
           <li key={i}>{it}</li>
@@ -846,11 +846,11 @@ function PromptFinalBlock({ prompt }: { prompt: string }) {
       <div className="relative">
         <button
           onClick={handleCopy}
-          className="absolute right-2 top-2 z-10 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+          className="absolute right-2 top-2 z-10 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink-body transition hover:bg-surface-muted"
         >
           {copied ? t.dashboard.copied : t.dashboard.copy}
         </button>
-        <pre className="max-h-96 overflow-auto rounded-xl border border-slate-200 bg-slate-900 p-4 pr-24 text-sm leading-relaxed text-slate-100">
+        <pre className="max-h-96 overflow-auto rounded-xl border border-black/10 bg-slate-900 p-4 pr-24 text-sm leading-relaxed text-ink-faint">
           <code className="whitespace-pre-wrap break-words font-mono">{prompt}</code>
         </pre>
       </div>

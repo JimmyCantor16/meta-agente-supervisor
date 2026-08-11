@@ -152,20 +152,20 @@ export function AulaEnVivo({
           <p className="text-xs font-bold uppercase tracking-wide text-brand-600">
             {g.claseNumero} {mision.numero}
           </p>
-          <p className="mt-0.5 text-sm font-bold text-slate-800">{mision.titulo}</p>
+          <p className="mt-0.5 text-sm font-bold text-ink">{mision.titulo}</p>
           {mision.resultadoEsperado && (
-            <p className="mt-1.5 text-sm leading-snug text-slate-600">
+            <p className="mt-1.5 text-sm leading-snug text-ink-body">
               <span className="font-semibold">{g.deberiasVer}:</span> {mision.resultadoEsperado}
             </p>
           )}
-          {mision.pista && <p className="mt-1 text-xs text-slate-500">💡 {mision.pista}</p>}
+          {mision.pista && <p className="mt-1 text-xs text-ink-muted">💡 {mision.pista}</p>}
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* Izquierda: código fuente */}
-      <div className="flex min-h-[60vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">
+      <div className="flex min-h-[60vh] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-black/10 px-4 py-2 text-sm font-bold text-ink-body">
           <span>📄 {g.codigo}</span>
           <div className="flex items-center gap-2">
             {hayCambiosMios && (
@@ -173,7 +173,7 @@ export function AulaEnVivo({
                 onClick={() => void deshacer()}
                 disabled={deshaciendo || compilando}
                 title={g.deshacerAyuda}
-                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-700 disabled:opacity-40"
+                className="rounded-lg border border-black/10 px-2.5 py-1.5 text-xs font-semibold text-ink-muted transition hover:border-black/10 hover:text-ink-body disabled:opacity-40"
               >
                 {deshaciendo ? g.deshaciendo : "↩ " + g.deshacer}
               </button>
@@ -189,7 +189,7 @@ export function AulaEnVivo({
           </div>
         </div>
         <div className="flex min-h-0 flex-1">
-          <aside className="w-40 shrink-0 overflow-y-auto border-r border-slate-100 bg-slate-50 p-1.5">
+          <aside className="w-40 shrink-0 overflow-y-auto border-r border-black/10 bg-surface-muted p-1.5">
             {archivos.map((a) => (
               <button
                 key={a.path}
@@ -198,7 +198,7 @@ export function AulaEnVivo({
                 className={`block w-full truncate rounded-md px-2 py-1 text-left text-xs transition ${
                   sel === a.path
                     ? "bg-brand-100 font-semibold text-brand-800"
-                    : "text-slate-500 hover:bg-slate-100"
+                    : "text-ink-muted hover:bg-surface-muted"
                 }`}
               >
                 {a.path.split("/").pop()}
@@ -211,18 +211,18 @@ export function AulaEnVivo({
                 value={editado}
                 onChange={(e) => setEditado(e.target.value)}
                 spellCheck={false}
-                className="h-full min-h-[48vh] w-full resize-none whitespace-pre bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none"
+                className="h-full min-h-[48vh] w-full resize-none whitespace-pre bg-slate-900 p-3 font-mono text-xs leading-relaxed text-ink-faint focus:outline-none"
               />
             ) : (
-              <p className="p-4 text-xs text-slate-400">{g.eligeArchivo}</p>
+              <p className="p-4 text-xs text-ink-faint">{g.eligeArchivo}</p>
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-1.5">
-          <span className="shrink-0 font-mono text-[11px] text-slate-400">{sel || ""}</span>
+        <div className="flex items-center justify-between gap-2 border-t border-black/10 px-4 py-1.5">
+          <span className="shrink-0 font-mono text-[11px] text-ink-faint">{sel || ""}</span>
           {aviso && (
             <span
-              className={`truncate text-[11px] font-medium ${commit ? "text-emerald-600" : "text-slate-500"}`}
+              className={`truncate text-[11px] font-medium ${commit ? "text-emerald-600" : "text-ink-muted"}`}
             >
               {commit ? "✓ " : ""}
               {aviso}
@@ -233,8 +233,8 @@ export function AulaEnVivo({
       </div>
 
       {/* Derecha: navegador en vivo */}
-      <div className="flex min-h-[60vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">
+      <div className="flex min-h-[60vh] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-black/10 px-4 py-2 text-sm font-bold text-ink-body">
           <span>🌐 {g.navegador}</span>
           {url && (
             <a href={url} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-600 hover:underline">
@@ -252,7 +252,7 @@ export function AulaEnVivo({
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-sm text-slate-500">{g.apagado}</p>
+            <p className="text-sm text-ink-muted">{g.apagado}</p>
             <button
               onClick={() => void encender()}
               disabled={encendiendo}
@@ -260,7 +260,7 @@ export function AulaEnVivo({
             >
               {encendiendo ? g.encendiendo : "▶ " + g.encender}
             </button>
-            {encendiendo && <p className="text-xs text-slate-400">{g.encendiendoHint}</p>}
+            {encendiendo && <p className="text-xs text-ink-faint">{g.encendiendoHint}</p>}
           </div>
         )}
       </div>

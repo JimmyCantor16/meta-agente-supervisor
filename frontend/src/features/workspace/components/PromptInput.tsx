@@ -51,17 +51,17 @@ export function PromptInput({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100">
+    <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm ring-1 ring-black/10">
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         rows={4}
         placeholder={t.promptInput.placeholder}
-        className="w-full resize-y rounded-xl border-0 bg-transparent px-2 py-1 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+        className="w-full resize-y rounded-xl border-0 bg-transparent px-2 py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none focus:ring-0"
       />
 
-      <div className="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-3 flex flex-col gap-3 border-t border-black/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Toggle Modo Profesor */}
         <button
           type="button"
@@ -69,7 +69,7 @@ export function PromptInput({
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
             teacherMode
               ? "border-brand-200 bg-brand-50 text-brand-700"
-              : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+              : "border-black/10 bg-white text-ink-muted hover:bg-surface-muted"
           }`}
           title={teacherMode ? t.promptInput.teacherOn : t.promptInput.teacherOff}
         >
@@ -79,7 +79,7 @@ export function PromptInput({
         </button>
 
         <div className="flex items-center gap-3">
-          <span className={`text-xs ${necesitaSesion ? "font-medium text-brand-600" : "hidden text-slate-400 sm:block"}`}>
+          <span className={`text-xs ${necesitaSesion ? "font-medium text-brand-600" : "hidden text-ink-faint sm:block"}`}>
             {necesitaSesion
               ? `🔐 ${t.promptInput.loginRequired}`
               : isValid

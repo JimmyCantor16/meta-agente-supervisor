@@ -100,8 +100,8 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-slate-900">💎 {t.plans.title}</h2>
-      <p className="mt-1 max-w-2xl text-sm text-slate-500">{t.plans.subtitle}</p>
+      <h2 className="text-xl font-bold text-ink">💎 {t.plans.title}</h2>
+      <p className="mt-1 max-w-2xl text-sm text-ink-muted">{t.plans.subtitle}</p>
 
       <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((plan) => {
@@ -115,7 +115,7 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
               className={`relative flex flex-col rounded-2xl border p-6 shadow-sm ${
                 plan.ia
                   ? "border-brand-300 bg-gradient-to-b from-brand-50/70 to-white"
-                  : "border-slate-200 bg-white"
+                  : "border-black/10 bg-white"
               } ${plan.highlight ? "ring-2 ring-brand-300" : ""}`}
             >
               {plan.highlight && (
@@ -125,7 +125,7 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
               )}
 
               <div className="flex items-center gap-2">
-                <p className="text-lg font-bold text-slate-900">{plan.name}</p>
+                <p className="text-lg font-bold text-ink">{plan.name}</p>
                 {plan.ia && (
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
@@ -140,18 +140,18 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
               </div>
 
               <p className="mt-2">
-                <span className="text-3xl font-extrabold text-slate-900">{plan.price}</span>
-                <span className="ml-1 text-sm text-slate-400">{plan.period}</span>
+                <span className="text-3xl font-extrabold text-ink">{plan.price}</span>
+                <span className="ml-1 text-sm text-ink-faint">{plan.period}</span>
               </p>
 
               {plan.iaClaim && (
-                <p className="mt-3 rounded-xl bg-white/70 p-3 text-xs leading-relaxed text-slate-600 ring-1 ring-brand-100">
+                <p className="mt-3 rounded-xl bg-white/70 p-3 text-xs leading-relaxed text-ink-body ring-1 ring-brand-100">
                   <span aria-hidden>⭐ </span>
                   {plan.iaClaim}
                 </p>
               )}
 
-              <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-600">
+              <ul className="mt-4 flex-1 space-y-2 text-sm text-ink-body">
                 {plan.features.map((f) => (
                   <li key={f} className="flex gap-2">
                     <span className="text-emerald-500" aria-hidden>✓</span>
@@ -166,13 +166,13 @@ export function PlansView({ isLoggedIn, account, onChoose }: PlansViewProps) {
                     {t.plans.currentPlan}
                   </span>
                 ) : isFree ? (
-                  <span className="block py-2.5 text-center text-sm text-slate-400">—</span>
+                  <span className="block py-2.5 text-center text-sm text-ink-faint">—</span>
                 ) : isRequested ? (
                   <span className="block rounded-xl bg-amber-50 py-2.5 text-center text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                     {t.plans.requested}
                   </span>
                 ) : !isLoggedIn ? (
-                  <span className="block py-2.5 text-center text-xs text-slate-400">
+                  <span className="block py-2.5 text-center text-xs text-ink-faint">
                     {t.plans.loginFirst}
                   </span>
                 ) : (

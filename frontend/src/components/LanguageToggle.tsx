@@ -10,7 +10,7 @@ export function LanguageToggle() {
 
   return (
     <div
-      className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold"
+      className="inline-flex overflow-hidden rounded-lg border border-black/10 text-xs font-semibold"
       role="group"
       aria-label="Selector de idioma"
     >
@@ -22,7 +22,7 @@ export function LanguageToggle() {
           className={`px-3 py-1.5 uppercase transition ${
             lang === code
               ? "bg-brand-600 text-white"
-              : "bg-white text-slate-500 hover:bg-slate-50"
+              : "bg-white text-ink-muted hover:bg-surface-muted"
           }`}
         >
           {code}

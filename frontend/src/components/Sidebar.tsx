@@ -44,7 +44,7 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
       )}
 
       <aside
-        className={`fixed z-40 flex h-full w-60 flex-col border-r border-slate-200 bg-white transition-transform lg:static lg:translate-x-0 ${
+        className={`fixed z-40 flex h-full w-60 flex-col border-r border-black/10 bg-white transition-transform lg:static lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -52,8 +52,8 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
         <div className="flex items-center gap-2.5 px-5 py-5">
           <Logo size={34} />
           <div>
-            <p className="text-sm font-bold leading-tight text-slate-900">{t.brand.name}</p>
-            <p className="text-xs text-slate-400">{t.brand.tagline}</p>
+            <p className="text-sm font-bold leading-tight text-ink">{t.brand.name}</p>
+            <p className="text-xs text-ink-faint">{t.brand.tagline}</p>
           </div>
         </div>
 
@@ -69,7 +69,7 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                 active === item.key
                   ? "bg-brand-50 text-brand-700"
-                  : "text-slate-600 hover:bg-slate-50"
+                  : "text-ink-body hover:bg-surface-muted"
               }`}
             >
               <span aria-hidden>{item.icon}</span>
@@ -79,9 +79,9 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
         </nav>
 
         {/* Pie */}
-        <div className="border-t border-slate-100 p-4">
-          <div className="rounded-xl bg-gradient-to-br from-brand-50 to-emerald-50 p-3 text-xs text-slate-600">
-            <p className="font-semibold text-slate-700">100% gratis</p>
+        <div className="border-t border-black/10 p-4">
+          <div className="rounded-xl bg-gradient-to-br from-brand-50 to-emerald-50 p-3 text-xs text-ink-body">
+            <p className="font-semibold text-ink-body">100% gratis</p>
             <p className="mt-0.5">Multi-modelo con IA libre.</p>
           </div>
         </div>

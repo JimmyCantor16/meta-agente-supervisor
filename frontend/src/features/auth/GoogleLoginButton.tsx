@@ -143,7 +143,7 @@ export function GoogleLoginButton() {
         <button
           onClick={() => void entrarPorNavegador()}
           disabled={esperando}
-          className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-300 disabled:opacity-60"
+          className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink-body shadow-sm transition hover:border-brand-300 disabled:opacity-60"
         >
           <span aria-hidden>{esperando ? "⏳" : "🌐"}</span>
           {esperando ? t.auth.bridgeWaiting : t.auth.bridgeButton}
@@ -156,7 +156,7 @@ export function GoogleLoginButton() {
             <p className="font-mono text-xl font-bold tracking-[0.2em] text-brand-800">{codigoMostrado}</p>
           </div>
         )}
-        {esperando && <p className="max-w-[220px] text-right text-xs text-slate-500">{t.auth.bridgeHint}</p>}
+        {esperando && <p className="max-w-[220px] text-right text-xs text-ink-muted">{t.auth.bridgeHint}</p>}
         {aviso && !esperando && <p className="max-w-[220px] text-right text-xs text-emerald-600">✅ {aviso}</p>}
         {errorPuente && <p className="max-w-[220px] text-right text-xs text-red-600">⚠ {errorPuente}</p>}
       </div>

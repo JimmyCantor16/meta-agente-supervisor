@@ -4,20 +4,20 @@ import { useMonitor } from "./useMonitor";
 import type { EstadoFase, Resultado } from "./useMonitor";
 
 const COLOR_FASE: Record<EstadoFase, string> = {
-  idle: "border-slate-200 bg-slate-50 text-slate-400",
+  idle: "border-black/10 bg-surface-muted text-ink-faint",
   run: "border-brand-300 bg-brand-50 text-brand-700 animate-pulse",
   ok: "border-emerald-300 bg-emerald-50 text-emerald-700",
   fail: "border-red-300 bg-red-50 text-red-700",
 };
 const RES: Record<Resultado, { txt: string; cls: string }> = {
-  idle: { txt: "En espera", cls: "bg-slate-100 text-slate-500" },
+  idle: { txt: "En espera", cls: "bg-surface-muted text-ink-muted" },
   generando: { txt: "⚙️ Generando…", cls: "bg-brand-50 text-brand-700" },
   exito: { txt: "🎉 ¡Sistema vivo!", cls: "bg-emerald-50 text-emerald-700" },
   retenido: { txt: "🛡️ Retenido (no se entregó roto)", cls: "bg-amber-50 text-amber-700" },
   fallo: { txt: "🛑 Falló", cls: "bg-red-50 text-red-700" },
 };
 const TIPO_LOG: Record<string, string> = {
-  info: "text-slate-500",
+  info: "text-ink-muted",
   ok: "text-emerald-600",
   warn: "text-amber-600",
   fail: "text-red-600",
@@ -48,12 +48,12 @@ export function MonitorGeneracion() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">📡 {t.monitor.title}</h2>
-          <p className="text-sm text-slate-500">{t.monitor.subtitle}</p>
+          <h2 className="text-xl font-bold text-ink">📡 {t.monitor.title}</h2>
+          <p className="text-sm text-ink-muted">{t.monitor.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${res.cls}`}>{res.txt}</span>
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${m.conectado ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-400"}`}>
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${m.conectado ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-black/10 bg-surface-muted text-ink-faint"}`}>
             <span className={`h-2 w-2 rounded-full ${m.conectado ? "bg-emerald-500" : "bg-slate-300"}`} />
             {m.conectado ? t.monitor.live : t.monitor.offline}
           </span>
@@ -61,8 +61,8 @@ export function MonitorGeneracion() {
       </div>
 
       {/* Fases */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{t.monitor.phases}</p>
+      <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">{t.monitor.phases}</p>
         <div className="flex flex-wrap gap-2">
           {m.fases.map((f) => (
             <div key={f.id} className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium ${COLOR_FASE[f.estado]}`}>
@@ -76,8 +76,8 @@ export function MonitorGeneracion() {
 
       {/* Métricas + Cerebro IA */}
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{t.monitor.metrics}</p>
+        <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">{t.monitor.metrics}</p>
           <div className="grid grid-cols-2 gap-3">
             <Metric label={t.monitor.files} value={m.archivos ? `${m.archivos.hechos}/${m.archivos.total}` : "—"} />
             <Metric label={t.monitor.repairs} value={String(m.reparaciones)} tone={m.reparaciones > 0 ? "warn" : undefined} />
@@ -86,25 +86,25 @@ export function MonitorGeneracion() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{t.monitor.brain}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-faint">{t.monitor.brain}</p>
             {tasa !== null && (
               <span className="text-xs font-bold text-emerald-600">{tasa}% {t.monitor.hit}</span>
             )}
           </div>
           {m.proveedorActual && (
-            <p className="mb-2 text-sm text-slate-700">
+            <p className="mb-2 text-sm text-ink-body">
               {t.monitor.current}: <b className="text-brand-700">{m.proveedorActual}</b>
             </p>
           )}
           {m.proveedores.length === 0 ? (
-            <p className="text-xs text-slate-400">{t.monitor.noBrain}</p>
+            <p className="text-xs text-ink-faint">{t.monitor.noBrain}</p>
           ) : (
             <div className="space-y-1.5">
               {m.proveedores.map((p) => (
                 <div key={p.nombre} className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-700">🤖 {p.nombre}</span>
+                  <span className="font-medium text-ink-body">🤖 {p.nombre}</span>
                   <span className="flex gap-2">
                     <span className="text-emerald-600">✓ {p.ok}</span>
                     {p.fail > 0 && <span className="text-amber-600">✕ {p.fail}</span>}
@@ -117,15 +117,15 @@ export function MonitorGeneracion() {
       </div>
 
       {/* Log en vivo */}
-      <div className="rounded-2xl border border-slate-200 bg-slate-900 p-4 shadow-sm">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{t.monitor.log}</p>
+      <div className="rounded-2xl border border-black/10 bg-slate-900 p-4 shadow-sm">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">{t.monitor.log}</p>
         <div className="max-h-72 space-y-1 overflow-y-auto font-mono text-xs leading-relaxed">
           {m.log.length === 0 ? (
-            <p className="text-slate-500">{t.monitor.waiting}</p>
+            <p className="text-ink-muted">{t.monitor.waiting}</p>
           ) : (
             m.log.map((l, i) => (
-              <div key={i} className={TIPO_LOG[l.tipo] ?? "text-slate-400"}>
-                <span className="text-slate-600">{new Date(l.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>{" "}
+              <div key={i} className={TIPO_LOG[l.tipo] ?? "text-ink-faint"}>
+                <span className="text-ink-body">{new Date(l.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>{" "}
                 {l.texto}
               </div>
             ))
@@ -144,9 +144,9 @@ export function MonitorGeneracion() {
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-3">
-      <div className={`text-lg font-bold ${tone === "warn" ? "text-amber-600" : "text-slate-800"}`}>{value}</div>
-      <div className="text-[11px] text-slate-500">{label}</div>
+    <div className="rounded-xl bg-surface-muted p-3">
+      <div className={`text-lg font-bold ${tone === "warn" ? "text-amber-600" : "text-ink"}`}>{value}</div>
+      <div className="text-[11px] text-ink-muted">{label}</div>
     </div>
   );
 }

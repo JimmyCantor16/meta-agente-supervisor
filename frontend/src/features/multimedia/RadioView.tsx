@@ -34,7 +34,7 @@ export function RadioView() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && m.searchRadio(q)}
           placeholder={t.multimedia.radioSearchPh}
-          className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand-400"
+          className="flex-1 rounded-lg border border-black/10 px-2.5 py-1.5 text-sm outline-none focus:border-brand-400"
         />
         <button
           type="button"
@@ -55,7 +55,7 @@ export function RadioView() {
             className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
               country === c.code
                 ? "border-brand-300 bg-brand-50 text-brand-700"
-                : "border-slate-200 bg-white text-slate-500 hover:border-brand-200"
+                : "border-black/10 bg-white text-ink-muted hover:border-brand-200"
             }`}
           >
             {c.label}
@@ -69,7 +69,7 @@ export function RadioView() {
 
       {m.radioLoading && (
         <div className="flex items-center justify-center py-8">
-          <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" />
+          <span className="h-6 w-6 animate-spin rounded-full border-2 border-black/10 border-t-brand-500" />
         </div>
       )}
 
@@ -77,7 +77,7 @@ export function RadioView() {
       {!m.radioLoading && (
         <div className="flex flex-col gap-1.5">
           {m.radioItems.length === 0 && (
-            <p className="px-1 py-6 text-center text-xs text-slate-400">{t.multimedia.radioEmpty}</p>
+            <p className="px-1 py-6 text-center text-xs text-ink-faint">{t.multimedia.radioEmpty}</p>
           )}
           {m.radioItems.map((s) => {
             const activo = m.current?.url === s.url && m.active === "radio";
@@ -87,7 +87,7 @@ export function RadioView() {
                 type="button"
                 onClick={() => m.playRadio(s)}
                 className={`flex items-center gap-2.5 rounded-lg border p-2 text-left transition ${
-                  activo ? "border-brand-300 bg-brand-50" : "border-slate-200 bg-white hover:border-slate-300"
+                  activo ? "border-brand-300 bg-brand-50" : "border-black/10 bg-white hover:border-black/10"
                 }`}
               >
                 {s.artwork ? (
@@ -98,13 +98,13 @@ export function RadioView() {
                     onError={(e) => ((e.currentTarget.style.display = "none"))}
                   />
                 ) : (
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-100 text-base">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-muted text-base">
                     📻
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-slate-800">{s.title}</span>
-                  <span className="block truncate text-[11px] text-slate-400">{s.subtitle}</span>
+                  <span className="block truncate text-sm font-medium text-ink">{s.title}</span>
+                  <span className="block truncate text-[11px] text-ink-faint">{s.subtitle}</span>
                 </span>
                 {activo && (
                   <span className="text-sm">{m.buffering ? "⏳" : m.playing ? "🔊" : "⏸"}</span>

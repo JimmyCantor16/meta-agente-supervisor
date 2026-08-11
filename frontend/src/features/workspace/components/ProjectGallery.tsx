@@ -26,12 +26,12 @@ export function ProjectGallery({ projects, loading, onOpen }: ProjectGalleryProp
 
   return (
     <section>
-      <h2 className="mb-4 text-lg font-bold text-slate-900">{t.gallery.title}</h2>
+      <h2 className="mb-4 text-lg font-bold text-ink">{t.gallery.title}</h2>
 
       {loading ? (
-        <p className="text-sm text-slate-400">…</p>
+        <p className="text-sm text-ink-faint">…</p>
       ) : projects.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+        <div className="rounded-2xl border border-dashed border-black/10 bg-white p-8 text-center text-sm text-ink-faint">
           {t.gallery.empty}
         </div>
       ) : (
@@ -45,7 +45,7 @@ export function ProjectGallery({ projects, loading, onOpen }: ProjectGalleryProp
               onKeyDown={(e) => {
                 if (onOpen && (e.key === "Enter" || e.key === " ")) onOpen(p.name);
               }}
-              className={`group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md ${
+              className={`group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:shadow-md ${
                 onOpen ? "cursor-pointer hover:border-brand-300" : ""
               }`}
             >
@@ -57,11 +57,11 @@ export function ProjectGallery({ projects, loading, onOpen }: ProjectGalleryProp
                 <span className="text-3xl text-white/90 transition group-hover:scale-110">📦</span>
               </div>
               <div className="p-4">
-                <p className="truncate font-semibold text-slate-800" title={p.name}>
+                <p className="truncate font-semibold text-ink" title={p.name}>
                   {p.name}
                 </p>
                 <div className="mt-0.5 flex items-center justify-between">
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-ink-faint">
                     {p.files} {t.gallery.files}
                   </p>
                   {onOpen && (

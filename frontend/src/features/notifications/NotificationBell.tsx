@@ -40,7 +40,7 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={toggle}
-        className="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted hover:text-ink-body"
         title={t.notif.title}
         aria-label={t.notif.title}
       >
@@ -53,14 +53,14 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-            <b className="text-sm font-bold text-slate-800">{t.notif.title}</b>
+        <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-black/10 px-4 py-2.5">
+            <b className="text-sm font-bold text-ink">{t.notif.title}</b>
             {notifs.length > 0 && (
               <button
                 type="button"
                 onClick={clearAll}
-                className="text-xs font-medium text-slate-400 hover:text-slate-600"
+                className="text-xs font-medium text-ink-faint hover:text-ink-body"
               >
                 {t.notif.clear}
               </button>
@@ -72,27 +72,27 @@ export function NotificationBell() {
             <button
               type="button"
               onClick={requestPermission}
-              className="flex w-full items-center gap-2 border-b border-slate-100 bg-brand-50 px-4 py-2.5 text-left text-xs font-semibold text-brand-700 hover:bg-brand-100"
+              className="flex w-full items-center gap-2 border-b border-black/10 bg-brand-50 px-4 py-2.5 text-left text-xs font-semibold text-brand-700 hover:bg-brand-100"
             >
               🔓 {t.notif.enable}
             </button>
           )}
           {permission === "granted" && (
-            <div className="border-b border-slate-100 bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700">
+            <div className="border-b border-black/10 bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700">
               ✅ {t.notif.enabled}
             </div>
           )}
 
           <div className="max-h-80 overflow-y-auto">
             {notifs.length === 0 ? (
-              <p className="px-4 py-8 text-center text-xs text-slate-400">{t.notif.empty}</p>
+              <p className="px-4 py-8 text-center text-xs text-ink-faint">{t.notif.empty}</p>
             ) : (
               notifs.map((n) => (
                 <div key={n.id} className="flex items-start gap-2.5 border-b border-slate-50 px-4 py-2.5 last:border-0">
                   <span className="text-base" aria-hidden>{ICON[n.kind] ?? "🔔"}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800">{n.title}</p>
-                    <p className="mt-0.5 text-xs leading-snug text-slate-500">{n.body}</p>
+                    <p className="text-sm font-medium text-ink">{n.title}</p>
+                    <p className="mt-0.5 text-xs leading-snug text-ink-muted">{n.body}</p>
                     {n.url && (
                       <a
                         href={n.url}
@@ -103,7 +103,7 @@ export function NotificationBell() {
                         {t.notif.open} ↗
                       </a>
                     )}
-                    <p className="mt-0.5 text-[10px] text-slate-300">{fmt(n.ts)}</p>
+                    <p className="mt-0.5 text-[10px] text-ink-faint">{fmt(n.ts)}</p>
                   </div>
                 </div>
               ))

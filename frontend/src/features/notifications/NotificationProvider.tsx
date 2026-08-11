@@ -317,8 +317,8 @@ function ToastStack({ toasts, onDismiss }: { toasts: AppNotification[]; onDismis
             {ICON[t.kind]}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-800">{t.title}</p>
-            <p className="mt-0.5 text-xs leading-snug text-slate-500">{t.body}</p>
+            <p className="truncate text-sm font-semibold text-ink">{t.title}</p>
+            <p className="mt-0.5 text-xs leading-snug text-ink-muted">{t.body}</p>
             {t.url && (
               <a
                 href={t.url}
@@ -333,7 +333,7 @@ function ToastStack({ toasts, onDismiss }: { toasts: AppNotification[]; onDismis
           <button
             type="button"
             onClick={() => onDismiss(t.id)}
-            className="text-slate-300 hover:text-slate-600"
+            className="text-ink-faint hover:text-ink-body"
             aria-label="Cerrar"
           >
             ✕

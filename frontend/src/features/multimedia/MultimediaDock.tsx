@@ -35,26 +35,26 @@ export function MultimediaDock() {
 
       {/* Panel deslizable desde la IZQUIERDA (overlay: no empuja el contenido) */}
       <aside
-        className="fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200"
+        className="fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-black/10 bg-white shadow-2xl transition-transform duration-200"
         style={{
           width: PANEL_W,
           transform: m.panelOpen ? "translateX(0)" : `translateX(-${PANEL_W}px)`,
         }}
       >
         {/* Cabecera + tabs */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <b className="text-sm font-bold text-slate-800">📺 {t.multimedia.title}</b>
+        <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+          <b className="text-sm font-bold text-ink">📺 {t.multimedia.title}</b>
           <button
             type="button"
             onClick={m.closePanel}
-            className="text-slate-400 hover:text-slate-700"
+            className="text-ink-faint hover:text-ink-body"
             title={t.multimedia.close}
           >
             ✕
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-slate-200 px-3 pt-2">
+        <div className="flex gap-1 border-b border-black/10 px-3 pt-2">
           <TabBtn active={m.tab === "tv"} onClick={() => m.setTab("tv")}>
             {t.multimedia.tvTab}
           </TabBtn>
@@ -112,7 +112,7 @@ function TabBtn(props: { active: boolean; onClick: () => void; children: React.R
       className={`rounded-t-lg px-3 py-2 text-sm font-semibold transition ${
         props.active
           ? "border-b-2 border-brand-600 text-brand-700"
-          : "text-slate-500 hover:text-slate-700"
+          : "text-ink-muted hover:text-ink-body"
       }`}
     >
       {props.children}
@@ -125,7 +125,7 @@ function NowPlaying() {
   const m = useMultimedia();
   if (!m.current) return null;
   return (
-    <div className="flex items-center gap-2.5 border-t border-slate-200 bg-slate-50 px-3 py-2.5">
+    <div className="flex items-center gap-2.5 border-t border-black/10 bg-surface-muted px-3 py-2.5">
       <button
         type="button"
         onClick={m.togglePlay}
@@ -135,8 +135,8 @@ function NowPlaying() {
         {m.buffering ? "⏳" : m.playing ? "⏸" : "▶"}
       </button>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-slate-800">{m.current.title}</span>
-        <span className="block truncate text-[11px] text-slate-400">
+        <span className="block truncate text-sm font-medium text-ink">{m.current.title}</span>
+        <span className="block truncate text-[11px] text-ink-faint">
           {m.active === "tv" ? t.multimedia.live : m.current.subtitle}
         </span>
       </span>
@@ -152,7 +152,7 @@ function NowPlaying() {
       <button
         type="button"
         onClick={m.stop}
-        className="text-slate-400 hover:text-red-500"
+        className="text-ink-faint hover:text-red-500"
         title={t.multimedia.stopTitle}
       >
         ⏹

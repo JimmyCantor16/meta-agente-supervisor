@@ -42,7 +42,7 @@ export function YoutubeView() {
         className="aspect-video w-full overflow-hidden rounded-lg bg-slate-900"
       >
         {!m.ytCurrentId && (
-          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-slate-400">
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-ink-faint">
             {g.ytEmptyPlayer}
           </div>
         )}
@@ -50,7 +50,7 @@ export function YoutubeView() {
 
       {/* Pegar un enlace */}
       <div>
-        <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <label className="mb-1 block text-[11px] font-semibold text-ink-muted">
           {g.ytAddLabel}
         </label>
         <div className="flex gap-1.5">
@@ -60,7 +60,7 @@ export function YoutubeView() {
             onKeyDown={(e) => e.key === "Enter" && void anadir()}
             placeholder="https://youtu.be/…"
             disabled={anadiendo}
-            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-brand-300 focus:bg-white focus:outline-none"
+            className="min-w-0 flex-1 rounded-lg border border-black/10 bg-surface-muted px-2.5 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:border-brand-300 focus:bg-white focus:outline-none"
           />
           <button
             type="button"
@@ -72,12 +72,12 @@ export function YoutubeView() {
           </button>
         </div>
         {aviso && <p className="mt-1 text-[11px] text-amber-700">{aviso}</p>}
-        <p className="mt-1 text-[11px] leading-snug text-slate-400">{g.ytHint}</p>
+        <p className="mt-1 text-[11px] leading-snug text-ink-faint">{g.ytHint}</p>
       </div>
 
       {/* Lista del usuario */}
       {m.ytItems.length === 0 ? (
-        <p className="px-1 py-3 text-center text-xs text-slate-400">{g.ytEmptyList}</p>
+        <p className="px-1 py-3 text-center text-xs text-ink-faint">{g.ytEmptyList}</p>
       ) : (
         <ul className="space-y-1">
           {m.ytItems.map((item) => (
@@ -98,7 +98,7 @@ function Fila({ item }: { item: YoutubeItem }) {
   return (
     <li
       className={`group flex items-center gap-2 rounded-lg border px-2 py-1.5 transition ${
-        sonando ? "border-brand-300 bg-brand-50" : "border-transparent hover:bg-slate-50"
+        sonando ? "border-brand-300 bg-brand-50" : "border-transparent hover:bg-surface-muted"
       }`}
     >
       <button
@@ -107,18 +107,18 @@ function Fila({ item }: { item: YoutubeItem }) {
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
         title={item.titulo}
       >
-        <span className="relative h-8 w-14 shrink-0 overflow-hidden rounded bg-slate-200">
+        <span className="relative h-8 w-14 shrink-0 overflow-hidden rounded bg-surface-muted">
           {miniatura ? (
             <img src={miniatura} alt="" className="h-full w-full object-cover" loading="lazy" />
           ) : (
-            <span className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">
+            <span className="flex h-full w-full items-center justify-center text-[10px] text-ink-muted">
               ▤
             </span>
           )}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium text-slate-800">{item.titulo}</span>
-          <span className="block truncate text-[10px] text-slate-400">
+          <span className="block truncate text-xs font-medium text-ink">{item.titulo}</span>
+          <span className="block truncate text-[10px] text-ink-faint">
             {item.kind === "playlist" ? t.multimedia.ytPlaylist : item.autor || "YouTube"}
           </span>
         </span>
@@ -132,7 +132,7 @@ function Fila({ item }: { item: YoutubeItem }) {
         href={urlPublica({ kind: item.kind, id: item.id })}
         target="_blank"
         rel="noreferrer noopener"
-        className="shrink-0 text-slate-300 opacity-0 transition group-hover:opacity-100 hover:text-brand-600"
+        className="shrink-0 text-ink-faint opacity-0 transition group-hover:opacity-100 hover:text-brand-600"
         title={t.multimedia.ytOpenExternal}
         onClick={(e) => e.stopPropagation()}
       >
@@ -141,7 +141,7 @@ function Fila({ item }: { item: YoutubeItem }) {
       <button
         type="button"
         onClick={() => m.removeYoutube(item.id)}
-        className="shrink-0 text-slate-300 opacity-0 transition group-hover:opacity-100 hover:text-red-500"
+        className="shrink-0 text-ink-faint opacity-0 transition group-hover:opacity-100 hover:text-red-500"
         title={t.multimedia.remove}
       >
         ✕

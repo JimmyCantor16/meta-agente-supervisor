@@ -40,15 +40,15 @@ export function ProjectWorkspace({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+          className="flex items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink-body transition hover:border-brand-300 hover:text-brand-700"
         >
           ← {t.project.back}
         </button>
-        <div className="flex gap-1.5 rounded-xl bg-slate-100 p-1">
+        <div className="flex gap-1.5 rounded-xl bg-surface-muted p-1">
           <button
             onClick={() => setTab("curso")}
             className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
-              tab === "curso" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
+              tab === "curso" ? "bg-white text-brand-700 shadow-sm" : "text-ink-muted"
             }`}
           >
             {t.project.tabCurso}
@@ -56,7 +56,7 @@ export function ProjectWorkspace({
           <button
             onClick={() => setTab("aula")}
             className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
-              tab === "aula" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
+              tab === "aula" ? "bg-white text-brand-700 shadow-sm" : "text-ink-muted"
             }`}
           >
             {t.project.tabAula}
@@ -64,7 +64,7 @@ export function ProjectWorkspace({
           <button
             onClick={() => setTab("metas")}
             className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
-              tab === "metas" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
+              tab === "metas" ? "bg-white text-brand-700 shadow-sm" : "text-ink-muted"
             }`}
           >
             {t.project.tabMetas}
@@ -72,7 +72,7 @@ export function ProjectWorkspace({
           <button
             onClick={() => setTab("taller")}
             className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
-              tab === "taller" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500"
+              tab === "taller" ? "bg-white text-brand-700 shadow-sm" : "text-ink-muted"
             }`}
           >
             {t.project.tabTaller}
@@ -132,7 +132,7 @@ export function ProjectWorkspace({
         <MetasProceso projectName={projectName} />
       ) : (
         <Card title={`📦 ${projectName}`} icon={<span>🛠️</span>}>
-          <p className="mb-2 text-sm text-slate-500">{t.project.hint}</p>
+          <p className="mb-2 text-sm text-ink-muted">{t.project.hint}</p>
           <AuditSubsection projectName={projectName} />
           <TeacherSubsection projectName={projectName} />
         </Card>

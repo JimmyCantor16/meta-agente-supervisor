@@ -23,13 +23,13 @@ export function Button({
 
   const variants: Record<string, string> = {
     primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-sm",
-    ghost: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+    ghost: "border border-black/10 bg-white text-ink-body hover:bg-surface-muted",
   };
 
   const spinner =
     variant === "primary"
       ? "border-white/40 border-t-white"
-      : "border-slate-300 border-t-brand-600";
+      : "border-black/10 border-t-brand-600";
 
   return (
     <button

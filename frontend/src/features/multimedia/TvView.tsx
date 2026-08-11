@@ -27,10 +27,10 @@ export function TvView() {
       {/* Hueco del vídeo acoplado (16:9). El vídeo real se posiciona encima. */}
       <div
         ref={m.registerSlot}
-        className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-900"
+        className="relative aspect-video w-full overflow-hidden rounded-xl border border-black/10 bg-slate-900"
       >
         {!dockedHere && (
-          <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-slate-400">
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-ink-faint">
             <span className="text-3xl">📺</span>
             <span className="text-xs">{t.multimedia.tvEmpty}</span>
           </div>
@@ -63,7 +63,7 @@ export function TvView() {
             <button
               type="button"
               onClick={m.minimizeVideo}
-              className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-brand-200 hover:text-brand-700"
+              className="flex-1 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink-body hover:border-brand-200 hover:text-brand-700"
               title={t.multimedia.minimize}
             >
               🗕 {t.multimedia.mini}
@@ -80,7 +80,7 @@ export function TvView() {
           <button
             type="button"
             onClick={m.requestFullscreen}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-brand-200 hover:text-brand-700"
+            className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-ink-body hover:border-brand-200 hover:text-brand-700"
             title={t.multimedia.fullscreen}
           >
             ⛶
@@ -89,20 +89,20 @@ export function TvView() {
       )}
 
       {/* Agregar canal por URL .m3u8 */}
-      <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-        <p className="text-xs font-semibold text-slate-600">{t.multimedia.tvAddTitle}</p>
+      <div className="space-y-2 rounded-xl border border-black/10 bg-white p-3">
+        <p className="text-xs font-semibold text-ink-body">{t.multimedia.tvAddTitle}</p>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t.multimedia.tvNamePh}
-          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand-400"
+          className="w-full rounded-lg border border-black/10 px-2.5 py-1.5 text-sm outline-none focus:border-brand-400"
         />
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
           placeholder={t.multimedia.tvUrlPh}
-          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-brand-400"
+          className="w-full rounded-lg border border-black/10 px-2.5 py-1.5 text-sm outline-none focus:border-brand-400"
         />
         <button
           type="button"
@@ -111,13 +111,13 @@ export function TvView() {
         >
           {t.multimedia.tvAdd}
         </button>
-        <p className="text-[11px] leading-snug text-slate-400">{t.multimedia.tvHint}</p>
+        <p className="text-[11px] leading-snug text-ink-faint">{t.multimedia.tvHint}</p>
       </div>
 
       {/* Lista de canales del usuario */}
       <div className="flex flex-col gap-1.5">
         {m.channels.length === 0 && (
-          <p className="px-1 py-4 text-center text-xs text-slate-400">{t.multimedia.tvNoChannels}</p>
+          <p className="px-1 py-4 text-center text-xs text-ink-faint">{t.multimedia.tvNoChannels}</p>
         )}
         {m.channels
           .filter(
@@ -137,7 +137,7 @@ export function TvView() {
             <div
               key={c.url}
               className={`group flex items-center gap-2 rounded-lg border p-2 transition ${
-                activo ? "border-brand-300 bg-brand-50" : "border-slate-200 bg-white hover:border-slate-300"
+                activo ? "border-brand-300 bg-brand-50" : "border-black/10 bg-white hover:border-black/10"
               }`}
             >
               <button
@@ -147,15 +147,15 @@ export function TvView() {
               >
                 <span className="text-lg">{activo && m.playing ? "🔴" : "📡"}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-slate-800">{c.name}</span>
-                  <span className="block truncate text-[11px] text-slate-400">{c.url}</span>
+                  <span className="block truncate text-sm font-medium text-ink">{c.name}</span>
+                  <span className="block truncate text-[11px] text-ink-faint">{c.url}</span>
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => m.removeChannel(c.url)}
                 title={t.multimedia.remove}
-                className="text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                className="text-ink-faint opacity-0 transition hover:text-red-500 group-hover:opacity-100"
               >
                 🗑
               </button>
@@ -165,11 +165,11 @@ export function TvView() {
       </div>
 
       {/* IPTV Colombia: carga en vivo la lista pública de iptv-org */}
-      <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="space-y-2 rounded-xl border border-black/10 bg-white p-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-slate-600">🇨🇴 {t.multimedia.iptvTitle}</p>
+          <p className="text-xs font-semibold text-ink-body">🇨🇴 {t.multimedia.iptvTitle}</p>
           {m.iptvItems.length > 0 && (
-            <span className="text-[11px] text-slate-400">{m.iptvItems.length} canales</span>
+            <span className="text-[11px] text-ink-faint">{m.iptvItems.length} canales</span>
           )}
         </div>
         <button
@@ -181,7 +181,7 @@ export function TvView() {
           {m.iptvLoading ? t.multimedia.iptvLoading : m.iptvItems.length ? t.multimedia.iptvReload : t.multimedia.iptvLoad}
         </button>
         {m.iptvError && <p className="text-[11px] text-red-500">{m.iptvError}</p>}
-        <p className="text-[11px] leading-snug text-slate-400">{t.multimedia.iptvHint}</p>
+        <p className="text-[11px] leading-snug text-ink-faint">{t.multimedia.iptvHint}</p>
       </div>
 
       {m.iptvItems.length > 0 && (
@@ -194,7 +194,7 @@ export function TvView() {
                 type="button"
                 onClick={() => m.playTv(s)}
                 className={`flex items-center gap-2.5 rounded-lg border p-2 text-left transition ${
-                  activo ? "border-brand-300 bg-brand-50" : "border-slate-200 bg-white hover:border-slate-300"
+                  activo ? "border-brand-300 bg-brand-50" : "border-black/10 bg-white hover:border-black/10"
                 }`}
               >
                 {s.artwork ? (
@@ -205,13 +205,13 @@ export function TvView() {
                     onError={(e) => (e.currentTarget.style.display = "none")}
                   />
                 ) : (
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-sm">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-surface-muted text-sm">
                     📺
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-slate-800">{s.title}</span>
-                  <span className="block truncate text-[11px] text-slate-400">{s.subtitle}</span>
+                  <span className="block truncate text-sm font-medium text-ink">{s.title}</span>
+                  <span className="block truncate text-[11px] text-ink-faint">{s.subtitle}</span>
                 </span>
                 {activo && <span className="text-sm">{m.playing ? "🔴" : "⏸"}</span>}
               </button>

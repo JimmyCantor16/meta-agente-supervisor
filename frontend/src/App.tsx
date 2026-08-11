@@ -46,7 +46,7 @@ export default function App() {
   const chatMode = !data && !loading;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800">
+    <div className="flex h-screen overflow-hidden bg-surface-muted text-ink">
       <Sidebar
         active={view}
         onNavigate={setView}
@@ -66,20 +66,20 @@ export default function App() {
                 {chatMode ? (
                   <div className="text-center">
                     <p className="text-sm font-medium text-brand-600">{t.hero.greeting}</p>
-                    <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                    <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink sm:text-4xl">
                       {t.hero.chatTitle}
                     </h1>
-                    <p className="mx-auto mt-3 max-w-xl text-sm text-slate-500">
+                    <p className="mx-auto mt-3 max-w-xl text-sm text-ink-muted">
                       {t.hero.chatSubtitle}
                     </p>
                   </div>
                 ) : (
                   <div>
                     <p className="text-sm font-medium text-brand-600">{t.hero.greeting}</p>
-                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
                       {t.hero.title}
                     </h1>
-                    <p className="mt-2 max-w-2xl text-sm text-slate-500">{t.hero.subtitle}</p>
+                    <p className="mt-2 max-w-2xl text-sm text-ink-muted">{t.hero.subtitle}</p>
                   </div>
                 )}
 
@@ -101,7 +101,7 @@ export default function App() {
                           key={chip}
                           type="button"
                           onClick={() => setSeed(chip.replace(/^\S+\s/, ""))}
-                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+                          className="rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-medium text-ink-body shadow-sm transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
                         >
                           {chip}
                         </button>
@@ -137,9 +137,9 @@ export default function App() {
                 )}
 
                 {loading && (
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">
+                  <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-white p-4 text-sm text-ink-muted shadow-sm">
                     <span
-                      className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500"
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-black/10 border-t-brand-500"
                       style={{ animationName: "spin" }}
                       aria-hidden
                     />
@@ -203,9 +203,9 @@ export default function App() {
             {view === "learn" && <AprenderView />}
 
             {view === "help" && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h2 className="text-xl font-bold text-slate-900">❓ {t.nav.help}</h2>
-                <ol className="mt-3 max-w-2xl list-decimal space-y-1.5 pl-5 text-sm text-slate-600">
+              <div className="rounded-2xl border border-black/10 bg-white p-8 shadow-sm">
+                <h2 className="text-xl font-bold text-ink">❓ {t.nav.help}</h2>
+                <ol className="mt-3 max-w-2xl list-decimal space-y-1.5 pl-5 text-sm text-ink-body">
                   <li>Inicia sesión con Google (arriba a la derecha).</li>
                   <li>Escribe tu idea y pulsa <strong>{t.promptInput.submit}</strong>.</li>
                   <li>Genera el proyecto y audítalo.</li>
