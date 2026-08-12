@@ -1,6 +1,6 @@
 [package]
 name = "desktop"
-version = "0.1.0"
+version = "1.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -20,7 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-# Necesario para arrancar el backend empaquetado como sidecar.
+# Ya no hay sidecar que arrancar, pero lib.rs sigue registrando el plugin.
 tauri-plugin-shell = "2"
 # Notificaciones NATIVAS de Windows (toasts) desde la web app.
 tauri-plugin-notification = "2"

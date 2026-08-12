@@ -78,22 +78,30 @@ No hay que tocar código para cambiar de entorno.
 
 ---
 
-## Limitación conocida: proyectos generados
+## Proyectos generados en Render: qué funciona y qué falta
 
-El agente escribe los proyectos generados en disco y los **arranca localmente**
-para darte la URL. En Render eso tiene dos topes:
+El agente escribe los proyectos generados en disco y los arranca para darte la
+URL. En Render esto **ya funciona**, gracias a dos piezas del `render.yaml` y
+del backend:
 
-1. Los archivos generados **se pierden** al reiniciar (disco efímero).
-2. Render **no permite abrir puertos arbitrarios**, así que no se puede exponer
-   cada proyecto generado en su propia URL.
+1. **Los archivos sobreviven**: el backend monta un *Persistent Disk* de 1 GB
+   en `/app/generated` (bloque `disk` del `render.yaml`), así que los MVPs no
+   se borran en cada deploy ni en cada reinicio.
+2. **Cada MVP tiene URL pública**: el proxy `/preview/<slug>/`
+   (`backend/src/infrastructure/entrypoints/vista_previa.py`) reenvía las
+   peticiones al proceso del proyecto, y el runner arma la URL con
+   `PUBLIC_BASE_URL` para entregarla en vez de un localhost inalcanzable.
 
-Opciones según lo que necesites:
+La limitación **real** que queda es otra:
 
-- **Descarga (recomendado en cloud)**: entregar el proyecto como ZIP o repo de
-  GitHub en vez de una URL viva.
-- **Disco persistente**: añadir un *Persistent Disk* al backend (plan de pago)
-  para que al menos los archivos sobrevivan.
-- **Local / escritorio**: el arranque automático con URL funciona tal cual.
+- La URL `/preview/<slug>/` depende de que el **proceso del MVP siga vivo**
+  dentro del contenedor del backend. Si ese proceso se apaga (reinicio del
+  contenedor, deploy nuevo), la URL responde 404 con «Este sistema no está
+  encendido» hasta que se vuelva a arrancar. Los archivos siguen en el disco;
+  lo que se pierde es el proceso.
+- El deploy de un MVP a **su propio servicio de Render** todavía es manual
+  (crear el repo, el servicio y las variables a mano). Automatizarlo es la
+  fase 1 del plan.
 
 ## Nota sobre el plan free de Render
 

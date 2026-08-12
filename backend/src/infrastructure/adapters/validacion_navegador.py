@@ -12,11 +12,71 @@ Regla: URL que no renderiza NO se entrega.
 from __future__ import annotations
 
 import logging
+import threading
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # Errores de consola que no impiden usar la página: no bloquean la entrega.
 _RUIDO = ("favicon", "manifest", "sourcemap", "source map")
+
+
+def playwright_disponible() -> bool:
+    """True si el paquete `playwright` está importable en este entorno."""
+    try:
+        import playwright.sync_api  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def healthcheck_navegador(timeout_s: int = 20) -> str | None:
+    """Comprueba que el gate de render PUEDE funcionar en este entorno.
+
+    Pensada para que el arranque (o un endpoint de salud) la consulte y un
+    entorno mal configurado se vea ANTES de la primera entrega, no cuando ya
+    se coló una página en blanco. Cubre los dos fallos de imagen reales: falta
+    el paquete `playwright`, o el paquete está pero Chromium no se descargó
+    (una imagen Docker reconstruida sin `playwright install`).
+
+    Returns:
+        None si Playwright y su Chromium están listos; si no, una descripción
+        del fallo de configuración lista para loguear o exponer en /health.
+    """
+    if not playwright_disponible():
+        return (
+            "falta el paquete 'playwright': el gate de render está desactivado "
+            "(instálalo con `pip install playwright && playwright install "
+            "--with-deps chromium`)"
+        )
+
+    # La sonda corre en un hilo propio: la API síncrona de Playwright se niega
+    # a ejecutarse en un hilo con event loop activo, y este healthcheck debe
+    # poder llamarse también desde el arranque async de FastAPI.
+    resultado: list[str | None] = [None]
+
+    def _sonda() -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+
+            with sync_playwright() as p:
+                ejecutable = Path(p.chromium.executable_path)
+            if not ejecutable.exists():
+                resultado[0] = (
+                    "playwright está instalado pero su Chromium NO "
+                    f"({ejecutable} no existe): el gate de render está "
+                    "desactivado. Ejecuta `playwright install --with-deps "
+                    "chromium` en la imagen."
+                )
+        except Exception as exc:  # noqa: BLE001 - un healthcheck reporta, no revienta
+            resultado[0] = f"el driver de Playwright no arranca: {exc}"
+
+    hilo = threading.Thread(target=_sonda, name="healthcheck-navegador", daemon=True)
+    hilo.start()
+    hilo.join(timeout=timeout_s)
+    if hilo.is_alive():
+        return f"el driver de Playwright no respondió en {timeout_s} s"
+    return resultado[0]
 
 
 def validar_render(url: str, timeout_s: int = 30) -> str | None:
@@ -30,11 +90,16 @@ def validar_render(url: str, timeout_s: int = 30) -> str | None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        # Sin Playwright instalado el sistema sigue funcionando, pero avisa:
-        # está entregando URLs sin la garantía de render.
-        logger.warning(
-            "Playwright no está disponible: la URL se entrega SIN validar el "
-            "render (instala playwright + chromium en la imagen para el gate)."
+        # Esto NO es un estado normal: es la ÚNICA defensa contra entregar una
+        # página en blanco, y aquí está desactivada. Se grita a nivel ERROR
+        # (inconfundible en cualquier monitor de logs) pero no se retiene la
+        # URL: en desarrollo local sin Chromium el flujo debe seguir andando.
+        # El arranque puede detectar este estado ANTES con healthcheck_navegador().
+        logger.error(
+            "ENTORNO MAL CONFIGURADO: falta Playwright, así que la URL se "
+            "entrega SIN el gate de render (riesgo de página en blanco sin que "
+            "nadie lo note). Reconstruye la imagen con `pip install playwright "
+            "&& playwright install --with-deps chromium`."
         )
         return None
 

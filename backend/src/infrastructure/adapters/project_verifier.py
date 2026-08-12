@@ -462,11 +462,18 @@ class PythonProjectVerifier(ProjectVerifierPort):
 
         if not python.exists():
             logger.info("Creando entorno de verificación en %s ...", venv_dir)
-            subprocess.run(
+            resultado = subprocess.run(
                 [sys.executable, "-m", "venv", str(venv_dir)],
                 capture_output=True,
+                text=True,
                 timeout=_VENV_TIMEOUT,
             )
+            if resultado.returncode != 0:
+                logger.error(
+                    "FALLO DEL ENTORNO DE VERIFICACIÓN (no es un fallo del proyecto): "
+                    "no se pudo crear el venv:\n%s",
+                    _cola(resultado.stderr or "", 2000),
+                )
 
         if not python.exists():
             logger.warning("No se pudo crear el venv; se usa el intérprete actual.")
@@ -482,11 +489,19 @@ class PythonProjectVerifier(ProjectVerifierPort):
         ]
         for archivo in requirements:
             logger.info("Instalando dependencias de %s...", archivo.relative_to(root))
-            subprocess.run(
+            resultado = subprocess.run(
                 [str(python), "-m", "pip", "install", "-q", "-r", str(archivo)],
                 capture_output=True,
+                text=True,
                 timeout=_PIP_TIMEOUT,
             )
+            if resultado.returncode != 0:
+                logger.error(
+                    "FALLO DEL ENTORNO DE VERIFICACIÓN (no es un fallo del proyecto): "
+                    "pip no pudo instalar %s:\n%s",
+                    archivo.relative_to(root),
+                    _cola(resultado.stderr or "", 2000),
+                )
         if not requirements:
             logger.warning("El proyecto no trae requirements.txt: el entorno quedará incompleto.")
 
@@ -494,15 +509,26 @@ class PythonProjectVerifier(ProjectVerifierPort):
         # TestClient de FastAPI requiere httpx para ejercitar los endpoints.
         marker = venv_dir / ".verifier-deps-ok"
         if not marker.exists():
-            subprocess.run(
-                [str(python), "-m", "pip", "install", "-q", "httpx", "httpx2"],
+            resultado = subprocess.run(
+                [str(python), "-m", "pip", "install", "-q", "httpx"],
                 capture_output=True,
+                text=True,
                 timeout=_PIP_TIMEOUT,
             )
-            try:
-                marker.write_text("ok", encoding="utf-8")
-            except OSError:
-                pass
+            if resultado.returncode != 0:
+                # Sin marker, la próxima pasada lo reintenta. Escribirlo con la
+                # instalación rota hacía que el smoke test degradara en silencio
+                # ("La app no se pudo ejercitar") culpando al proyecto generado.
+                logger.error(
+                    "FALLO DEL ENTORNO DE VERIFICACIÓN (no es un fallo del proyecto): "
+                    "pip no pudo instalar httpx:\n%s",
+                    _cola(resultado.stderr or "", 2000),
+                )
+            else:
+                try:
+                    marker.write_text("ok", encoding="utf-8")
+                except OSError:
+                    pass
 
         return str(python)
 
