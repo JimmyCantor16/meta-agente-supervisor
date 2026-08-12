@@ -543,6 +543,7 @@ import type {
   CursoResult,
   DiagnosticoMVP,
   EstadoProyecto,
+  InfoDespliegue,
   MensajeChat,
   MetaProceso,
   NivelResult,
@@ -799,6 +800,48 @@ export function marcarHito(
   hecho: boolean
 ): Promise<MetaProceso> {
   return cursoPost<MetaProceso>("meta/hito", { meta_id: metaId, indice, hecho });
+}
+
+// --- Despliegues automáticos: el agente publica el proyecto en internet -----
+const DESPLIEGUES_ENDPOINT = `${API_BASE}/api/v1/agent/despliegues`;
+
+/**
+ * Pide al agente publicar el proyecto en internet (repo + Render, todo él).
+ * Responde 202 de inmediato: el deploy corre en segundo plano y el progreso
+ * llega por el WebSocket de progreso; el estado final, por `listarDespliegues`.
+ */
+export async function publicarProyecto(
+  slug: string
+): Promise<{ estado: string; slug: string }> {
+  let r: Response;
+  try {
+    r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(slug)}/publicar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor para publicar.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as { estado: string; slug: string };
+}
+
+/** Lista los despliegues del agente con su estado real (vivo/fallido/caído…). */
+export async function listarDespliegues(): Promise<InfoDespliegue[]> {
+  let r: Response;
+  try {
+    r = await fetch(DESPLIEGUES_ENDPOINT, { headers: { ...authHeaders() } });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as InfoDespliegue[];
 }
 
 /** El profesor revisa la tarea y decide si el alumno superó la clase. */

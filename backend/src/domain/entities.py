@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -506,6 +507,33 @@ class DiagnosticoMVP(BaseModel):
     url: str = Field(default="", description="URL evaluada, si la hubo.")
 
 
+class EstadoEntrega(str, Enum):
+    """Con cuánta honestidad terminó una generación: el usuario merece saberlo.
+
+    Nace de la cascada de degradación: cuando el bucle de auto-verificación se
+    rendía, el proyecto se "entregaba igual" con el fallo solo en los logs — un
+    sistema roto indistinguible de uno bueno salvo url=null. Ahora la entrega
+    declara su estado: pasó la verificación por su propio pie, se salvó
+    reconstruyéndola sobre una pieza correcta por construcción, o falló y se
+    dice sin adornos.
+    """
+
+    VERIFICADO = "verificado"  # pasó la verificación tal como se generó
+    DEGRADADO = "degradado"    # se entregó, pero rescatado por la cascada
+    FALLIDO = "fallido"        # ni la cascada lo salvó: no hay entrega sana
+
+
+class RutaGeneracion(str, Enum):
+    """Camino por el que se construyó el proyecto (lo consume el harness de
+    tasa de éxito): permite medir qué rutas entregan y cuáles fallan."""
+
+    ESQUELETO = "esqueleto"          # esqueleto probado (CRUD con login / landing)
+    BASE_DORADA = "base_dorada"      # sistema base instanciado por arquetipo
+    LIBRE = "libre"                  # generación libre, archivo a archivo
+    DEGRADADO_A_BASE = "degradado_a_base"            # la libre falló; rescatado con base dorada
+    DEGRADADO_A_ESQUELETO = "degradado_a_esqueleto"  # ni la base; rescatado con esqueleto genérico
+
+
 class CasoGeneracion(BaseModel):
     """Un caso del BANCO DE CASOS: qué se pidió, qué salió y qué se aprendió.
 
@@ -528,6 +556,13 @@ class CasoGeneracion(BaseModel):
         default=False,
         description="Si el gate de visibilidad tuvo que relanzar la generación.",
     )
+    ruta: RutaGeneracion = Field(
+        default=RutaGeneracion.LIBRE,
+        description=(
+            "Camino de construcción usado: esqueleto, base dorada, libre, o los "
+            "degradados si la cascada tuvo que rescatar la entrega."
+        ),
+    )
     problemas: list[str] = Field(
         default_factory=list,
         description="Fallos detectados (para no repetirlos en ideas similares).",
@@ -543,6 +578,37 @@ class CasoGeneracion(BaseModel):
     def exito(self) -> bool:
         """Éxito real = el MVP se ve y además se entregó una URL viva."""
         return self.estado_mvp == EstadoMVP.FUNCIONA and self.tuvo_url
+
+
+class InfoDespliegue(BaseModel):
+    """El despliegue VIGENTE de un proyecto publicado en internet (uno por slug).
+
+    Un despliegue no es una foto, es una promesa: la URL entregada tiene que
+    seguir viva mañana. Por eso además del resultado (`url`, `repo`) lleva su
+    estado honesto y cuándo se comprobó por última vez — es lo que alimenta
+    GET /agent/despliegues y lo que la auditoría periódica mantiene al día.
+    """
+
+    slug: str = Field(..., min_length=1, description="Slug del proyecto (nuestra llave).")
+    nombre_servicio: str = Field(
+        ..., description="Nombre REAL del servicio en Render (puede diferir del slug)."
+    )
+    url: str = Field(default="", description="URL pública (vacía mientras se construye).")
+    repo: str = Field(default="", description="Repositorio de GitHub con el código publicado.")
+    estado: Literal["en_curso", "vivo", "fallido", "caido"] = Field(
+        ...,
+        description=(
+            "en_curso = desplegando; vivo = responde; fallido = el deploy no "
+            "salió; caido = salió vivo pero dejó de responder."
+        ),
+    )
+    detalle: str = Field(default="", description="Qué pasó, en cristiano (error real si falló).")
+    actualizado_en: str = Field(..., description="ISO-8601 del último cambio de estado.")
+    ultimo_chequeo: str | None = Field(
+        default=None, description="ISO-8601 del último chequeo de salud (None si no hubo)."
+    )
+
+    model_config = {"extra": "ignore"}
 
 
 class SpecPlan(BaseModel):

@@ -146,6 +146,18 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- Publicación automática (GitHub + Render) ---
+    # Con esta clave el agente publica cada MVP como servicio PROPIO en Render
+    # (repo en GitHub + web service, plan free). Las credenciales de GitHub
+    # reutilizan las GITHUB_TOKEN/GITHUB_OWNER ya existentes (entrega en rama).
+    render_api_key: str = Field(
+        default="",
+        description=(
+            "API key de Render (Account Settings → API Keys). Vacía = la "
+            "publicación automática queda apagada; el resto funciona igual."
+        ),
+    )
+
     # --- Licencia / modelo de negocio ---
     free_generation_limit: int = Field(
         default=3,

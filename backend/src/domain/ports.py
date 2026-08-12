@@ -8,6 +8,8 @@ esencia de la inversión de dependencias en la arquitectura hexagonal.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from pathlib import Path
 
 from src.domain.entities import (
     AgentEvaluation,
@@ -18,6 +20,7 @@ from src.domain.entities import (
     DeveloperPrompt,
     DiagnosticoMVP,
     EvaluationRecord,
+    InfoDespliegue,
     MetaProceso,
     SpecPlan,
     FewShotExample,
@@ -46,6 +49,14 @@ class ProjectGenerationError(Exception):
 
 class AuditError(Exception):
     """Error de dominio para cualquier fallo durante la auditoría de un proyecto."""
+
+
+class DespliegueError(Exception):
+    """Error de dominio para cualquier fallo al PUBLICAR un proyecto en internet.
+
+    Los adaptadores traducen sus fallos técnicos (git, GitHub, la API de Render,
+    timeouts) a esta excepción; el entrypoint la convierte en HTTP 502.
+    """
 
 
 class LicenseRequiredError(Exception):
@@ -622,4 +633,59 @@ class CursoRepositoryPort(ABC):
 
     @abstractmethod
     def historial(self, curso_id: str, numero_clase: int) -> list[MensajeChat]:
+        raise NotImplementedError
+
+
+class DesplieguePort(ABC):
+    """Contrato del agente que PUBLICA: convierte una carpeta en una URL pública.
+
+    Implementaciones: Render real (repo en GitHub + web service) o un mock que
+    simula los hitos sin tocar la nube. La aplicación solo conoce este contrato.
+    """
+
+    @abstractmethod
+    def publicar(
+        self,
+        ruta_proyecto: Path,
+        nombre: str,
+        al_avanzar: Callable[[str], None] | None = None,
+    ) -> InfoDespliegue:
+        """Publica el proyecto y devuelve su despliegue ya VIVO.
+
+        Args:
+            ruta_proyecto: Carpeta del proyecto generado en disco.
+            nombre: Nombre/slug con el que se publica (define la URL).
+            al_avanzar: Callback opcional de progreso, hito a hito. Contar el
+                progreso jamás puede romper el despliegue: los adaptadores lo
+                envuelven en try/except.
+
+        Returns:
+            El `InfoDespliegue` final (estado "vivo", con su URL y su repo).
+
+        Raises:
+            DespliegueError: Si la publicación no llegó a estar viva.
+        """
+        raise NotImplementedError
+
+
+class DespliegueRepositoryPort(ABC):
+    """Persistencia de los despliegues publicados: UNO vigente por slug.
+
+    Es la fuente de verdad de GET /agent/despliegues y lo que la auditoría
+    periódica revisa y actualiza (vivo/caido/fallido).
+    """
+
+    @abstractmethod
+    def guardar(self, info: InfoDespliegue) -> None:
+        """Upsert por slug: cada proyecto tiene UN despliegue (el vigente)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def obtener(self, slug: str) -> InfoDespliegue | None:
+        """El despliegue vigente de un proyecto, o None si nunca se publicó."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def listar(self) -> list[InfoDespliegue]:
+        """Todos los despliegues (más recientes primero)."""
         raise NotImplementedError

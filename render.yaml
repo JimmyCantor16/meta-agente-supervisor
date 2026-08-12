@@ -77,6 +77,11 @@ services:
         sync: false
       - key: GITHUB_OWNER
         sync: false
+      # Publicación automática de los MVP: con esta clave el agente crea el
+      # repo y el web service de cada proyecto (Account Settings → API Keys).
+      # Sin ella, POST /publicar responde 503 con instrucciones claras.
+      - key: RENDER_API_KEY
+        sync: false
       # --- Ajustes no secretos ---
       - key: USE_MOCK_LLM
         value: "false"

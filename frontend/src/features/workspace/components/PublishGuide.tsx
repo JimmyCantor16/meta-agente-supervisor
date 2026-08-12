@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "../../../components/Card";
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import { PublicarEnInternet } from "./PublicarEnInternet";
 import type { ProjectSummary } from "../types";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -106,6 +107,14 @@ export function PublishGuide({ projects }: { projects: ProjectSummary[] }) {
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Vía AUTOMÁTICA: el agente publica por ti. Las clases de abajo siguen
+          siendo la vía manual, para quien quiera aprender a hacerlo él mismo. */}
+      <div className="max-w-3xl space-y-2">
+        <p className="text-sm font-semibold text-ink-body">{t.despliegue.viaAutomatica}</p>
+        <PublicarEnInternet projectName={proyecto} />
+        <p className="text-xs text-ink-faint">{t.despliegue.viaManual}</p>
       </div>
 
       {/* Pasos */}

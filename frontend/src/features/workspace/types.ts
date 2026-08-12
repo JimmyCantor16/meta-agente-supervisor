@@ -259,6 +259,25 @@ export interface ProjectSummary {
   files: number;
 }
 
+// ===== Despliegues automáticos (el agente publica en internet) =====
+
+/** Estados por los que pasa un despliegue hecho por el agente. */
+export type EstadoDespliegue = "en_curso" | "vivo" | "fallido" | "caido";
+
+// Espejo de la entidad `InfoDespliegue` del dominio (GET /agent/despliegues).
+export interface InfoDespliegue {
+  slug: string;
+  nombre_servicio: string;
+  url: string;
+  repo: string;
+  estado: EstadoDespliegue;
+  detalle: string;
+  /** Fecha ISO del último cambio de estado. */
+  actualizado_en: string;
+  /** Fecha ISO del último chequeo de salud (null si aún no hubo). */
+  ultimo_chequeo: string | null;
+}
+
 // Estado de uso y licencia.
 export interface UsageStatus {
   used: number;

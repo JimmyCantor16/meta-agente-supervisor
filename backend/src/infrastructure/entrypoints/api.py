@@ -8,6 +8,7 @@ aquí mediante el sistema de dependencias de FastAPI.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from functools import lru_cache
 from typing import Literal
@@ -50,8 +51,10 @@ from src.application.metas_proceso import (
     ListarMetasUseCase,
     MarcarHitoUseCase,
 )
+from src.application.publicar_proyecto import PublicarProyectoUseCase
+from src.application.auditoria_despliegues import AuditarDesplieguesUseCase
 from src.config import Settings, get_settings
-from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount
+from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount, slugify
 from src.domain.ports import (
     AjustadorModuloPort,
     AuditError,
@@ -59,6 +62,9 @@ from src.domain.ports import (
     CodeTeacherPort,
     CasoRepositoryPort,
     CursoRepositoryPort,
+    DespliegueError,
+    DesplieguePort,
+    DespliegueRepositoryPort,
     DiagnosticadorMVPPort,
     EvaluationRepositoryPort,
     GeneradorMetaPort,
@@ -110,6 +116,11 @@ from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
 from src.infrastructure.adapters.postgres_repository import PostgresEvaluationRepository
 from src.infrastructure.adapters.postgres_usage_repository import PostgresUsageRepository
 from src.infrastructure.adapters.postgres_user_repository import PostgresUserRepository
+from src.infrastructure.adapters.mock_render_deploy import MockRenderDeploy
+from src.infrastructure.adapters.render_deploy import RenderDeployAdapter
+from src.infrastructure.adapters.sqlite_despliegues_repository import (
+    SqliteDespliegueRepository,
+)
 from src.infrastructure.adapters.sqlite_repository import SqliteEvaluationRepository
 from src.infrastructure.adapters.sqlite_usage_repository import SqliteUsageRepository
 from src.infrastructure.adapters.sqlite_user_repository import SqliteUserRepository
@@ -234,6 +245,19 @@ class GenerateResponse(BaseModel):
     manual: str | None = Field(
         default=None,
         description="Contenido del manual de usuario (MANUAL.md), si se generó.",
+    )
+    # Honestidad de la entrega (la lee el arnés de tasa de éxito y la interfaz):
+    # cómo terminó la corrida y por qué camino se construyó lo entregado.
+    estado_entrega: str = Field(
+        default="verificado",
+        description="verificado | degradado (rescatado por la cascada) | fallido.",
+    )
+    ruta: str = Field(
+        default="libre",
+        description=(
+            "Camino de construcción: esqueleto | base_dorada | libre | "
+            "degradado_a_base | degradado_a_esqueleto."
+        ),
     )
 
 
@@ -393,6 +417,26 @@ class UpgradeRequest(BaseModel):
     """Petición del usuario para solicitar un plan (queda pendiente de aprobación)."""
 
     plan: str = Field(default="pro")
+
+
+class PublicarResponse(BaseModel):
+    """Acuse de una publicación: el deploy corre en segundo plano (202)."""
+
+    estado: str = Field(default="iniciado")
+    slug: str
+
+
+class DespliegueDTO(BaseModel):
+    """Espejo HTTP de `InfoDespliegue` (GET /agent/despliegues)."""
+
+    slug: str
+    nombre_servicio: str
+    url: str
+    repo: str
+    estado: str
+    detalle: str
+    actualizado_en: str
+    ultimo_chequeo: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -698,6 +742,58 @@ def get_control_proyecto_use_case(
     secretos: SecretosUseCase = Depends(get_secretos_use_case),
 ) -> ControlProyectoUseCase:
     return ControlProyectoUseCase(runner, get_settings().generated_dir, verifier, secretos)
+
+
+# --- PUBLICACIÓN AUTOMÁTICA (el agente sube el MVP a internet) ---
+@lru_cache
+def get_despliegue() -> DesplieguePort:
+    """Provee el publicador: Render real o simulado, según configuración."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> despliegue SIMULADO (sin GitHub ni Render).")
+        return MockRenderDeploy()
+    # La clave puede venir del `.env` (pydantic la lee aunque no esté exportada
+    # en os.environ); si aquí va vacía, el adaptador cae al entorno en cada
+    # publicación, para que una clave rotada aplique sin reiniciar.
+    return RenderDeployAdapter(render_api_key=settings.render_api_key or None)
+
+
+@lru_cache
+def get_despliegue_repository() -> DespliegueRepositoryPort:
+    """Persistencia de despliegues (el mismo SQLite local que cursos y casos)."""
+    return SqliteDespliegueRepository(get_settings().db_path)
+
+
+def get_publicar_use_case(
+    despliegue: DesplieguePort = Depends(get_despliegue),
+    repo: DespliegueRepositoryPort = Depends(get_despliegue_repository),
+) -> PublicarProyectoUseCase:
+    """Construye el caso de uso de publicación con sus puertos resueltos."""
+    return PublicarProyectoUseCase(despliegue, repo, get_settings().generated_dir)
+
+
+def get_auditar_despliegues_use_case() -> AuditarDesplieguesUseCase:
+    """Auditoría de salud de los despliegues (la usa el bucle periódico)."""
+    return AuditarDesplieguesUseCase(get_despliegue_repository())
+
+
+def _credenciales_deploy_faltantes(settings: Settings) -> list[str]:
+    """Qué credenciales de publicación faltan (lista vacía = todo listo).
+
+    Se comprueba ANTES de aceptar el encargo: el deploy corre en segundo plano
+    y un fallo de configuración descubierto ahí solo se vería en la lista de
+    despliegues; aquí se convierte en un 503 inmediato con instrucciones.
+    """
+    import os
+
+    faltan: list[str] = []
+    if not (settings.render_api_key or os.environ.get("RENDER_API_KEY", "")).strip():
+        faltan.append("RENDER_API_KEY")
+    if not os.environ.get("GITHUB_TOKEN", "").strip():
+        faltan.append("GITHUB_TOKEN")
+    if not os.environ.get("GITHUB_OWNER", "").strip():
+        faltan.append("GITHUB_OWNER")
+    return faltan
 
 
 @lru_cache
@@ -1148,6 +1244,10 @@ def generate_project(
         run_instructions=project.run_instructions,
         url=use_case.last_url,
         manual=_manual_del_proyecto(project),
+        # La honestidad de la corrida viaja en la respuesta: el arnés de tasa
+        # de éxito y la interfaz distinguen un verificado de un rescatado.
+        estado_entrega=use_case.estado_entrega.value,
+        ruta=use_case.ruta_generacion.value,
     )
 
 
@@ -2030,6 +2130,97 @@ def secretos_proyecto(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+# --- PUBLICAR EN INTERNET: GitHub + Render, en segundo plano ---
+#: Referencias vivas a las publicaciones en curso: sin retenerlas, el
+#: recolector de basura puede cancelar un asyncio.Task a mitad de deploy.
+_PUBLICACIONES: set[asyncio.Task] = set()
+
+
+@router.post(
+    "/projects/{project_name}/publicar",
+    response_model=PublicarResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Publica el proyecto en internet (repo en GitHub + Render), en segundo plano.",
+)
+async def publicar_proyecto(
+    project_name: str,
+    use_case: PublicarProyectoUseCase = Depends(get_publicar_use_case),
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> PublicarResponse:
+    """Responde 202 al instante; el deploy corre detrás y el progreso viaja
+    por el WebSocket de progreso. La verdad del resultado (vivo/fallido, URL)
+    vive en GET /agent/despliegues, que el caso de uso mantiene al día.
+
+    - 401: sin sesión (misma auth que /generate).
+    - 404: el proyecto no existe o no es de este usuario.
+    - 503: el servidor no tiene las credenciales de publicación.
+    """
+    from src.infrastructure.adapters.duenos_proyecto import es_suyo
+
+    slug = slugify(project_name)
+    ruta = Path(get_settings().generated_dir) / slug
+    if not ruta.is_dir() or not es_suyo(ruta, user.sub, account.is_super_admin(user.email)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El proyecto '{slug}' no existe.",
+        )
+
+    settings = get_settings()
+    if not settings.use_mock_llm:
+        faltan = _credenciales_deploy_faltantes(settings)
+        if faltan:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "La publicación automática no está configurada en este "
+                    "servidor: faltan " + ", ".join(faltan) + ". Defínelas en "
+                    "el entorno del backend y reintenta."
+                ),
+            )
+
+    dueno = user.sub or ""
+
+    def _avanzar(texto: str) -> None:
+        # Cada hito se difunde SOLO a su dueño por el canal de progreso.
+        try:
+            DIFUSOR.difundir(texto, dueno)
+        except Exception:  # noqa: BLE001 - contar el progreso jamás rompe el deploy
+            pass
+
+    async def _publicar_en_fondo() -> None:
+        try:
+            # En un hilo aparte: el deploy bloquea (git, httpx, polls de ~15 min)
+            # y el event loop tiene que seguir sirviendo al resto de usuarios.
+            await asyncio.to_thread(use_case.execute, slug, _avanzar)
+        except DespliegueError as exc:
+            # El fallo de dominio (equivalente al 502 del camino síncrono) ya
+            # quedó persistido como 'fallido' por el caso de uso; aquí solo se
+            # le cuenta al dueño por el canal en vivo.
+            _avanzar(f"🛑 La publicación de «{slug}» falló: {exc}")
+        except Exception:  # noqa: BLE001 - una tarea de fondo jamás tumba la API
+            logger.exception("La publicación de '%s' reventó de forma inesperada.", slug)
+            _avanzar(f"🛑 La publicación de «{slug}» falló de forma inesperada.")
+
+    tarea = asyncio.create_task(_publicar_en_fondo())
+    _PUBLICACIONES.add(tarea)
+    tarea.add_done_callback(_PUBLICACIONES.discard)
+    return PublicarResponse(estado="iniciado", slug=slug)
+
+
+@router.get(
+    "/despliegues",
+    response_model=list[DespliegueDTO],
+    summary="Los despliegues publicados por el agente, con su estado real.",
+)
+def listar_despliegues(
+    repo: DespliegueRepositoryPort = Depends(get_despliegue_repository),
+    user: UserAccount = Depends(get_current_user),  # noqa: ARG001 - solo autentica
+) -> list[DespliegueDTO]:
+    """La lista siempre cuenta la verdad: en_curso / vivo / fallido / caido."""
+    return [DespliegueDTO(**d.model_dump()) for d in repo.listar()]
+
+
 # --- AULA EN VIVO: ver el código fuente del proyecto (solo lectura) ---
 _SECRETO_EN_RUTA = ("secretos/", "/.env", ".env", "node_modules/")
 
@@ -2280,6 +2471,53 @@ def admin_approve(
 # ---------------------------------------------------------------------------
 # Factory de la aplicación
 # ---------------------------------------------------------------------------
+#: Cada cuánto se revisa la salud de los despliegues publicados.
+_AUDITORIA_CADA_S = 30 * 60
+
+
+@lru_cache
+def _estado_navegador() -> str:
+    """Sonda (una sola vez por proceso) del navegador del gate de render.
+
+    El entorno no cambia en caliente (instalar Playwright/Chromium exige
+    reconstruir la imagen), así que el resultado se cachea: /health responde
+    al instante en vez de lanzar un Chromium por petición.
+    """
+    from src.infrastructure.adapters.validacion_navegador import healthcheck_navegador
+
+    try:
+        fallo = healthcheck_navegador()
+    except Exception as exc:  # noqa: BLE001 - un healthcheck reporta, no revienta
+        fallo = f"la sonda del navegador no se pudo ejecutar: {exc}"
+    return "ok" if fallo is None else fallo
+
+
+async def _bucle_auditoria_despliegues() -> None:
+    """Revisa cada 30 min que las URLs publicadas sigan vivas.
+
+    Blindado por diseño: cualquier fallo se anota y se espera al siguiente
+    ciclo — un tropiezo del bucle jamás puede tumbar la API. Solo se difunde
+    un aviso cuando algo pasó de 'vivo' a 'caido' (la promesa que se rompió);
+    los demás cambios se leen en GET /agent/despliegues.
+    """
+    while True:
+        try:
+            repo = get_despliegue_repository()
+            previos = {d.slug: d.estado for d in repo.listar()}
+            # En un hilo aparte: el chequeo hace HTTP real y hasta espera ~1 min
+            # a que un servicio free de Render despierte.
+            informe = await asyncio.to_thread(get_auditar_despliegues_use_case().execute)
+            for d in informe:
+                if previos.get(d.slug) == "vivo" and d.estado == "caido":
+                    DIFUSOR.difundir(
+                        f"📉 Tu sistema «{d.slug}» dejó de responder ({d.url}). "
+                        f"Detalle: {d.detalle[:160]}"
+                    )
+        except Exception as exc:  # noqa: BLE001 - el bucle jamás tumba la API
+            logger.warning("La auditoría de despliegues tropezó: %s", exc)
+        await asyncio.sleep(_AUDITORIA_CADA_S)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Construye y configura la instancia de FastAPI.
 
@@ -2332,9 +2570,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(preview_router)
 
+    @app.on_event("startup")
+    async def _arrancar_tareas_de_fondo() -> None:
+        """Tareas que viven con el proceso; ninguna puede impedir el arranque."""
+        # 1) La sonda del navegador se calienta ya: un entorno sin Chromium se
+        #    ve en los logs (y en /health) ANTES de la primera entrega.
+        async def _calentar_sonda() -> None:
+            try:
+                estado = await asyncio.to_thread(_estado_navegador)
+                if estado != "ok":
+                    logger.error("Gate de render SIN navegador: %s", estado)
+            except Exception:  # noqa: BLE001 - calentar es best-effort
+                pass
+
+        # 2) Auditoría periódica de despliegues (cada 30 min).
+        #    Las referencias se guardan en app.state: sin ellas, el recolector
+        #    de basura podría cancelar las tareas a mitad de ciclo.
+        app.state.tareas_fondo = [
+            asyncio.create_task(_calentar_sonda()),
+            asyncio.create_task(_bucle_auditoria_despliegues()),
+        ]
+
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:
-        """Endpoint de salud para readiness/liveness checks."""
-        return {"status": "ok"}
+        """Endpoint de salud para readiness/liveness checks.
+
+        `navegador` NO cambia el contrato (el campo `status` sigue igual): es
+        "ok" si el gate de render puede correr, o la descripción del fallo de
+        configuración (falta Playwright / falta su Chromium) si no.
+        """
+        return {"status": "ok", "navegador": _estado_navegador()}
 
     return app
