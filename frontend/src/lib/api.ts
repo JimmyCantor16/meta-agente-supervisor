@@ -442,6 +442,34 @@ export async function recogerCredencialPuente(estado: string): Promise<string | 
   }
 }
 
+// --- Versión publicada de la app de escritorio -------------------------------
+const VERSION_ESCRITORIO_ENDPOINT = `${API_BASE}/api/v1/agent/version-escritorio`;
+
+/** Última versión publicada del instalador de escritorio. */
+export interface VersionEscritorio {
+  ultima: string;
+  url_descarga: string;
+}
+
+/**
+ * Consulta la última versión publicada de la app de escritorio. Endpoint
+ * público (sin sesión). Nunca lanza: ante cualquier fallo devuelve null,
+ * porque el aviso de versión es un extra que jamás debe estorbar.
+ */
+export async function obtenerVersionEscritorio(): Promise<VersionEscritorio | null> {
+  try {
+    const r = await fetch(VERSION_ESCRITORIO_ENDPOINT);
+    if (!r.ok) return null;
+    const datos = (await r.json()) as Partial<VersionEscritorio>;
+    return {
+      ultima: typeof datos.ultima === "string" ? datos.ultima.trim() : "",
+      url_descarga: typeof datos.url_descarga === "string" ? datos.url_descarga.trim() : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- Cuenta por usuario + super-admin ---------------------------------------
 const ACCOUNT_ME_ENDPOINT = `${API_BASE}/api/v1/agent/account/me`;
 const ACCOUNT_UPGRADE_ENDPOINT = `${API_BASE}/api/v1/agent/account/request-upgrade`;

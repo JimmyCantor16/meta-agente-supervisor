@@ -148,43 +148,46 @@ class Sesion extends ChangeNotifier {
   /// El flujo puente completo: código → navegador → sondeo → sesión.
   Future<void> entrar() async {
     if (_esperando || _token != null) return;
-    _error = null;
-    final codigo = nuevoCodigo();
-
-    var abierto = false;
-    try {
-      abierto = await _abrir(Uri.parse('$webProduccion/?puente=$codigo'));
-    } catch (_) {
-      abierto = false;
-    }
-    if (!abierto) {
-      _error = 'No pude abrir el navegador. Ábrelo tú y entra en $webProduccion';
-      _avisarCambio();
-      return;
-    }
-
-    _codigoMostrado = codigoVisible(codigo);
+    // El cerrojo se echa SÍNCRONO, antes del primer await: si se pusiera tras
+    // abrir el navegador, un doble toque lanzaría dos flujos con dos códigos
+    // distintos y anularía la comparación anti-phishing a ojo.
     _esperando = true;
     _cancelado = false;
+    _error = null;
+    final codigo = nuevoCodigo();
+    _codigoMostrado = codigoVisible(codigo);
     _avisarCambio();
+    try {
+      var abierto = false;
+      try {
+        abierto = await _abrir(Uri.parse('$webProduccion/?puente=$codigo'));
+      } catch (_) {
+        abierto = false;
+      }
+      if (!abierto) {
+        _error = 'No pude abrir el navegador. Ábrelo tú y entra en $webProduccion';
+        return;
+      }
 
-    // Hasta 5 minutos (lo que vive el código), comprobando cada 2 segundos —
-    // el mismo ritmo que el puente del escritorio.
-    for (var i = 0; i < 150 && !_cancelado; i++) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-      if (_cancelado) break;
-      final credential = await _recoger(codigo);
-      if (credential == null) continue;
-      await _adoptar(credential);
+      // Hasta 5 minutos (lo que vive el código), comprobando cada 2 segundos —
+      // el mismo ritmo que el puente del escritorio.
+      for (var i = 0; i < 150 && !_cancelado; i++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (_cancelado) break;
+        final credential = await _recoger(codigo);
+        if (credential == null) continue;
+        await _adoptar(credential);
+        return;
+      }
+      if (!_cancelado) {
+        _error = 'El código caducó sin completar el login. Inténtalo de nuevo.';
+      }
+    } finally {
+      // Pase lo que pase (éxito, caducidad, cancelación o excepción), el
+      // cerrojo se suelta y se avisa a la UI.
       _esperando = false;
       _avisarCambio();
-      return;
     }
-    _esperando = false;
-    if (!_cancelado) {
-      _error = 'El código caducó sin completar el login. Inténtalo de nuevo.';
-    }
-    _avisarCambio();
   }
 
   /// Corta el sondeo (el usuario se arrepintió o cerró la pantalla).

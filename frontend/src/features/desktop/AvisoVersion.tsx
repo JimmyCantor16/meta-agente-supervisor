@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import { obtenerVersionEscritorio, type VersionEscritorio } from "../../lib/api";
 import { esEscritorio } from "../../lib/canal";
 import { useNotifications } from "../notifications/NotificationProvider";
 
@@ -19,18 +20,9 @@ import { useNotifications } from "../notifications/NotificationProvider";
 // vacía (= no hay instalador publicado todavía), no se muestra NADA. El aviso
 // es un extra; jamás debe estorbar el uso normal de la app.
 
-// Mismo patrón que GoogleLoginButton/api.ts: en el escritorio no hay proxy
-// delante, así que la URL absoluta del backend viene horneada en el build.
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-
 // La versión de ESTE build, horneada por build-desktop.ps1 (VITE_APP_VERSION).
 // En la web queda vacía y el componente no hace nada (la web siempre está al día).
 const VERSION_HORNEADA = String(import.meta.env.VITE_APP_VERSION ?? "").trim();
-
-interface VersionEscritorio {
-  ultima: string;
-  url_descarga: string;
-}
 
 /**
  * ¿`candidata` es una versión mayor que `actual`? Comparación semver simple:
@@ -84,26 +76,21 @@ export function AvisoVersion() {
     if (!esEscritorio() || !VERSION_HORNEADA) return;
     let cancelado = false;
     void (async () => {
-      try {
-        const r = await fetch(`${API_BASE}/api/v1/agent/version-escritorio`);
-        if (!r.ok) return;
-        const datos = (await r.json()) as Partial<VersionEscritorio>;
-        const ultima = typeof datos.ultima === "string" ? datos.ultima.trim() : "";
-        const url = typeof datos.url_descarga === "string" ? datos.url_descarga.trim() : "";
-        // Sin URL de descarga no hay nada que ofrecer: silencio total.
-        if (cancelado || !url || !esVersionMayor(ultima, VERSION_HORNEADA)) return;
-        setAviso({ ultima, url_descarga: url });
-        if (yaSeNotifico(ultima)) return;
-        // Reusa el mecanismo del centro de avisos: toast + notificación NATIVA
-        // (en escritorio, el plugin de Tauri) + historial, todo en una llamada.
-        notifyRef.current({
-          title: tRef.current.desktopUpdate.notifTitle,
-          body: tRef.current.desktopUpdate.notifBody(ultima),
-          kind: "info",
-        });
-      } catch {
-        // Sin red o con el servidor dormido: el aviso no es un requisito.
-      }
+      // La llamada vive en api.ts (regla del proyecto) y nunca lanza: ante
+      // fallo de red o servidor dormido devuelve null y aquí no pasa nada.
+      const datos = await obtenerVersionEscritorio();
+      // Sin URL de descarga no hay nada que ofrecer: silencio total.
+      if (cancelado || !datos || !datos.url_descarga) return;
+      if (!esVersionMayor(datos.ultima, VERSION_HORNEADA)) return;
+      setAviso(datos);
+      if (yaSeNotifico(datos.ultima)) return;
+      // Reusa el mecanismo del centro de avisos: toast + notificación NATIVA
+      // (en escritorio, el plugin de Tauri) + historial, todo en una llamada.
+      notifyRef.current({
+        title: tRef.current.desktopUpdate.notifTitle,
+        body: tRef.current.desktopUpdate.notifBody(datos.ultima),
+        kind: "info",
+      });
     })();
     return () => {
       cancelado = true;

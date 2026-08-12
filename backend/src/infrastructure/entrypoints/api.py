@@ -2469,12 +2469,20 @@ class EntregaDTO(BaseModel):
     #: None = el revisor automático aún no dejó (o no pudo dejar) su REVISION.md.
     veredicto: VeredictoEntregaDTO | None = None
     dueno: str = ""
+    #: Si quien pregunta puede resolverla (sin marca, dueño, o admin). El móvil
+    #: decide con esto si pinta los botones: comparar `dueno` (un sub) contra
+    #: el email del usuario siempre fallaba.
+    es_suyo: bool = True
 
 
 class RechazoEntregaRequest(BaseModel):
-    """Cuerpo (opcional) del rechazo: por qué se descarta la entrega."""
+    """Cuerpo (opcional) del rechazo: por qué se descarta la entrega.
 
-    motivo: str = Field(default="", max_length=500)
+    Sin max_length: el caso de uso ya trunca a 500 al anotar la constancia —
+    un motivo largo se recorta, no rebota con un 422.
+    """
+
+    motivo: str = ""
 
 
 class ResolucionEntregaResponse(BaseModel):
@@ -2523,8 +2531,14 @@ def listar_entregas(
     ya masticados: se puede decidir desde el teléfono sin abrir ramas.
     """
     admin = account.is_super_admin(user.email)
-    entregas = get_bandeja_entregas().listar(user.sub or "", es_admin=admin)
-    return [EntregaDTO(**e) for e in entregas]
+    sub = user.sub or ""
+    entregas = get_bandeja_entregas().listar(sub, es_admin=admin)
+    # es_suyo se calcula aquí con el mismo criterio de duenos_proyecto.es_suyo
+    # (sin marca = visible y resoluble por cualquiera; admin ve y puede todo).
+    return [
+        EntregaDTO(**e, es_suyo=admin or not e["dueno"] or e["dueno"] == sub)
+        for e in entregas
+    ]
 
 
 @router.post(

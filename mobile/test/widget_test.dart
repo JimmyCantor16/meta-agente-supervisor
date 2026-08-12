@@ -4,6 +4,7 @@
 // arranque (IOWebSocketChannel.connect) y sus timers quedaban pendientes al
 // terminar el test. Ahora la conexión es apagable (`conectarAlArrancar: false`)
 // y la bandeja recibe un cliente HTTP falso, así que todo corre en seco.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,14 @@ http.Response _json(Object cuerpo, {int codigo = 200}) => http.Response.bytes(
       codigo,
       headers: {'content-type': 'application/json'},
     );
+
+/// JWT de mentira (sin firma real): a la app solo le importa el payload,
+/// de donde saca email y nombre para mostrarlos.
+String _jwtFalso(String email, String nombre) {
+  String b64(Map<String, dynamic> m) =>
+      base64Url.encode(utf8.encode(jsonEncode(m))).replaceAll('=', '');
+  return '${b64({'alg': 'none'})}.${b64({'email': email, 'name': nombre})}.firma';
+}
 
 void main() {
   testWidgets('La app arranca y muestra el título (sin conectar el WebSocket)',
@@ -115,5 +124,115 @@ void main() {
     // que el test no termine con timers pendientes.
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('Los botones de decisión obedecen a es_suyo, no al dueño (que es el SUB)',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'sesion.credential': 'token-de-prueba',
+      'sesion.email': 'prueba@jamz.dev',
+      'sesion.nombre': 'Prueba',
+    });
+
+    final falso = MockClient((req) async {
+      if (req.method == 'GET' && req.url.path == '/api/v1/agent/entregas') {
+        return _json([
+          // El dueño llega como SUB de Google (nunca coincide con el email):
+          // sin es_suyo, el dueño real no vería sus propios botones.
+          {'slug': 'mia-con-sub', 'dueno': '108234567890123456789', 'es_suyo': true},
+          {'slug': 'ajena', 'dueno': 'otro@jamz.dev', 'es_suyo': false},
+          // Backend viejo sin es_suyo: cae a comparar dueño con el email.
+          {'slug': 'backend-viejo', 'dueno': 'prueba@jamz.dev'},
+        ]);
+      }
+      return _json({'detail': 'no existe'}, codigo: 404);
+    });
+
+    final sesion = Sesion(cliente: falso);
+    await sesion.cargar();
+
+    await tester.pumpWidget(MetaAgenteApp(
+      conectarAlArrancar: false,
+      sesion: sesion,
+      clienteHttp: falso,
+    ));
+    await tester.pump();
+    await tester.tap(find.text('Entregas'));
+    await tester.pump();
+    await tester.pump();
+
+    // La suya (aunque el dueño sea el SUB) y la del backend viejo con botones;
+    // la ajena, solo con el aviso de quién puede resolverla.
+    expect(find.text('mia-con-sub'), findsOneWidget);
+    expect(find.text('Aprobar'), findsNWidgets(2));
+    expect(find.text('Rechazar'), findsNWidgets(2));
+    expect(
+      find.textContaining('otro@jamz.dev: solo su dueño puede resolverla'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Cambiar de cuenta vacía la bandeja y trae las entregas del nuevo usuario',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'sesion.credential': 'token-de-ana',
+      'sesion.email': 'ana@jamz.dev',
+      'sesion.nombre': 'Ana',
+    });
+    final jwtBeto = _jwtFalso('beto@jamz.dev', 'Beto');
+
+    final falso = MockClient((req) async {
+      if (req.method == 'GET' && req.url.path == '/api/v1/agent/entregas') {
+        final auth = req.headers['Authorization'] ?? '';
+        if (auth.contains('token-de-ana')) {
+          return _json([
+            {'slug': 'entrega-de-ana', 'dueno': 'ana@jamz.dev', 'es_suyo': true},
+          ]);
+        }
+        if (auth.contains(jwtBeto)) {
+          return _json([
+            {'slug': 'entrega-de-beto', 'dueno': 'beto@jamz.dev', 'es_suyo': true},
+          ]);
+        }
+        return _json(const []);
+      }
+      if (req.method == 'GET' && req.url.path == '/api/v1/auth/puente/recoger') {
+        return _json({'credential': jwtBeto});
+      }
+      return _json({'detail': 'no existe'}, codigo: 404);
+    });
+
+    // El "navegador" siempre abre bien: el login de Beto llega por el sondeo.
+    final sesion = Sesion(cliente: falso, abrir: (_) async => true);
+    await sesion.cargar();
+
+    await tester.pumpWidget(MetaAgenteApp(
+      conectarAlArrancar: false,
+      sesion: sesion,
+      clienteHttp: falso,
+    ));
+    await tester.pump();
+    await tester.tap(find.text('Entregas'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('entrega-de-ana'), findsOneWidget);
+
+    // Ana cierra sesión: la lista se vacía en el acto (nada de enseñar
+    // entregas ajenas al siguiente que entre).
+    await sesion.cerrarSesion();
+    await tester.pump();
+    expect(find.text('entrega-de-ana'), findsNothing);
+
+    // Entra Beto por el puente: primer sondeo a los 2 segundos.
+    unawaited(sesion.entrar());
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2)); // recoge el credential
+    await tester.pump(); // la bandeja recarga con la sesión nueva
+    await tester.pump(); // y pinta la respuesta
+
+    expect(sesion.email, 'beto@jamz.dev');
+    expect(find.text('entrega-de-beto'), findsOneWidget);
+    expect(find.text('entrega-de-ana'), findsNothing,
+        reason: 'la bandeja de Ana no puede sobrevivir al cambio de cuenta');
   });
 }

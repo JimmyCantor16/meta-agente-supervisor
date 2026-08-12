@@ -17,7 +17,10 @@ Regla de la casa (la misma de ``revision_entregas``): NADA de checkout que
 toque el working tree del proyecto — puede estar sirviéndose por el runner o
 con cambios del alumno a medias. Se lee con ``git show``, se mergea en un
 worktree temporal DESACOPLADO y las refs se mueven con plomería (``update-ref``
-con compare-and-swap, ``symbolic-ref``).
+con compare-and-swap, ``symbolic-ref``). La ÚNICA excepción deliberada es el
+rechazo: descartar la entrega exige alinear índice y worktree con la principal
+(``reset --hard``, que respeta lo no trackeado), porque dejarlos con el trabajo
+rechazado hacía que el siguiente ``add -A`` lo re-cometiera en silencio.
 
 Errores → ``ValueError`` con mensaje claro; el entrypoint los traduce a HTTP
 (``EntregaNoEncontradaError`` → 404, ``ConflictoMergeError`` → 409, resto → 422).
@@ -27,14 +30,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from src.domain.entities import slugify
+from src.infrastructure.adapters.duenos_proyecto import dueno_de
+from src.infrastructure.adapters.git_util import correr_git
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +53,6 @@ _ENV_AUTOR = {
     "GIT_COMMITTER_NAME": _AUTOR[0],
     "GIT_COMMITTER_EMAIL": _AUTOR[1],
 }
-
-#: La misma marca de dueño que escribe ``duenos_proyecto.marcar_dueno``. Se lee
-#: aquí directamente (8 líneas) para no acoplar la aplicación al adaptador.
-_MARCA_DUENO = ".dueno.json"
 
 #: Cuánto informe se enseña en la bandeja: lo justo para decidir sin abrir nada.
 _LINEAS_RESUMEN = 30
@@ -74,8 +73,32 @@ def _ahora() -> str:
 
 
 # ----------------------------------------------------------------------
-# Parseo de REVISION.md (el formato lo escribe revision_entregas._revision_como_markdown)
+# Parseo del veredicto: REVISION.json primero (estructurado), REVISION.md después
 # ----------------------------------------------------------------------
+def _parsear_revision_json(crudo: str) -> dict | None:
+    """El veredicto desde el ``REVISION.json`` que archiva ``revision_entregas``
+    junto al markdown (mismo commit): ``json.loads`` directo a los 4 campos,
+    sin regex que se rompa si alguien retoca la redacción del markdown.
+
+    Devuelve None si el JSON no parsea o no es un objeto: el llamador cae
+    entonces al parser de markdown (entregas viejas, sin json).
+    """
+    try:
+        data = json.loads(crudo)
+        if not isinstance(data, dict):
+            return None
+        return {
+            "aprobar": bool(data.get("aprobar")),
+            "calidad": int(data.get("calidad") or 0),
+            "resumen": str(data.get("resumen") or "")[:600],
+            "mejoras": [str(m).strip()[:300] for m in (data.get("mejoras") or [])][:5],
+        }
+    except (ValueError, TypeError):
+        return None
+
+
+# El formato markdown lo escribe revision_entregas._revision_como_markdown;
+# este parser queda SOLO para entregas anteriores a la llegada de REVISION.json.
 def _seccion(texto: str, titulo: str) -> str:
     """El cuerpo de una sección ``## titulo`` hasta la siguiente ``##`` o ``---``."""
     patron = rf"^##\s+{re.escape(titulo)}\s*$(.*?)(?=^##\s|^---\s*$|\Z)"
@@ -132,36 +155,49 @@ class BandejaEntregasUseCase:
         if not self._repo_root.is_dir():
             return []
 
-        entregas: list[dict] = []
+        # (epoch del último commit, entrega): el epoch solo sirve para ordenar.
+        entregas: list[tuple[int, dict]] = []
         for carpeta in sorted(self._repo_root.iterdir()):
             try:
                 if not carpeta.is_dir() or not (carpeta / ".git").exists():
                     continue
+                # La marca de dueño se lee ANTES de lanzar ningún subprocess:
+                # cada repo cuesta 1-4 procesos git, y con generated/ lleno el
+                # GET del móvil se cortaba por timeout enumerando repos que el
+                # filtro iba a descartar igual. (La paginación de la bandeja
+                # queda pendiente; esto solo quita el costo de los ajenos.)
+                marca = dueno_de(carpeta)
+                if not es_admin and marca and marca != dueno:
+                    continue  # entrega de otra persona: ni se enumera
                 rama = _PREFIJO_RAMA + carpeta.name
                 ok, _ = self._git(
                     carpeta, "rev-parse", "--verify", "--quiet", f"refs/heads/{rama}"
                 )
                 if not ok:
                     continue  # sin rama de entrega: no hay nada que decidir
-                marca = self._dueno_de(carpeta)
-                if not es_admin and marca and marca != dueno:
-                    continue  # entrega de otra persona: ni se enumera
+                fecha_iso, fecha_epoch = self._fecha_ultimo_commit(carpeta, rama)
                 entregas.append(
-                    {
-                        "slug": carpeta.name,
-                        "rama": rama,
-                        "fecha": self._fecha_ultimo_commit(carpeta, rama),
-                        "resumen_informe": self._resumen_informe(carpeta, rama),
-                        "veredicto": self._leer_veredicto(carpeta, rama),
-                        "dueno": marca or "",
-                    }
+                    (
+                        fecha_epoch,
+                        {
+                            "slug": carpeta.name,
+                            "rama": rama,
+                            "fecha": fecha_iso,
+                            "resumen_informe": self._resumen_informe(carpeta, rama),
+                            "veredicto": self._leer_veredicto(carpeta, rama),
+                            "dueno": marca or "",
+                        },
+                    )
                 )
             except Exception as exc:  # noqa: BLE001 - un repo roto no tumba la bandeja
                 logger.warning(
                     "La bandeja no pudo leer '%s' (se salta): %s", carpeta.name, exc
                 )
-        entregas.sort(key=lambda e: e["fecha"], reverse=True)
-        return entregas
+        # Se ordena por el epoch, NO por la fecha ISO: %cI conserva el huso del
+        # commit y compararlo como texto desordena offsets mezclados (un commit
+        # de las 08:00-05:00 es MÁS nuevo que uno de las 10:00+00:00).
+        entregas.sort(key=lambda par: par[0], reverse=True)
+        return [entrega for _, entrega in entregas]
 
     # ------------------------------------------------------------------
     # 2) Aprobar: merge --no-ff a la rama principal y retirar la de entrega
@@ -225,7 +261,10 @@ class BandejaEntregasUseCase:
         slug = self._sanear_slug(slug)
         repo, rama = self._entrega_visible(slug, dueno, es_admin)
 
-        self._borrar_rama(repo, rama, slug)
+        # descartar_worktree: el rechazo alinea índice Y worktree con la
+        # principal (reset --hard); sin eso el proyecto rechazado quedaba
+        # staged y el siguiente add -A lo re-cometía en silencio.
+        self._borrar_rama(repo, rama, slug, descartar_worktree=True)
         self._anotar_rechazo(slug, dueno, motivo)
         logger.info("ENTREGA RECHAZADA: '%s' retirada sin merge.", rama)
         return {"estado": "rechazada", "slug": slug}
@@ -256,28 +295,33 @@ class BandejaEntregasUseCase:
         ok, _ = self._git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{rama}")
         if not ok:
             raise no_esta
-        marca = self._dueno_de(repo)
+        # La marca de dueño se lee con el MISMO helper que el resto de la API
+        # (duenos_proyecto.dueno_de): una sola definición de propiedad.
+        marca = dueno_de(repo)
         if not es_admin and marca and marca != dueno:
             raise no_esta
         return repo, rama
 
-    def _dueno_de(self, repo: Path) -> str | None:
-        """El `sub` del dueño según la marca ``.dueno.json``, o None si no hay."""
-        try:
-            datos = json.loads((repo / _MARCA_DUENO).read_text(encoding="utf-8"))
-            sub = datos.get("sub")
-            return sub if isinstance(sub, str) and sub else None
-        except Exception:  # noqa: BLE001 - sin marca (o rota), sin dueño conocido
-            return None
-
     # ------------------------------------------------------------------
     # Lectura de la rama SIN checkout (git show, como revision_entregas)
     # ------------------------------------------------------------------
-    def _fecha_ultimo_commit(self, repo: Path, rama: str) -> str:
-        ok, fecha = self._git(
-            repo, "log", "-1", "--format=%cI", f"refs/heads/{rama}"
+    def _fecha_ultimo_commit(self, repo: Path, rama: str) -> tuple[str, int]:
+        """(fecha ISO para mostrar, epoch para ordenar) del último commit.
+
+        El epoch (%ct) viaja en el MISMO git log que la fecha ISO (%cI): la
+        ISO conserva el huso y solo sirve para enseñarla; el orden lo decide
+        el entero. Si git falla o no hay fecha, ('', 0): al final de la cola.
+        """
+        ok, salida = self._git(
+            repo, "log", "-1", "--format=%cI|%ct", f"refs/heads/{rama}"
         )
-        return fecha.strip() if ok else ""
+        if not ok or "|" not in salida:
+            return "", 0
+        iso, _, epoch = salida.strip().partition("|")
+        try:
+            return iso.strip(), int(epoch.strip())
+        except ValueError:
+            return iso.strip(), 0
 
     def _resumen_informe(self, repo: Path, rama: str) -> str:
         """Las primeras líneas del INFORME.md: lo justo para decidir."""
@@ -288,7 +332,17 @@ class BandejaEntregasUseCase:
         return recorte[:_TOPE_RESUMEN]
 
     def _leer_veredicto(self, repo: Path, rama: str) -> dict | None:
-        """El veredicto del worker de revisión, si ya dejó su REVISION.md."""
+        """El veredicto del worker de revisión, si ya lo dejó en la rama.
+
+        Primero ``REVISION.json`` (estructurado, lo archiva el worker junto al
+        markdown desde la fase 2); solo si no existe o no parsea se cae al
+        parser de ``REVISION.md`` (entregas anteriores al json).
+        """
+        ok, crudo = self._git(repo, "show", f"{rama}:REVISION.json")
+        if ok:
+            veredicto = _parsear_revision_json(crudo)
+            if veredicto is not None:
+                return veredicto
         ok, texto = self._git(repo, "show", f"{rama}:REVISION.md")
         return _parsear_revision(texto) if ok else None
 
@@ -371,19 +425,40 @@ class BandejaEntregasUseCase:
     # ------------------------------------------------------------------
     # Borrar la rama de entrega (que suele estar checked out) sin checkout
     # ------------------------------------------------------------------
-    def _borrar_rama(self, repo: Path, rama: str, slug: str) -> None:
-        """Borra ``rama`` aunque HEAD la tenga montada, sin tocar archivos.
+    def _borrar_rama(
+        self, repo: Path, rama: str, slug: str, descartar_worktree: bool = False
+    ) -> None:
+        """Borra ``rama`` aunque HEAD la tenga montada, dejando estado coherente.
 
         git se niega a borrar la rama en la que está HEAD, así que primero se
-        reapunta HEAD con ``symbolic-ref`` (plomería: cambia el puntero, NO el
-        working tree; los archivos servidos siguen intactos). Si no hubiera
-        rama principal a la que apuntar, se desacopla HEAD en el mismo commit.
+        reapunta HEAD con ``symbolic-ref``. Pero mover el puntero SOLO dejaba
+        el índice (y el worktree) con el contenido de la entrega encima de la
+        principal: todo el proyecto quedaba staged, y el siguiente ``add -A``
+        de una entrega nueva (o un commit del alumno) RE-COMETÍA en silencio
+        el trabajo rechazado. Por eso, tras reapuntar:
+
+          · rechazo (``descartar_worktree=True``): ``reset --hard`` — índice y
+            worktree se alinean con la principal. Los archivos SIN trackear
+            (.env, *.db, secretos) sobreviven: el hard solo toca lo trackeado.
+          · aprobación: ``reset --mixed`` — SOLO el índice se refresca. El
+            worktree ya contiene el contenido mergeado y no debe tocarse
+            (puede estar sirviéndose por el runner).
+
+        Si no hubiera rama principal a la que apuntar, se desacopla HEAD en el
+        mismo commit (índice y worktree ya coinciden con él: no hay que resetear).
         """
         ok, head = self._git(repo, "symbolic-ref", "--quiet", "HEAD")
         if ok and head.strip() == f"refs/heads/{rama}":
             try:
                 principal = self._rama_principal(repo)
                 self._git(repo, "symbolic-ref", "HEAD", f"refs/heads/{principal}")
+                modo = "--hard" if descartar_worktree else "--mixed"
+                ok, salida = self._git(repo, "reset", modo)
+                if not ok:
+                    logger.warning(
+                        "El reset %s tras retirar '%s' falló (revisa el estado "
+                        "de '%s' a mano): %s", modo, rama, slug, salida[:200],
+                    )
             except ValueError:
                 ok, sha = self._git(repo, "rev-parse", f"refs/heads/{rama}")
                 if ok:
@@ -422,7 +497,7 @@ class BandejaEntregasUseCase:
             )
 
     # ------------------------------------------------------------------
-    # git por subprocess con argv-lista (mismo estilo que revision_entregas)
+    # git por subprocess: delega en el helper compartido (git_util.correr_git)
     # ------------------------------------------------------------------
     def _git(
         self,
@@ -431,17 +506,4 @@ class BandejaEntregasUseCase:
         env_extra: dict[str, str] | None = None,
     ) -> tuple[bool, str]:
         """Ejecuta git en el repo (o worktree) dado. Nunca lanza: (ok, salida)."""
-        env = {**os.environ, **env_extra} if env_extra else None
-        try:
-            proc = subprocess.run(
-                ["git", "-C", str(repo), *args],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=60,
-                env=env,
-            )
-            return proc.returncode == 0, (proc.stdout or proc.stderr).strip()
-        except (OSError, subprocess.SubprocessError) as exc:
-            return False, str(exc)
+        return correr_git(repo, *args, env_extra=env_extra)

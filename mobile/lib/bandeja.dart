@@ -108,9 +108,14 @@ class _PanelEntregasState extends State<PanelEntregas> {
   List<Entrega> _entregas = const [];
   final Set<String> _resolviendo = {};
 
+  /// Con qué sesión se llenó la lista: si el token cambia (entró OTRA cuenta,
+  /// o se cerró la sesión), lo listado pertenece al usuario anterior.
+  String? _tokenVisto;
+
   @override
   void initState() {
     super.initState();
+    _tokenVisto = widget.sesion.token;
     widget.sesion.addListener(_alCambiarSesion);
     if (widget.sesion.estado == EstadoSesion.conSesion) unawaited(_cargar());
   }
@@ -123,17 +128,29 @@ class _PanelEntregasState extends State<PanelEntregas> {
 
   void _alCambiarSesion() {
     if (!mounted) return;
-    setState(() {});
-    // Recién entrado: se trae la bandeja sin esperar al pull-to-refresh.
-    if (widget.sesion.estado == EstadoSesion.conSesion && _entregas.isEmpty && !_cargando) {
-      unawaited(_cargar());
+    final token = widget.sesion.token;
+    if (token == _tokenVisto) {
+      setState(() {});
+      return;
     }
+    // La sesión CAMBIÓ de verdad (otra cuenta o cierre): se vacía la lista
+    // SIEMPRE — quedarse con las entregas del usuario anterior enseña datos
+    // ajenos y aprobar daría 404 — y, si hay sesión nueva, se recarga.
+    _tokenVisto = token;
+    setState(() {
+      _entregas = const [];
+      _error = null;
+    });
+    if (widget.sesion.estado == EstadoSesion.conSesion) unawaited(_cargar());
   }
 
   // ------------------------------------------------------------------ red --
 
   Future<void> _cargar() async {
     if (!mounted) return;
+    // Si la sesión cambia mientras la petición viaja, la respuesta ya no es de
+    // este usuario y se descarta al llegar.
+    final tokenAlPedir = widget.sesion.token;
     setState(() {
       _cargando = true;
       _error = null;
@@ -154,10 +171,10 @@ class _PanelEntregasState extends State<PanelEntregas> {
           .map(Entrega.deJson)
           .where((e) => e.slug.isNotEmpty)
           .toList();
-      if (!mounted) return;
+      if (!mounted || widget.sesion.token != tokenAlPedir) return;
       setState(() => _entregas = entregas);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || widget.sesion.token != tokenAlPedir) return;
       setState(() => _error = e is String ? e : 'No pude traer las entregas. Revisa tu conexión.');
     } finally {
       if (mounted) setState(() => _cargando = false);
@@ -181,7 +198,10 @@ class _PanelEntregasState extends State<PanelEntregas> {
         throw 'Tu sesión caducó: vuelve a entrar.';
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw 'No se pudo resolver: el servidor respondió ${res.statusCode}.';
+        // El backend redacta el porqué en `detail` (p. ej. el 409 de conflicto
+        // de merge trae la guía de qué hacer): eso vale más que el número solo.
+        throw _detalleDe(res) ??
+            'No se pudo resolver: el servidor respondió ${res.statusCode}.';
       }
       _avisarEnPantalla(aprobar ? '«${e.slug}» aprobada ✅' : '«${e.slug}» rechazada');
       await _cargar(); // la lista fresca es la única verdad tras resolver
@@ -189,6 +209,20 @@ class _PanelEntregasState extends State<PanelEntregas> {
       _avisarEnPantalla(err is String ? err : 'No se pudo resolver la entrega. Inténtalo de nuevo.');
     } finally {
       if (mounted) setState(() => _resolviendo.remove(e.slug));
+    }
+  }
+
+  /// El `detail` del cuerpo de error (así lo manda FastAPI), truncado a un
+  /// tamaño de SnackBar; null si el cuerpo no trae nada legible.
+  static String? _detalleDe(http.Response res) {
+    try {
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+      final detail = data is Map ? data['detail'] : null;
+      final texto = detail is String ? detail.trim() : '';
+      if (texto.isEmpty) return null;
+      return texto.length > 300 ? '${texto.substring(0, 300)}…' : texto;
+    } catch (_) {
+      return null;
     }
   }
 

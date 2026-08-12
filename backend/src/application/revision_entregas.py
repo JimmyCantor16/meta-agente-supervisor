@@ -17,10 +17,9 @@ reintentos) marca el trabajo como fallido con su detalle y devuelve un
 
 from __future__ import annotations
 
+import json
 import logging
-import os
 import re
-import subprocess
 import tempfile
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -29,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.domain.entities import VeredictoRevision
 from src.domain.ports import AgenteCliError, AgenteCliPort
+from src.infrastructure.adapters.git_util import correr_git
 
 if TYPE_CHECKING:  # solo tipos: el worker no debe acoplar imports en caliente
     from src.application.publicar_proyecto import PublicarProyectoUseCase
@@ -364,7 +364,12 @@ class RevisionEntregasUseCase:
     # Archivado: REVISION.md como commit nuevo en la rama, por PLOMERÍA
     # ------------------------------------------------------------------
     def _archivar_revision(self, repo: Path, rama: str, veredicto: VeredictoRevision) -> None:
-        """Escribe ``REVISION.md`` como un commit NUEVO en la rama de entrega.
+        """Escribe ``REVISION.md`` + ``REVISION.json`` en un commit NUEVO de la rama.
+
+        El markdown es para ojos humanos; el json (``model_dump()`` tal cual)
+        es el que consume la bandeja: leerlo estructurado evita re-parsear la
+        redacción con regex, que se rompía en silencio con cualquier retoque
+        del texto. Van SIEMPRE juntos, en el mismo commit.
 
         Se usa plomería de git (``hash-object`` + índice temporal +
         ``commit-tree`` + ``update-ref``) y NO un worktree temporal, porque es
@@ -379,8 +384,9 @@ class RevisionEntregasUseCase:
           · no deja carpetas temporales colgadas si el proceso muere a mitad.
 
         Único efecto lateral, cosmético: si HEAD apunta a la rama, ``git
-        status`` mostrará ``REVISION.md`` como «borrado» (el working tree va un
-        commit por detrás) hasta el siguiente checkout. Aceptable.
+        status`` mostrará ``REVISION.md`` y ``REVISION.json`` como «borrados»
+        (el working tree va un commit por detrás) hasta el siguiente checkout.
+        Aceptable.
 
         Es best-effort: el veredicto vale aunque no se pueda archivar.
         """
@@ -389,10 +395,21 @@ class RevisionEntregasUseCase:
             if not ok:
                 raise RuntimeError(f"rev-parse: {padre}")
 
-            contenido = _revision_como_markdown(veredicto)
-            ok, blob = self._git(repo, "hash-object", "-w", "--stdin", entrada=contenido)
-            if not ok:
-                raise RuntimeError(f"hash-object: {blob}")
+            # Los dos formatos del mismo veredicto: markdown para humanos,
+            # json estructurado para la bandeja.
+            contenidos = (
+                ("REVISION.md", _revision_como_markdown(veredicto)),
+                (
+                    "REVISION.json",
+                    json.dumps(veredicto.model_dump(), ensure_ascii=False, indent=2),
+                ),
+            )
+            blobs: list[tuple[str, str]] = []
+            for ruta, contenido in contenidos:
+                ok, blob = self._git(repo, "hash-object", "-w", "--stdin", entrada=contenido)
+                if not ok:
+                    raise RuntimeError(f"hash-object {ruta}: {blob}")
+                blobs.append((ruta, blob.strip()))
 
             # Índice TEMPORAL (GIT_INDEX_FILE): el índice real del proyecto no
             # se toca, así una revisión concurrente con el alumno no choca.
@@ -401,14 +418,15 @@ class RevisionEntregasUseCase:
                 ok, salida = self._git(repo, "read-tree", padre, env_extra=env_idx)
                 if not ok:
                     raise RuntimeError(f"read-tree: {salida}")
-                ok, salida = self._git(
-                    repo,
-                    "update-index", "--add", "--cacheinfo",
-                    f"100644,{blob},REVISION.md",
-                    env_extra=env_idx,
-                )
-                if not ok:
-                    raise RuntimeError(f"update-index: {salida}")
+                for ruta, blob in blobs:
+                    ok, salida = self._git(
+                        repo,
+                        "update-index", "--add", "--cacheinfo",
+                        f"100644,{blob},{ruta}",
+                        env_extra=env_idx,
+                    )
+                    if not ok:
+                        raise RuntimeError(f"update-index {ruta}: {salida}")
                 ok, arbol = self._git(repo, "write-tree", env_extra=env_idx)
                 if not ok:
                     raise RuntimeError(f"write-tree: {arbol}")
@@ -441,11 +459,12 @@ class RevisionEntregasUseCase:
                 raise RuntimeError(f"update-ref: {salida}")
 
             logger.info(
-                "REVISION.md archivado en '%s' (commit %s).", rama, commit.strip()[:8]
+                "REVISION.md + REVISION.json archivados en '%s' (commit %s).",
+                rama, commit.strip()[:8],
             )
         except Exception as exc:  # noqa: BLE001 - archivar es best-effort
             logger.warning(
-                "No se pudo archivar REVISION.md en '%s' (el veredicto sigue valiendo): %s",
+                "No se pudo archivar la revisión en '%s' (el veredicto sigue valiendo): %s",
                 rama, str(exc)[:300],
             )
 
@@ -527,7 +546,7 @@ class RevisionEntregasUseCase:
             pass
 
     # ------------------------------------------------------------------
-    # git por subprocess con argv-lista (mismo estilo que EntregaEnRama)
+    # git por subprocess: delega en el helper compartido (git_util.correr_git)
     # ------------------------------------------------------------------
     def _git(
         self,
@@ -537,18 +556,4 @@ class RevisionEntregasUseCase:
         env_extra: dict[str, str] | None = None,
     ) -> tuple[bool, str]:
         """Ejecuta git en el repo del proyecto. Nunca lanza: devuelve (ok, salida)."""
-        env = {**os.environ, **env_extra} if env_extra else None
-        try:
-            proc = subprocess.run(
-                ["git", "-C", str(repo), *args],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=60,
-                input=entrada,
-                env=env,
-            )
-            return proc.returncode == 0, (proc.stdout or proc.stderr).strip()
-        except (OSError, subprocess.SubprocessError) as exc:
-            return False, str(exc)
+        return correr_git(repo, *args, entrada=entrada, env_extra=env_extra)

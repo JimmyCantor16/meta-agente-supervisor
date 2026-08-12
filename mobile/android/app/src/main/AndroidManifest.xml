@@ -11,10 +11,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- usesCleartextTraffic: muchas emisoras de radio-browser solo emiten por
+         http:// y sin este atributo Android 9+ corta el stream con un error
+         genérico; también cubre las pruebas contra la IP del PC. -->
     <application
         android:label="Meta-Agente · Jamz"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <!-- La actividad pasa a ser AudioServiceActivity (extiende FlutterActivity):
              es el enganche que audio_service exige para que los controles de la
              notificación y los botones del auricular lleguen a la app. -->
