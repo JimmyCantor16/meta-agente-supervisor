@@ -261,6 +261,13 @@ class UserAccount(BaseModel):
     lessons_used: int = Field(default=0)
     approved_by: str = Field(default="", description="Email del super-admin que aprobó.")
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    #: Nivel del alumno A NIVEL DE USUARIO (no por curso): se mide una vez y se
+    #: reajusta con evidencia (clases superadas/falladas). Con esto un curso
+    #: nuevo ya no re-pregunta lo que el sistema ya sabe.
+    nivel: str = Field(
+        default="desconocido",
+        description="Nivel vigente del usuario: desconocido | bajo | medio | alto.",
+    )
 
     model_config = {"extra": "ignore"}
 
@@ -392,6 +399,13 @@ class Clase(BaseModel):
     reto: str = Field(..., description="El ejercicio práctico de esta clase.")
     concepto_clave: str = Field(default="", description="El concepto que se aprende.")
     criterio: CriterioSuperacion
+    #: Desafío EXTRA opcional para quien va sobrado. El generador solo lo
+    #: rellena para nivel medio/alto, y el profesor solo lo menciona si el
+    #: nivel VIGENTE es alto — "escueto y retador para quien sabe".
+    reto_avanzado: str = Field(
+        default="",
+        description="Reto extra opcional (solo para alumnos de nivel medio/alto).",
+    )
 
 
 class Syllabus(BaseModel):
@@ -452,6 +466,13 @@ class ProgresoCurso(BaseModel):
         default=NivelAlumno.DESCONOCIDO,
         description="Nivel estimado del alumno; el profesor lo mide conversando.",
     )
+    # --- Contadores del NIVEL VIVO: el nivel deja de ser una foto inicial. ---
+    #: Clases seguidas superadas AL PRIMER INTENTO (al llegar al umbral, sube).
+    racha_primeras: int = Field(default=0)
+    #: Fallos consecutivos en la MISMA clase (al llegar al umbral, baja).
+    fallos_seguidos: int = Field(default=0)
+    #: Número de la clase donde se acumulan los fallos (cambiar de clase resetea).
+    clase_fallando: int = Field(default=0)
 
 
 class ResultadoVerificacion(BaseModel):
@@ -669,6 +690,46 @@ class Hito(BaseModel):
     descripcion: str = Field(default="", description="Qué hay que lograr, en cristiano.")
     depende_de: DependeDe = Field(default=DependeDe.ALUMNO)
     hecho: bool = Field(default=False)
+
+
+class TrabajoFondo(BaseModel):
+    """Un trabajo que corre EN SEGUNDO PLANO (lo orquesta el worker de fondo).
+
+    El usuario pide algo largo (revisión, mejora, publicación) y sigue usando la
+    app; este registro es lo que permite preguntarle al sistema "¿cómo va lo
+    mío?" sin bloquear nada.
+    """
+
+    id: str = Field(..., min_length=1)
+    tipo: str = Field(..., min_length=1, description="Qué clase de trabajo es.")
+    dueno: str = Field(default="", description="Sub del usuario dueño del trabajo.")
+    estado: Literal["pendiente", "en_curso", "listo", "fallido"] = Field(
+        default="pendiente"
+    )
+    progreso: str = Field(default="", description="Último hito, en cristiano.")
+    resultado: str = Field(default="", description="Resultado final (JSON serializado).")
+    creado_en: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    actualizado_en: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    model_config = {"extra": "ignore"}
+
+
+class VeredictoRevision(BaseModel):
+    """El juicio del agente revisor sobre un proyecto generado (por su slug).
+
+    Es la pieza que decide si una entrega merece publicarse tal cual o vuelve
+    a la mesa con una lista de mejoras concretas.
+    """
+
+    slug: str = Field(..., min_length=1)
+    aprobar: bool = Field(..., description="Si la entrega pasa la revisión.")
+    calidad: int = Field(..., ge=1, le=10, description="Nota de calidad (1-10).")
+    resumen: str = Field(..., description="El veredicto en 1-2 frases, en cristiano.")
+    mejoras: list[str] = Field(default_factory=list, description="Qué mejorar, concreto.")
+    publicado: bool = Field(default=False, description="Si ya se publicó tras revisar.")
+    fecha: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    model_config = {"extra": "ignore"}
 
 
 class MetaProceso(BaseModel):

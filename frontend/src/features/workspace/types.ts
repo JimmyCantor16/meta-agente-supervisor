@@ -129,6 +129,8 @@ export interface CriterioClase {
   archivo: string;
   /** Qué debería verse distinto cuando el cambio esté bien hecho. */
   resultado_esperado: string;
+  /** Reto opcional para quien quiere ir más allá. Opcional: backends viejos no lo mandan. */
+  reto_avanzado?: string;
 }
 
 /**
@@ -193,6 +195,11 @@ export interface CursoResult {
   tema?: string;
   clases: ClaseCurso[];
   progreso: ProgresoCurso;
+  /**
+   * true = el profesor YA conoce el nivel del alumno (nivel vivo del backend):
+   * se salta la nivelación y solo se informa. Opcional: backends viejos no lo mandan.
+   */
+  nivel_conocido?: boolean;
 }
 
 export interface MensajeChat {

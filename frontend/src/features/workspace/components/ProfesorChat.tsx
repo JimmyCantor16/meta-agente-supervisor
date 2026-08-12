@@ -16,6 +16,7 @@ import {
   RotateCw,
   Search,
   Send,
+  Sparkles,
   Target,
   TriangleAlert,
   Trophy,
@@ -77,6 +78,8 @@ export function ProfesorChat({
   const [diagnostico, setDiagnostico] = useState<DiagnosticoMVP | null>(null);
   // Si el curso aún no existe, primero medimos el nivel para adaptar el temario.
   const [nivelPrimero, setNivelPrimero] = useState(false);
+  // El alumno pidió volver a medirse aunque el profesor ya conozca su nivel.
+  const [medirDeNuevo, setMedirDeNuevo] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
 
   const abrirCurso = async (c: CursoResult) => {
@@ -100,6 +103,11 @@ export function ProfesorChat({
         if (!vivo) return;
         if (info.existe) {
           const c = await iniciarCurso(projectName, "", lang, "desconocido", tema);
+          if (vivo) await abrirCurso(c);
+        } else if (info.nivel && info.nivel !== "desconocido") {
+          // El profesor ya conoce al alumno (nivel vivo): el temario nace
+          // adaptado sin volver a preguntarle lo que ya contó otra vez.
+          const c = await iniciarCurso(projectName, "", lang, info.nivel, tema);
           if (vivo) await abrirCurso(c);
         } else {
           setNivelPrimero(true);
@@ -265,14 +273,29 @@ export function ProfesorChat({
         />
       )}
 
-      {/* Nivelación: el profesor mide el nivel para adaptar el curso. */}
-      {curso.progreso.nivel === "desconocido" && (
+      {/* Nivelación: el profesor mide el nivel para adaptar el curso. Si ya lo
+          conoce de antes (nivel vivo del backend), no se vuelve a preguntar:
+          se informa en una línea, con la opción de volver a medirse. */}
+      {(curso.progreso.nivel === "desconocido" || medirDeNuevo) && (
         <NivelacionPanel
           cursoId={curso.progreso.curso_id}
-          onNivel={(nivel) =>
-            setCurso((c) => (c ? { ...c, progreso: { ...c.progreso, nivel } } : c))
-          }
+          onNivel={(nivel) => {
+            setMedirDeNuevo(false);
+            setCurso((c) => (c ? { ...c, progreso: { ...c.progreso, nivel } } : c));
+          }}
         />
+      )}
+      {curso.progreso.nivel !== "desconocido" && !medirDeNuevo && curso.nivel_conocido && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm shadow-card">
+          <UserRound className="h-4 w-4 shrink-0 text-brand-600" strokeWidth={2} />
+          <span className="text-ink-body">{g.nivelVigente(etiquetaNivel(curso.progreso.nivel, g))}</span>
+          <button
+            onClick={() => setMedirDeNuevo(true)}
+            className="text-xs font-semibold text-brand-700 hover:underline"
+          >
+            {g.volverAMedirme}
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
@@ -457,6 +480,23 @@ function DiagnosticoBanner({
       </div>
     </div>
   );
+}
+
+/** Nombre legible de un nivel, en el idioma de la interfaz. */
+function etiquetaNivel(
+  nivel: string,
+  g: { nivelBajo: string; nivelMedio: string; nivelAlto: string }
+): string {
+  switch (nivel) {
+    case "bajo":
+      return g.nivelBajo;
+    case "medio":
+      return g.nivelMedio;
+    case "alto":
+      return g.nivelAlto;
+    default:
+      return nivel;
+  }
 }
 
 /** Fase 1: el profesor mide el nivel del alumno para adaptar el curso. */
@@ -708,6 +748,19 @@ function SuperarClase({
             {g.irAlAula}
             <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.2} />
           </button>
+        </div>
+      )}
+
+      {/* Reto opcional para quien quiere ir más allá: un bloque discreto bajo
+          la misión. No condiciona superar la clase, por eso no grita: el acento
+          es solo el detalle del icono, nunca fondo de texto. */}
+      {criterio.reto_avanzado?.trim() && (
+        <div className="mb-3 max-w-2xl rounded border border-black/10 bg-white p-3.5">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <Sparkles className="h-3.5 w-3.5 text-accent" strokeWidth={2} />
+            {g.retoParaTi}
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-body">{criterio.reto_avanzado}</p>
         </div>
       )}
 

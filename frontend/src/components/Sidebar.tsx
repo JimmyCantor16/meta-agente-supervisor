@@ -26,6 +26,7 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false }
     { key: "monitor", label: t.nav.monitor, icon: "📡" },
     { key: "projects", label: t.nav.projects, icon: "📁" },
     { key: "learn", label: t.nav.learn, icon: "🎓" },
+    { key: "camino", label: t.nav.camino, icon: "🧭" },
     { key: "publish", label: t.nav.publish, icon: "🚀" },
     { key: "plans", label: t.nav.plans, icon: "💎" },
     { key: "help", label: t.nav.help, icon: "❓" },

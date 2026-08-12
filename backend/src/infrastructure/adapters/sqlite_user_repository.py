@@ -39,7 +39,8 @@ class SqliteUserRepository(UserRepositoryPort):
                     generations_used INTEGER DEFAULT 0,
                     lessons_used     INTEGER DEFAULT 0,
                     approved_by      TEXT DEFAULT '',
-                    created_at       TEXT
+                    created_at       TEXT,
+                    nivel            TEXT DEFAULT 'desconocido'
                 )
                 """
             )
@@ -47,6 +48,13 @@ class SqliteUserRepository(UserRepositoryPort):
             cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
             if "requested_plan" not in cols:
                 conn.execute("ALTER TABLE users ADD COLUMN requested_plan TEXT DEFAULT ''")
+            # El nivel vive EN EL USUARIO (no solo en cada curso): así un curso
+            # nuevo no re-pregunta lo que el sistema ya midió, y el reajuste por
+            # evidencia (clases superadas/falladas) lo sigue a todas partes.
+            if "nivel" not in cols:
+                conn.execute(
+                    "ALTER TABLE users ADD COLUMN nivel TEXT DEFAULT 'desconocido'"
+                )
 
     @staticmethod
     def _to_account(row: sqlite3.Row) -> UserAccount:
@@ -63,6 +71,7 @@ class SqliteUserRepository(UserRepositoryPort):
             lessons_used=row["lessons_used"] or 0,
             approved_by=row["approved_by"] or "",
             created_at=row["created_at"] or "",
+            nivel=(row["nivel"] if "nivel" in keys else "desconocido") or "desconocido",
         )
 
     def get(self, sub: str) -> UserAccount | None:
@@ -86,6 +95,27 @@ class SqliteUserRepository(UserRepositoryPort):
                 (sub, email, name, datetime.now(timezone.utc).isoformat()),
             )
         return self.get(sub)  # type: ignore[return-value]
+
+    # ---- nivel del alumno (vive en el usuario, no solo en cada curso) ----
+    #: Los únicos valores válidos; cualquier otra cosa del LLM se descarta.
+    _NIVELES = ("desconocido", "bajo", "medio", "alto")
+
+    def get_nivel(self, sub: str) -> str:
+        """Nivel vigente del usuario, o 'desconocido' si nunca se midió."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT nivel FROM users WHERE sub = ?", (sub,)
+            ).fetchone()
+        return (row["nivel"] if row else "") or "desconocido"
+
+    def set_nivel(self, sub: str, nivel: str) -> None:
+        """Persiste el nivel medido/reajustado. Un valor inválido se ignora."""
+        nivel = (nivel or "").strip().lower()
+        if nivel not in self._NIVELES:
+            logger.warning("Nivel inválido '%s' para %s: se ignora.", nivel, sub)
+            return
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET nivel = ? WHERE sub = ?", (nivel, sub))
 
     def increment_generation(self, sub: str) -> None:
         with self._connect() as conn:

@@ -16,6 +16,8 @@ import ipaddress
 import logging
 import re
 import socket
+from datetime import date
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from src.domain.entities import (
@@ -25,6 +27,7 @@ from src.domain.entities import (
     ProgresoCurso,
     ResultadoVerificacion,
     Syllabus,
+    slugify,
 )
 from src.domain.ports import (
     AuditError,
@@ -34,11 +37,92 @@ from src.domain.ports import (
     ProjectReaderPort,
 )
 
+if TYPE_CHECKING:  # solo para tipos: el puerto lo materializa el integrador
+    from src.domain.ports import GitAlumnoPort, UserRepositoryPort
+
 logger = logging.getLogger(__name__)
 
 # Clases por plan (decidido con el usuario): free = 1 sistema completo a
 # producción; pro = varios proyectos con clases avanzadas; business = ilimitado.
 CLASES_POR_PLAN = {"free": 10, "pro": 15, "business": 18}
+
+# ===========================================================================
+# NIVEL VIVO — "escueto y retador para quien sabe, detallado y sencillo para
+# quien no", de forma CONTINUA. El nivel se midió una vez al nacer el curso;
+# ahora además se REAJUSTA con evidencia objetiva: quien encadena clases al
+# primer intento sube un escalón; quien se estrella varias veces seguidas con
+# la misma clase baja uno. Con histéresis: tras cada movimiento los contadores
+# vuelven a cero, así el nivel no oscila con cada resultado suelto.
+# ===========================================================================
+#: Clases seguidas superadas AL PRIMER INTENTO para subir un escalón.
+CLASES_PARA_SUBIR = 3
+#: Fallos consecutivos EN LA MISMA CLASE para bajar un escalón.
+FALLOS_PARA_BAJAR = 3
+
+_ESCALERA = ("bajo", "medio", "alto")
+
+
+def subir_nivel(nivel: str) -> str:
+    """Un escalón arriba. 'desconocido' con evidencia de solvencia pasa a medio."""
+    if nivel == NivelAlumno.DESCONOCIDO.value:
+        return NivelAlumno.MEDIO.value
+    try:
+        i = _ESCALERA.index(nivel)
+    except ValueError:
+        return nivel
+    return _ESCALERA[min(i + 1, len(_ESCALERA) - 1)]
+
+
+def bajar_nivel(nivel: str) -> str:
+    """Un escalón abajo. 'desconocido' con evidencia de atasco pasa a bajo."""
+    if nivel == NivelAlumno.DESCONOCIDO.value:
+        return NivelAlumno.BAJO.value
+    try:
+        i = _ESCALERA.index(nivel)
+    except ValueError:
+        return nivel
+    return _ESCALERA[max(i - 1, 0)]
+
+
+def reajustar_nivel(
+    nivel: str, racha_primeras: int, fallos_seguidos: int
+) -> tuple[str, int, int]:
+    """La máquina del nivel vivo, PURA (así se prueba sin base de datos).
+
+    Recibe los contadores YA actualizados con el último resultado y devuelve
+    `(nivel, racha_primeras, fallos_seguidos)` tras aplicar los umbrales. Si un
+    umbral se cruza, el nivel se mueve UN escalón y ambos contadores vuelven a
+    cero (la histéresis: el siguiente movimiento exige evidencia nueva entera).
+    """
+    if racha_primeras >= CLASES_PARA_SUBIR:
+        return subir_nivel(nivel), 0, 0
+    if fallos_seguidos >= FALLOS_PARA_BAJAR:
+        return bajar_nivel(nivel), 0, 0
+    return nivel, racha_primeras, fallos_seguidos
+
+
+def _nivel_como_texto(progreso: ProgresoCurso | None) -> str:
+    if progreso is None:
+        return NivelAlumno.DESCONOCIDO.value
+    nivel = progreso.nivel
+    return nivel.value if hasattr(nivel, "value") else (nivel or "desconocido")
+
+
+def _nivel_vigente(usuarios, progreso: ProgresoCurso | None) -> str:
+    """El nivel que gobierna AHORA: el del usuario si se conoce, si no el del curso.
+
+    El del usuario se actualiza con cada medición y cada reajuste (venga del
+    curso que venga), así que es el más fresco; el del curso queda de respaldo
+    para instalaciones sin repositorio de usuarios (mocks, pruebas).
+    """
+    if usuarios is not None and progreso is not None:
+        try:
+            nivel = usuarios.get_nivel(progreso.usuario_sub)
+            if nivel and nivel != NivelAlumno.DESCONOCIDO.value:
+                return nivel
+        except Exception as exc:  # noqa: BLE001 - sin nivel de usuario, se usa el del curso
+            logger.warning("No se pudo leer el nivel del usuario: %s", exc)
+    return _nivel_como_texto(progreso)
 
 
 def _curso_id(usuario_sub: str, proyecto: str) -> str:
@@ -53,10 +137,15 @@ class GenerarCursoUseCase:
         reader: ProjectReaderPort,
         generador: GeneradorSyllabusPort,
         repo: CursoRepositoryPort,
+        usuarios: UserRepositoryPort | None = None,
     ) -> None:
         self._reader = reader
         self._generador = generador
         self._repo = repo
+        # Opcional a propósito: sin él, todo funciona como antes (mocks,
+        # pruebas). Con él, el nivel vive en el usuario y un curso nuevo no
+        # vuelve a preguntar lo que el sistema ya sabe.
+        self._usuarios = usuarios
 
     def execute(
         self,
@@ -97,11 +186,46 @@ class GenerarCursoUseCase:
             if not archivos:
                 raise AuditError(f"El proyecto '{nombre}' no existe o está vacío.")
 
+        # El nivel vive en el USUARIO: si ya se conoce, se usa directo (y el
+        # frontend puede dejar de preguntar). Si en cambio llega uno medido
+        # ahora, se guarda también en el usuario para la próxima vez.
+        nivel = (nivel or "desconocido").strip().lower()
+        if self._usuarios is not None:
+            try:
+                if nivel == NivelAlumno.DESCONOCIDO.value:
+                    conocido = self._usuarios.get_nivel(usuario_sub)
+                    if conocido and conocido != NivelAlumno.DESCONOCIDO.value:
+                        nivel = conocido
+                else:
+                    self._usuarios.set_nivel(usuario_sub, nivel)
+            except Exception as exc:  # noqa: BLE001 - el nivel nunca tumba el curso
+                logger.warning("No se pudo consultar/guardar el nivel del usuario: %s", exc)
+
+        nivel_inicial = nivel
+
+        def nivel_actual() -> str:
+            """El nivel VIGENTE, leído en el momento de cada lote del temario.
+
+            El detalle del curso se escribe en varias llamadas; si el nivel se
+            reajusta entre lote y lote (o lo acaba de medir el profesor), las
+            clases que faltan por escribir salen ya calibradas al nivel nuevo,
+            no al de cuando se pulsó el botón.
+            """
+            if self._usuarios is not None:
+                try:
+                    n = self._usuarios.get_nivel(usuario_sub)
+                    if n and n != NivelAlumno.DESCONOCIDO.value:
+                        return n
+                except Exception:  # noqa: BLE001
+                    pass
+            return nivel_inicial
+
         num = CLASES_POR_PLAN.get(plan, 10)
         # El temario se genera ADAPTADO al nivel: a un principiante no se le
-        # exigen pruebas técnicas duras (git/URL) de golpe.
+        # exigen pruebas técnicas duras (git/URL) de golpe. Se pasa un callable
+        # para que cada LOTE lea el nivel vigente, no una foto inicial.
         syllabus = self._generador.generar(
-            nombre, arquetipo, archivos, num, language, nivel, tema
+            nombre, arquetipo, archivos, num, language, nivel_actual, tema
         )
         # Se renumeran las clases por si el modelo se desordenó.
         for i, c in enumerate(syllabus.clases, start=1):
@@ -133,10 +257,14 @@ class ChatProfesorUseCase:
         reader: ProjectReaderPort,
         chat: ProfesorChatPort,
         repo: CursoRepositoryPort,
+        usuarios: UserRepositoryPort | None = None,
     ) -> None:
         self._reader = reader
         self._chat = chat
         self._repo = repo
+        # Opcional: con él, el profesor responde con el nivel VIGENTE del
+        # usuario (que se reajusta clase a clase), no con la foto del curso.
+        self._usuarios = usuarios
 
     def execute(
         self, curso_id: str, numero_clase: int, mensaje: str, language: str = "es"
@@ -153,10 +281,11 @@ class ChatProfesorUseCase:
         self._repo.guardar_mensaje(curso_id, numero_clase, MensajeChat(rol="alumno", texto=texto))
         historial = self._repo.historial(curso_id, numero_clase)
 
-        # El profesor responde adaptado al nivel del alumno (bajo/medio/alto).
+        # El profesor responde adaptado al nivel VIGENTE del alumno: el del
+        # usuario si se conoce (se reajusta con la evidencia de cada clase),
+        # con el del curso como respaldo.
         progreso = self._repo.cargar_progreso(curso_id)
-        nivel = (progreso.nivel.value if progreso and hasattr(progreso.nivel, "value")
-                 else (progreso.nivel if progreso else "desconocido"))
+        nivel = _nivel_vigente(self._usuarios, progreso)
 
         contexto = _contexto_del_curso(self._reader, syllabus)
         respuesta = self._chat.responder(clase, historial, texto, contexto, language, nivel)
@@ -164,19 +293,35 @@ class ChatProfesorUseCase:
         self._repo.guardar_mensaje(curso_id, numero_clase, msg)
         return msg
 
-    def estimar_nivel(self, curso_id: str, respuesta: str, language: str = "es") -> tuple[str, str]:
+    def estimar_nivel(
+        self,
+        curso_id: str,
+        respuesta: str,
+        language: str = "es",
+        usuario_sub: str = "",
+    ) -> tuple[str, str]:
         """El profesor mide el nivel del alumno.
 
         Si `curso_id` viene vacío, solo clasifica (aún no hay curso: se usa para
         adaptar el temario ANTES de generarlo). Si hay curso, además lo guarda.
+        En ambos casos, si se sabe QUIÉN es el alumno (`usuario_sub` o el dueño
+        del curso), el nivel se persiste TAMBIÉN en el usuario: la próxima vez
+        el sistema ya lo conoce y no vuelve a preguntar.
         """
         nivel, mensaje = self._chat.estimar_nivel(respuesta or "", language)
+        sub = (usuario_sub or "").strip()
         if curso_id:
             progreso = self._repo.cargar_progreso(curso_id)
             if progreso is None:
                 raise AuditError("Ese curso no existe.")
             progreso.nivel = NivelAlumno(nivel)
             self._repo.guardar_progreso(progreso)
+            sub = sub or progreso.usuario_sub
+        if sub and self._usuarios is not None:
+            try:
+                self._usuarios.set_nivel(sub, nivel)
+            except Exception as exc:  # noqa: BLE001 - medir nunca tumba la petición
+                logger.warning("No se pudo guardar el nivel en el usuario: %s", exc)
         return nivel, mensaje
 
     def abrir_clase(self, curso_id: str, numero_clase: int) -> list[MensajeChat]:
@@ -202,10 +347,21 @@ class VerificarClaseUseCase:
         reader: ProjectReaderPort,
         chat: ProfesorChatPort,
         repo: CursoRepositoryPort,
+        usuarios: UserRepositoryPort | None = None,
+        git_alumno: GitAlumnoPort | None = None,
+        actividad=None,
     ) -> None:
         self._reader = reader
         self._chat = chat
         self._repo = repo
+        # Los tres son opcionales A PROPÓSITO: con None todo se comporta como
+        # antes (mocks y pruebas no necesitan git ni usuarios ni racha).
+        #: Persiste el nivel reajustado en el usuario (además del curso).
+        self._usuarios = usuarios
+        #: Mira la historia REAL de git: sin commit no hay clase de "cambio".
+        self._git_alumno = git_alumno
+        #: Puerto de racha: registrar(usuario, fecha_iso) cada clase superada.
+        self._actividad = actividad
 
     def execute(
         self,
@@ -220,17 +376,31 @@ class VerificarClaseUseCase:
         if syllabus is None or progreso is None:
             raise AuditError("Ese curso no existe.")
         clase = _clase(syllabus, numero_clase)
-        criterio = clase.criterio
 
         superada, mensaje = self._juzgar(
-            criterio, syllabus.proyecto, respuestas_quiz or [], texto.strip(), clase, language
+            syllabus, clase, respuestas_quiz or [], texto.strip(), language, curso_id
         )
 
+        # Repetir una clase ya superada no mueve el nivel: la evidencia solo
+        # cuenta la primera vez que se juega.
+        es_repeticion = numero_clase in progreso.completadas
+
         if not superada:
+            if not es_repeticion:
+                nota_nivel = self._tras_fallo(progreso, numero_clase)
+                if nota_nivel:
+                    mensaje += nota_nivel
             self._repo.guardar_mensaje(
                 curso_id, numero_clase, MensajeChat(rol="profesor", texto=mensaje)
             )
             return ResultadoVerificacion(superada=False, mensaje=mensaje)
+
+        # Nivel vivo por éxito — ANTES de marcarla, para saber si fue al
+        # primer intento (los contadores de fallo aún hablan de esta clase).
+        if not es_repeticion:
+            nota_nivel = self._tras_exito(progreso, numero_clase)
+            if nota_nivel:
+                mensaje += nota_nivel
 
         # Superada: se marca y se abre la siguiente.
         if numero_clase not in progreso.completadas:
@@ -243,6 +413,20 @@ class VerificarClaseUseCase:
             progreso.clase_actual = numero_clase + 1
             avanzo = True
         self._repo.guardar_progreso(progreso)
+
+        # Racha: cada clase superada deja huella de actividad del día. El
+        # puerto lo aporta el integrador; sin él no pasa nada, y un fallo del
+        # registro jamás le quita al alumno su clase superada.
+        if self._actividad is not None and not es_repeticion:
+            try:
+                # FECHA LOCAL del servidor, la misma que lee CaminoAlumnoUseCase:
+                # mezclar UTC al escribir con hora local al leer partiría rachas
+                # reales alrededor de la medianoche (decisión documentada allí).
+                self._actividad.registrar(
+                    progreso.usuario_sub, date.today().isoformat()
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("No se pudo registrar la actividad de racha: %s", exc)
 
         cierre = mensaje + (
             (
@@ -262,10 +446,81 @@ class VerificarClaseUseCase:
             superada=True, mensaje=cierre, avanzo=avanzo, graduado=graduado
         )
 
+    # ------------------------------------------------ nivel vivo
+    def _tras_exito(self, progreso: ProgresoCurso, numero_clase: int) -> str:
+        """Actualiza los contadores tras superar una clase. Devuelve nota o ''."""
+        primer_intento = not (
+            progreso.clase_fallando == numero_clase and progreso.fallos_seguidos > 0
+        )
+        progreso.fallos_seguidos = 0
+        progreso.clase_fallando = 0
+        progreso.racha_primeras = progreso.racha_primeras + 1 if primer_intento else 0
+
+        nivel = _nivel_vigente(self._usuarios, progreso)
+        nuevo, progreso.racha_primeras, progreso.fallos_seguidos = reajustar_nivel(
+            nivel, progreso.racha_primeras, progreso.fallos_seguidos
+        )
+        if nuevo == nivel:
+            return ""
+        self._aplicar_nivel(progreso, nuevo)
+        return (
+            "\n\n📈 Llevas varias clases superándolo a la primera: subo un poco "
+            "el nivel — iré más al grano y con retos más jugosos."
+        )
+
+    def _tras_fallo(self, progreso: ProgresoCurso, numero_clase: int) -> str:
+        """Actualiza los contadores tras un fallo y PERSISTE. Devuelve nota o ''.
+
+        Persiste aquí porque la rama de fallo del `execute` retorna antes del
+        `guardar_progreso` general.
+        """
+        if progreso.clase_fallando != numero_clase:
+            progreso.clase_fallando = numero_clase
+            progreso.fallos_seguidos = 0
+        progreso.fallos_seguidos += 1
+        progreso.racha_primeras = 0  # un tropiezo corta la racha de primeras
+
+        nota = ""
+        nivel = _nivel_vigente(self._usuarios, progreso)
+        nuevo, progreso.racha_primeras, progreso.fallos_seguidos = reajustar_nivel(
+            nivel, progreso.racha_primeras, progreso.fallos_seguidos
+        )
+        if nuevo != nivel:
+            self._aplicar_nivel(progreso, nuevo)
+            nota = (
+                "\n\n🧭 Veo que esta parte se está resistiendo — no pasa nada. "
+                "A partir de ahora voy más despacio y con más detalle."
+            )
+        self._repo.guardar_progreso(progreso)
+        return nota
+
+    def _aplicar_nivel(self, progreso: ProgresoCurso, nivel: str) -> None:
+        """El nivel nuevo se guarda en el CURSO y en el USUARIO (si se puede)."""
+        try:
+            progreso.nivel = NivelAlumno(nivel)
+        except ValueError:
+            return
+        logger.info(
+            "Nivel vivo: el alumno %s pasa a '%s' por evidencia de sus clases.",
+            progreso.usuario_sub, nivel,
+        )
+        if self._usuarios is not None:
+            try:
+                self._usuarios.set_nivel(progreso.usuario_sub, nivel)
+            except Exception as exc:  # noqa: BLE001 - el nivel nunca tumba la clase
+                logger.warning("No se pudo persistir el nivel en el usuario: %s", exc)
+
     # ------------------------------------------------------------------
     def _juzgar(
-        self, criterio, proyecto, respuestas, texto, clase, language
+        self,
+        syllabus: Syllabus,
+        clase: Clase,
+        respuestas: list[int],
+        texto: str,
+        language: str,
+        curso_id: str,
     ) -> tuple[bool, str]:
+        criterio = clase.criterio
         tipo = criterio.tipo.value if hasattr(criterio.tipo, "value") else criterio.tipo
 
         if tipo == "quiz":
@@ -300,9 +555,13 @@ class VerificarClaseUseCase:
             return False, detalle
 
         if tipo == "cambio":
-            # Se comprueba que el proyecto cambió respecto a su estado original:
-            # aquí basta con que el alumno confirme y el profesor valide la
-            # reflexión de qué cambió (el ajuste real ya se verifica en su flujo).
+            # Con el puerto de git, la clase se supera con un COMMIT REAL del
+            # alumno — contarlo bonito ya no basta. Sin el puerto (mocks,
+            # cursos de tema), se conserva el juicio por reflexión de siempre.
+            if self._git_alumno is not None and not syllabus.sobre_un_tema:
+                return self._juzgar_cambio_con_git(
+                    syllabus, clase, texto, language, curso_id
+                )
             aprobado, msg = self._chat.evaluar_reflexion(clase, texto, language)
             return aprobado, msg
 
@@ -310,6 +569,88 @@ class VerificarClaseUseCase:
         if not texto:
             return False, "Cuéntame con tus palabras qué aprendiste en esta clase y lo reviso. 🙂"
         aprobado, msg = self._chat.evaluar_reflexion(clase, texto, language)
+        return aprobado, msg
+
+    def _juzgar_cambio_con_git(
+        self,
+        syllabus: Syllabus,
+        clase: Clase,
+        texto: str,
+        language: str,
+        curso_id: str,
+    ) -> tuple[bool, str]:
+        """La clase de "cambio" exige un commit REAL del alumno.
+
+        El circuito honesto: el alumno toca el archivo en el aula, pulsa
+        Compilar, y si el sistema arranca queda un commit con su firma. Aquí
+        se comprueba que ese commit EXISTE (posterior al inicio de la clase y
+        tocando el archivo del criterio, si lo hay). La reflexión se sigue
+        pidiendo — explicar lo que hiciste es parte de aprender — pero como
+        complemento: sola, ya no supera la clase.
+        """
+        slug = slugify(syllabus.proyecto)
+        criterio = clase.criterio
+        archivo = (criterio.archivo or "").strip() or None
+
+        # Desde cuándo cuentan los commits: la apertura de la clase. Si nunca
+        # se abrió por chat, no se acota (mejor generoso que injusto).
+        desde = ""
+        try:
+            desde = self._repo.inicio_clase(curso_id, clase.numero) or ""
+        except Exception:  # noqa: BLE001 - repos antiguos/mocks sin este método
+            desde = ""
+
+        try:
+            commits = self._git_alumno.commits_del_alumno(slug, "", desde, archivo)
+        except Exception as exc:  # noqa: BLE001 - un fallo de git no puede dar 500
+            logger.warning("No se pudo mirar el git del alumno en '%s': %s", slug, exc)
+            commits = []
+
+        if not commits:
+            # ¿Tocó el proyecto pero no el archivo que pide la clase? Afinar el
+            # mensaje: decir EXACTAMENTE qué falta es lo que enseña.
+            otros = []
+            if archivo:
+                try:
+                    otros = self._git_alumno.commits_del_alumno(slug, "", desde, None)
+                except Exception:  # noqa: BLE001
+                    otros = []
+            if archivo and otros:
+                return False, (
+                    "Veo cambios tuyos en el proyecto — ¡bien! — pero esta clase "
+                    f"pide tocar **{archivo}**, y ahí no hay ningún cambio tuyo "
+                    "todavía. Ve al aula, abre ese archivo, haz tu ajuste y dale "
+                    "a **Compilar**. Cuando arranque, vuelve y te reviso. 💪"
+                )
+            pasos = (
+                "Esta clase se supera con un cambio REAL en tu proyecto, no "
+                "contándomelo. Te falta esto:\n"
+                "1. Abre el **aula** de tu proyecto.\n"
+                + (f"2. Abre el archivo **{archivo}** y haz ahí tu cambio.\n"
+                   if archivo else "2. Abre el archivo de la clase y haz tu cambio.\n")
+                + "3. Dale a **Compilar**: si tu sistema arranca, el cambio queda "
+                "guardado como un commit con tu nombre.\n"
+                "Cuando lo hagas, vuelve aquí y lo compruebo en tu historia de git. 🙂"
+            )
+            if criterio.pista:
+                pasos += f"\nPista: {criterio.pista}"
+            return False, pasos
+
+        # Hay commit real. La reflexión complementa: se pide, pero no basta.
+        if not texto:
+            ultimo = commits[0]
+            return False, (
+                f"¡Veo tu commit! («{ultimo.get('mensaje', '')}») Eso ya es lo "
+                "difícil. 💪 Ahora la última parte: cuéntame con tus palabras "
+                "QUÉ cambiaste y qué esperabas ver distinto, y te doy la clase."
+            )
+        aprobado, msg = self._chat.evaluar_reflexion(clase, texto, language)
+        if aprobado:
+            ultimo = commits[0]
+            msg += (
+                f"\n\n🧾 Y no es solo palabra: está en tu historia de git — "
+                f"«{ultimo.get('mensaje', '')}». Así trabaja un dev de verdad."
+            )
         return aprobado, msg
 
 

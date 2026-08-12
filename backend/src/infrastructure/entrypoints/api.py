@@ -9,9 +9,13 @@ aquí mediante el sistema de dependencias de FastAPI.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import socket
+import threading
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,9 +57,14 @@ from src.application.metas_proceso import (
 )
 from src.application.publicar_proyecto import PublicarProyectoUseCase
 from src.application.auditoria_despliegues import AuditarDesplieguesUseCase
+from src.application.camino_alumno import CaminoAlumnoUseCase
+from src.application.revision_entregas import RevisionEntregasUseCase
+from src.application.trabajos import TrabajosUseCase
 from src.config import Settings, get_settings
 from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount, slugify
 from src.domain.ports import (
+    ActividadRepositoryPort,
+    AgenteCliPort,
     AjustadorModuloPort,
     AuditError,
     CodeAuditorPort,
@@ -69,6 +78,7 @@ from src.domain.ports import (
     EvaluationRepositoryPort,
     GeneradorMetaPort,
     GeneradorSyllabusPort,
+    GitAlumnoPort,
     MetaRepositoryPort,
     LicenseRequiredError,
     PaymentRequiredError,
@@ -82,6 +92,7 @@ from src.domain.ports import (
     PromptEvaluationError,
     PromptEvaluatorPort,
     SpecPlanPort,
+    TrabajosRepositoryPort,
     UsageRepositoryPort,
     UserRepositoryPort,
 )
@@ -121,7 +132,12 @@ from src.infrastructure.adapters.render_deploy import RenderDeployAdapter
 from src.infrastructure.adapters.sqlite_despliegues_repository import (
     SqliteDespliegueRepository,
 )
+from src.infrastructure.adapters.claude_cli_agent import ClaudeCliAgent
+from src.infrastructure.adapters.git_alumno import GitAlumnoAdapter
+from src.infrastructure.adapters.mock_claude_cli import MockClaudeCli
+from src.infrastructure.adapters.sqlite_actividad_repository import SqliteActividadRepository
 from src.infrastructure.adapters.sqlite_repository import SqliteEvaluationRepository
+from src.infrastructure.adapters.sqlite_trabajos_repository import SqliteTrabajosRepository
 from src.infrastructure.adapters.sqlite_usage_repository import SqliteUsageRepository
 from src.infrastructure.adapters.sqlite_user_repository import SqliteUserRepository
 from src.infrastructure.entrypoints.auth import verify_google_token
@@ -691,7 +707,9 @@ def get_generar_curso_use_case(
     generador: GeneradorSyllabusPort = Depends(get_generador_syllabus),
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> GenerarCursoUseCase:
-    return GenerarCursoUseCase(reader, generador, repo)
+    # Con el repositorio de usuarios, el nivel vive en el USUARIO: un curso
+    # nuevo no vuelve a preguntar lo que el sistema ya midió.
+    return GenerarCursoUseCase(reader, generador, repo, usuarios=get_user_repository())
 
 
 def get_chat_profesor_use_case(
@@ -699,7 +717,7 @@ def get_chat_profesor_use_case(
     chat: ProfesorChatPort = Depends(get_profesor_chat),
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> ChatProfesorUseCase:
-    return ChatProfesorUseCase(reader, chat, repo)
+    return ChatProfesorUseCase(reader, chat, repo, usuarios=get_user_repository())
 
 
 def get_verificar_clase_use_case(
@@ -707,7 +725,56 @@ def get_verificar_clase_use_case(
     chat: ProfesorChatPort = Depends(get_profesor_chat),
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> VerificarClaseUseCase:
-    return VerificarClaseUseCase(reader, chat, repo)
+    # Los tres extras del nivel vivo: el nivel se persiste en el usuario, la
+    # clase de "cambio" exige un commit REAL, y cada clase superada deja su
+    # huella de actividad (la racha del camino).
+    return VerificarClaseUseCase(
+        reader, chat, repo,
+        usuarios=get_user_repository(),
+        git_alumno=get_git_alumno(),
+        actividad=get_actividad_repository(),
+    )
+
+
+# --- ORQUESTA (fase 2): agente CLI local, trabajos de fondo y camino ---
+@lru_cache
+def get_agente_cli() -> AgenteCliPort:
+    """Provee el agente CLI local: Claude Code real o su gemelo simulado."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> agente CLI SIMULADO (sin binario).")
+        return MockClaudeCli()
+    return ClaudeCliAgent(settings.claude_cli_bin)
+
+
+@lru_cache
+def get_trabajos_repository() -> TrabajosRepositoryPort:
+    """Persistencia de los trabajos de fondo (mismo SQLite local)."""
+    return SqliteTrabajosRepository(get_settings().db_path)
+
+
+def get_trabajos_use_case() -> TrabajosUseCase:
+    """Ciclo de vida de los trabajos de fondo (iniciar/avanzar/completar)."""
+    return TrabajosUseCase(get_trabajos_repository())
+
+
+@lru_cache
+def get_actividad_repository() -> ActividadRepositoryPort:
+    """Registro de actividad diaria del alumno (la señal de la racha)."""
+    return SqliteActividadRepository(get_settings().db_path)
+
+
+@lru_cache
+def get_git_alumno() -> GitAlumnoPort:
+    """Lector de la historia git REAL de los proyectos generados."""
+    return GitAlumnoAdapter(get_settings().generated_dir)
+
+
+def get_camino_use_case() -> CaminoAlumnoUseCase:
+    """El camino del alumno: racha, cursos, certificados y próximo paso."""
+    return CaminoAlumnoUseCase(
+        get_actividad_repository(), get_curso_repository(), get_meta_repository()
+    )
 
 
 @lru_cache
@@ -1236,6 +1303,12 @@ def generate_project(
 
     marcar_dueno(output_path, user.sub, user.email)
 
+    # Fase 2 (Orquesta): si la generación dejó su ENTREGA EN RAMA, el agente
+    # CLI local la revisa en segundo plano — veredicto, REVISION.md y, si el
+    # umbral lo permite, publicación automática. Nunca bloquea la respuesta.
+    if getattr(use_case, "rama_entrega", None):
+        _lanzar_revision_post_entrega(project.slug(), user.sub or "")
+
     return GenerateResponse(
         name=project.name,
         summary=project.summary,
@@ -1562,6 +1635,9 @@ class CriterioDTO(BaseModel):
     #: distinto al lograrlo. Vacíos cuando la clase no exige tocar código.
     archivo: str = ""
     resultado_esperado: str = ""
+    #: Desafío EXTRA opcional para quien va sobrado (nivel medio/alto). El
+    #: frontend lo pinta junto al reto; vacío = no se muestra nada.
+    reto_avanzado: str = ""
 
 
 class ClaseDTO(BaseModel):
@@ -1594,6 +1670,9 @@ class CursoResponse(BaseModel):
     tema: str = ""
     clases: list[ClaseDTO]
     progreso: ProgresoDTO
+    #: True = el profesor YA conoce el nivel del alumno (nivel vivo): el
+    #: frontend se salta la nivelación y solo informa, con opción de re-medirse.
+    nivel_conocido: bool = False
 
 
 class CursoRequest(BaseModel):
@@ -1616,12 +1695,13 @@ class CursoExisteResponse(BaseModel):
     nivel: str = "desconocido"
 
 
-def _curso_response(syllabus, progreso) -> CursoResponse:
+def _curso_response(syllabus, progreso, nivel_conocido: bool = False) -> CursoResponse:
     return CursoResponse(
         titulo_curso=syllabus.titulo_curso,
         resumen=syllabus.resumen,
         arquetipo=syllabus.arquetipo,
         tema=getattr(syllabus, "tema", ""),
+        nivel_conocido=nivel_conocido,
         clases=[
             ClaseDTO(
                 numero=c.numero, titulo=c.titulo, objetivo=c.objetivo,
@@ -1635,6 +1715,9 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
                     pista=c.criterio.pista,
                     archivo=c.criterio.archivo,
                     resultado_esperado=c.criterio.resultado_esperado,
+                    # El reto extra vive en la CLASE del dominio, pero el
+                    # frontend lo lee junto al resto del criterio.
+                    reto_avanzado=getattr(c, "reto_avanzado", "") or "",
                 ),
             )
             for c in syllabus.clases
@@ -1646,6 +1729,21 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
             nivel=progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel,
         ),
     )
+
+
+def _nivel_ya_conocido(progreso, usuario_sub: str) -> bool:
+    """¿El sistema ya sabe el nivel de este alumno? (curso o usuario).
+
+    Leerlo jamás rompe la petición: ante cualquier tropiezo se responde False
+    y el frontend simplemente vuelve a ofrecer la nivelación.
+    """
+    nivel = progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel
+    if (nivel or "desconocido") != "desconocido":
+        return True
+    try:
+        return get_user_repository().get_nivel(usuario_sub) not in ("", "desconocido")
+    except Exception:  # noqa: BLE001 - el nivel es informativo, nunca bloquea
+        return False
 
 
 @router.post(
@@ -1675,7 +1773,9 @@ def iniciar_curso(
         msg = str(exc)
         code = 404 if "no existe" in msg.lower() else 502
         raise HTTPException(status_code=code, detail=msg) from exc
-    return _curso_response(syllabus, progreso)
+    return _curso_response(
+        syllabus, progreso, nivel_conocido=_nivel_ya_conocido(progreso, user.sub)
+    )
 
 
 @router.get(
@@ -1761,7 +1861,11 @@ def estimar_nivel(
     user: UserAccount = Depends(get_current_user),
 ) -> NivelResponse:
     try:
-        nivel, mensaje = use_case.estimar_nivel(request.curso_id, request.respuesta, request.language)
+        # Con el sub del usuario, el nivel medido ANTES de crear el curso
+        # también queda en su cuenta: la próxima vez no se le vuelve a preguntar.
+        nivel, mensaje = use_case.estimar_nivel(
+            request.curso_id, request.respuesta, request.language, usuario_sub=user.sub
+        )
     except AuditError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return NivelResponse(nivel=nivel, mensaje=mensaje)
@@ -2221,6 +2325,212 @@ def listar_despliegues(
     return [DespliegueDTO(**d.model_dump()) for d in repo.listar()]
 
 
+# --- ORQUESTA: revisión post-entrega en segundo plano + trabajos de fondo ---
+#: Referencias vivas a las revisiones en curso (mismo patrón _PUBLICACIONES):
+#: sin retenerlas, el recolector de basura puede cancelar la tarea a mitad.
+_REVISIONES: set[asyncio.Task] = set()
+
+#: El event loop principal, capturado al arrancar. /generate es un endpoint
+#: SÍNCRONO (corre en el threadpool), así que para crear la tarea asyncio hay
+#: que volver al loop con `call_soon_threadsafe`.
+_LOOP_PRINCIPAL: asyncio.AbstractEventLoop | None = None
+
+
+def _revision_use_case_para(dueno: str) -> RevisionEntregasUseCase:
+    """Arma el worker de revisión con el canal de progreso de SU dueño."""
+    settings = get_settings()
+
+    def _avisar(texto: str) -> None:
+        # El progreso viaja por el MISMO canal que la publicación de fase 1.
+        try:
+            DIFUSOR.difundir(texto, dueno)
+        except Exception:  # noqa: BLE001 - contar el progreso jamás rompe la revisión
+            pass
+
+    return RevisionEntregasUseCase(
+        agente_cli=get_agente_cli(),
+        trabajos=get_trabajos_use_case(),
+        publicar=PublicarProyectoUseCase(
+            get_despliegue(), get_despliegue_repository(), settings.generated_dir
+        ),
+        repo_root=Path(settings.generated_dir),
+        al_avisar=_avisar,
+        publicar_si_calidad=settings.revision_publica_si_calidad,
+    )
+
+
+def _lanzar_revision_post_entrega(slug: str, dueno: str) -> None:
+    """Programa la revisión de la entrega en segundo plano. Best-effort.
+
+    Se salta en silencio si la revisión está apagada (`revision_automatica=no`)
+    o el agente CLI no está disponible; y cualquier tropiezo al programarla se
+    anota sin tocar la respuesta de /generate — la entrega ya está hecha.
+    """
+    try:
+        settings = get_settings()
+        if (settings.revision_automatica or "auto").strip().lower() == "no":
+            return
+        if not get_agente_cli().disponible():
+            logger.info(
+                "Agente CLI no disponible: la entrega de '%s' queda sin revisión automática.",
+                slug,
+            )
+            return
+        worker = _revision_use_case_para(dueno)
+
+        loop = _LOOP_PRINCIPAL
+        if loop is None or loop.is_closed():
+            # Sin loop capturado (arranques exóticos, pruebas síncronas): un
+            # hilo demonio hace el mismo trabajo sin bloquear a nadie.
+            threading.Thread(
+                target=worker.revisar, args=(slug, dueno), daemon=True
+            ).start()
+            return
+
+        def _crear_tarea() -> None:
+            # Corre EN el hilo del loop: aquí sí se puede crear la tarea.
+            tarea = loop.create_task(asyncio.to_thread(worker.revisar, slug, dueno))
+            _REVISIONES.add(tarea)
+            tarea.add_done_callback(_REVISIONES.discard)
+
+        loop.call_soon_threadsafe(_crear_tarea)
+    except Exception as exc:  # noqa: BLE001 - programar la revisión nunca rompe /generate
+        logger.warning("No se pudo lanzar la revisión automática de '%s': %s", slug, exc)
+
+
+class TrabajoDTO(BaseModel):
+    """Espejo HTTP de `TrabajoFondo` (sin el dueño: siempre es el que consulta)."""
+
+    id: str
+    tipo: str
+    estado: str
+    progreso: str
+    resultado: str
+    creado_en: str
+    actualizado_en: str
+
+
+@router.get(
+    "/trabajos",
+    response_model=list[TrabajoDTO],
+    summary="Los trabajos de fondo del usuario (revisiones, publicaciones…).",
+)
+def listar_trabajos(
+    user: UserAccount = Depends(get_current_user),
+) -> list[TrabajoDTO]:
+    """Lo que corre (o corrió) en segundo plano para ESTE usuario.
+
+    Sobrevive a un refresh y a un reinicio: es la respuesta persistente a
+    «¿cómo va lo mío?».
+    """
+    trabajos = get_trabajos_use_case().listar_de(user.sub or "")
+    return [TrabajoDTO(**t.model_dump(exclude={"dueno"})) for t in trabajos]
+
+
+@router.get(
+    "/trabajos/{trabajo_id}",
+    response_model=TrabajoDTO,
+    summary="El detalle de un trabajo de fondo (solo de su dueño).",
+)
+def obtener_trabajo(
+    trabajo_id: str,
+    user: UserAccount = Depends(get_current_user),
+) -> TrabajoDTO:
+    trabajo = get_trabajos_use_case().obtener(trabajo_id)
+    # Mismo 404 para «no existe» y «es de otro»: no se filtra ni la existencia.
+    # Un trabajo sin dueño ('') es visible para todos (criterio de es_suyo).
+    if trabajo is None or (trabajo.dueno and trabajo.dueno != (user.sub or "")):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ese trabajo no existe.")
+    return TrabajoDTO(**trabajo.model_dump(exclude={"dueno"}))
+
+
+# --- MI CAMINO: racha, cursos, certificados y próximo paso ---
+class CursoCaminoDTO(BaseModel):
+    """Un curso visto desde el camino: cuánto lleva y si se graduó."""
+
+    curso_id: str = ""
+    proyecto: str = ""
+    titulo: str
+    tema: str = ""
+    total_clases: int = 0
+    completadas: int = 0
+    clase_actual: int = 1
+    graduado: bool = False
+
+
+class CertificadoCaminoDTO(BaseModel):
+    """Un certificado ganado: el curso terminado y cuándo."""
+
+    curso: str
+    curso_id: str = ""
+    fecha: str = ""
+
+
+class MetaCaminoDTO(BaseModel):
+    """Una meta de proceso resumida para el camino."""
+
+    id: str
+    objetivo: str
+    hitos_hechos: int = 0
+    hitos_total: int = 0
+
+
+class CaminoResponse(BaseModel):
+    """El camino completo del alumno: la razón para volver mañana."""
+
+    racha_dias: int
+    #: Los últimos 7 días en orden cronológico (índice 6 = hoy).
+    actividad_semana: list[bool]
+    cursos: list[CursoCaminoDTO]
+    certificados: list[CertificadoCaminoDTO]
+    #: El siguiente paso YA redactado como CTA: el frontend lo pinta tal cual.
+    proximo_paso: str
+    metas: list[MetaCaminoDTO] = Field(default_factory=list)
+
+
+def _frase_proximo_paso(datos: dict) -> str:
+    """Convierte el próximo paso estructurado en la frase que ve el alumno."""
+    paso = datos.get("proximo_paso")
+    if paso:
+        frase = (
+            f"Continúa «{paso.get('titulo', '')}»: clase "
+            f"{paso.get('clase_actual', 1)} de {paso.get('total_clases', 0)}"
+        )
+        if paso.get("clase_titulo"):
+            frase += f" — {paso['clase_titulo']}"
+        return frase + "."
+    if datos.get("cursos"):
+        return (
+            "Terminaste todos tus cursos. 🎓 Pide uno nuevo sobre el tema "
+            "que quieras aprender."
+        )
+    return (
+        "Genera tu primer proyecto (o pide un curso de un tema) y el "
+        "profesor te abre el camino."
+    )
+
+
+@router.get(
+    "/camino",
+    response_model=CaminoResponse,
+    summary="El camino del alumno: racha, cursos, certificados y próximo paso.",
+)
+def camino_del_alumno(
+    user: UserAccount = Depends(get_current_user),
+) -> CaminoResponse:
+    """La señal de hábito se calcula EN EL SERVIDOR con datos reales: nada de
+    contadores del navegador que se pierden al cambiar de aparato."""
+    datos = get_camino_use_case().resumen(user.sub or "")
+    return CaminoResponse(
+        racha_dias=datos["racha_dias"],
+        actividad_semana=datos["actividad_semana"],
+        cursos=[CursoCaminoDTO(**c) for c in datos["cursos"]],
+        certificados=[CertificadoCaminoDTO(**c) for c in datos["certificados"]],
+        proximo_paso=_frase_proximo_paso(datos),
+        metas=[MetaCaminoDTO(**m) for m in datos["metas"]],
+    )
+
+
 # --- AULA EN VIVO: ver el código fuente del proyecto (solo lectura) ---
 _SECRETO_EN_RUTA = ("secretos/", "/.env", ".env", "node_modules/")
 
@@ -2573,6 +2883,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.on_event("startup")
     async def _arrancar_tareas_de_fondo() -> None:
         """Tareas que viven con el proceso; ninguna puede impedir el arranque."""
+        # 0) Se captura el loop principal: los endpoints síncronos (threadpool)
+        #    lo necesitan para programar trabajos de fondo (revisión post-entrega).
+        global _LOOP_PRINCIPAL
+        _LOOP_PRINCIPAL = asyncio.get_running_loop()
+
         # 1) La sonda del navegador se calienta ya: un entorno sin Chromium se
         #    ve en los logs (y en /health) ANTES de la primera entrega.
         async def _calentar_sonda() -> None:

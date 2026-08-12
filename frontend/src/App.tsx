@@ -10,6 +10,7 @@ import { ProjectGallery } from "./features/workspace/components/ProjectGallery";
 import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspace";
 import { PublishGuide } from "./features/workspace/components/PublishGuide";
 import { PromptInput } from "./features/workspace/components/PromptInput";
+import { MiCamino } from "./features/camino";
 import { Multimedia } from "./features/multimedia";
 import { MonitorGeneracion } from "./features/monitor/MonitorGeneracion";
 import { useAccount } from "./features/workspace/hooks/useAccount";
@@ -201,6 +202,14 @@ export default function App() {
             {view === "admin" && isAdmin && <AdminView />}
 
             {view === "learn" && <AprenderView />}
+
+            {/* Mi camino: racha, cursos y certificados — la razón de volver mañana. */}
+            {view === "camino" && (
+              <MiCamino
+                onContinuar={() => setView("projects")}
+                onEmpezar={() => setView("home")}
+              />
+            )}
 
             {view === "help" && (
               <div className="rounded-2xl border border-black/10 bg-white p-8 shadow-sm">

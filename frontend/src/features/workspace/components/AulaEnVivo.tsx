@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Target } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import {
   ApiError,
@@ -9,6 +10,7 @@ import {
   listarArchivos,
   revertirProyecto,
 } from "../../../lib/api";
+import { EditorCodigo } from "./EditorCodigo";
 import type { ArchivoContenido, ArchivoItem, MisionClase } from "../types";
 
 /**
@@ -142,6 +144,14 @@ export function AulaEnVivo({
 
   const modificado = codigo !== null && editado !== codigo.contenido;
 
+  // ¿El archivo abierto es el que encargó la clase? Entonces la misión se fija
+  // sobre el editor, y si su texto insinúa una línea concreta, se salta a ella.
+  const misionAqui = Boolean(mision && sel && mision.archivo === sel);
+  const lineaMision = useMemo(
+    () => (misionAqui && mision && codigo ? lineaRelevante(codigo.contenido, mision) : null),
+    [misionAqui, mision, codigo]
+  );
+
   return (
     <div className="space-y-4">
       {/* El encargo de la clase, siempre visible mientras se edita: qué archivo
@@ -205,14 +215,29 @@ export function AulaEnVivo({
               </button>
             ))}
           </aside>
-          <div className="min-w-0 flex-1 bg-slate-900">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+            {/* La misión fijada sobre el editor cuando el archivo abierto es el
+                de la clase: el alumno nunca pierde de vista qué vino a hacer. */}
+            {misionAqui && mision && (
+              <div className="flex items-start gap-1.5 border-b border-brand-100 bg-brand-50 px-3 py-1.5 text-[11px] leading-snug text-brand-800">
+                <Target className="mt-px h-3.5 w-3.5 shrink-0 text-brand-600" strokeWidth={2} />
+                <span>
+                  <span className="font-semibold">{g.misionAqui}.</span>
+                  {mision.resultadoEsperado && (
+                    <> {g.deberiasVer}: {mision.resultadoEsperado}</>
+                  )}
+                </span>
+              </div>
+            )}
             {codigo ? (
-              <textarea
-                value={editado}
-                onChange={(e) => setEditado(e.target.value)}
-                spellCheck={false}
-                className="h-full min-h-[48vh] w-full resize-none whitespace-pre bg-slate-900 p-3 font-mono text-xs leading-relaxed text-ink-faint focus:outline-none"
-              />
+              <div className="min-h-0 flex-1">
+                <EditorCodigo
+                  valor={codigo.contenido}
+                  path={codigo.path}
+                  lineaInicial={lineaMision}
+                  onCambio={setEditado}
+                />
+              </div>
             ) : (
               <p className="p-4 text-xs text-ink-faint">{g.eligeArchivo}</p>
             )}
@@ -267,6 +292,29 @@ export function AulaEnVivo({
       </div>
     </div>
   );
+}
+
+/**
+ * Busca la primera línea del archivo que la misión insinúa.
+ *
+ * La pista y el resultado esperado suelen citar fragmentos literales entre
+ * comillas («título», "precio", `total`): si alguno aparece en el código, esa
+ * línea es donde el alumno tiene que poner las manos. Si nada coincide, se
+ * devuelve null y el editor abre normal, sin inventarse un salto.
+ */
+function lineaRelevante(contenido: string, mision: MisionClase): number | null {
+  const texto = `${mision.pista ?? ""} ${mision.resultadoEsperado ?? ""}`;
+  const citas: string[] = [];
+  const re = /[«"'`]([^«»"'`]{3,60})[»"'`]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(texto)) !== null) citas.push(m[1].trim().toLowerCase());
+  if (citas.length === 0) return null;
+  const lineas = contenido.split("\n");
+  for (const cita of citas) {
+    const idx = lineas.findIndex((l) => l.toLowerCase().includes(cita));
+    if (idx >= 0) return idx + 1;
+  }
+  return null;
 }
 
 const _PRIORIDAD = ["index.html", "app.js", "server.js", "main.py", "app.py", "App.jsx"];

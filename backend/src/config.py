@@ -221,6 +221,33 @@ class Settings(BaseSettings):
         description="Dónde se lleva la cuenta del gasto mensual por usuario.",
     )
 
+    # --- Orquesta: agente CLI local y revisión automática de entregas ---
+    # El agente CLI (Claude Code) usa la sesión YA logueada de la máquina: el
+    # coste va contra la suscripción local, no contra una bolsa de créditos.
+    claude_cli_bin: str = Field(
+        default="",
+        description=(
+            "Ruta o nombre del CLI de Claude Code. Vacío = se resuelve por la "
+            "variable CLAUDE_CLI_BIN o buscando 'claude' en el PATH."
+        ),
+    )
+    revision_automatica: str = Field(
+        default="auto",
+        description=(
+            "Revisión de cada entrega en rama por el agente CLI: 'auto' = se "
+            "lanza en segundo plano si el agente está disponible; 'no' = apagada."
+        ),
+    )
+    revision_publica_si_calidad: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description=(
+            "Umbral (1-10) para publicar automáticamente una entrega APROBADA "
+            "por la revisión. 0 = nunca publicar automáticamente."
+        ),
+    )
+
     # --- Login con Google (OAuth) ---
     github_client_id: str = Field(
         default="",

@@ -844,6 +844,30 @@ export async function listarDespliegues(): Promise<InfoDespliegue[]> {
   return (await r.json()) as InfoDespliegue[];
 }
 
+// --- Mi camino: racha, cursos y certificados del alumno ----------------------
+import type { Camino } from "../features/camino/types";
+
+const CAMINO_ENDPOINT = `${API_BASE}/api/v1/agent/camino`;
+
+/**
+ * El camino del alumno: racha de días, actividad de la semana, cursos con su
+ * avance, certificados ganados y el próximo paso sugerido.
+ * @throws {ApiError} Si la respuesta no es exitosa o la red falla.
+ */
+export async function obtenerCamino(): Promise<Camino> {
+  let r: Response;
+  try {
+    r = await fetch(CAMINO_ENDPOINT, { headers: { ...authHeaders() } });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as Camino;
+}
+
 /** El profesor revisa la tarea y decide si el alumno superó la clase. */
 export function verificarClase(
   cursoId: string,
