@@ -28,6 +28,12 @@ Write-Host "==> 1/3 Compilando el frontend apuntando al backend de produccion" -
 # PublishGuide la leen en tiempo de build).
 $env:VITE_API_URL = "https://metaagente-backend.onrender.com"
 
+# Version horneada en el frontend del escritorio. AvisoVersion.tsx la compara
+# con GET /api/v1/agent/version-escritorio del backend: si el backend anuncia
+# una mayor, la app muestra el aviso de descarga. DEBE coincidir con la version
+# de tauri.conf.json / Cargo.toml / package.json (ver README.md).
+$env:VITE_APP_VERSION = "1.1.0"
+
 Push-Location $frontend
 npm install
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "npm install (frontend) fallo con exit $LASTEXITCODE" }

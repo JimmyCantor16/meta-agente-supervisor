@@ -39,10 +39,11 @@ servidor falla, la propia interfaz lo explica.
 
 Restos del modo local, a propósito:
 
-- `src-tauri/binaries/metaagente-backend-x86_64-pc-windows-msvc.exe` (69 MB)
-  quedó **huérfano**: nada lo arranca ni lo empaqueta (ya no hay
-  `bundle.externalBin` en `tauri.conf.json`). Se conserva por ahora; bórralo
-  cuando el modo local se descarte del todo.
+- El ejecutable huérfano `src-tauri/binaries/metaagente-backend-…​.exe` (~69 MB)
+  **ya se retiró**: nada lo arrancaba ni lo empaquetaba (no hay
+  `bundle.externalBin` en `tauri.conf.json`). Si el modo local vuelve algún
+  día, se regenera con `build-sidecar.ps1` — la historia de git guarda cómo
+  estaba cableado.
 - `build-sidecar.ps1` y `backend/desktop_server.py` quedan como opción
   **pausada** para reconstruir ese modo local si algún día hace falta trabajar
   sin conexión.
@@ -72,6 +73,12 @@ El script hace tres cosas:
 
 ## Versión
 
-La versión de la app vive en **tres** sitios y deben coincidir:
-`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` y `package.json`
-(hoy: **1.1.0**).
+La versión de la app vive en **cuatro** sitios y deben coincidir:
+`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json` y el
+`VITE_APP_VERSION` que hornea `build-desktop.ps1` (hoy: **1.1.0**).
+
+Esa versión horneada alimenta el **aviso de actualización**: al abrir la app,
+el frontend consulta `GET /api/v1/agent/version-escritorio` y, si el backend
+anuncia una versión mayor con URL de descarga, muestra un banner y una
+notificación nativa (`frontend/src/features/desktop/AvisoVersion.tsx`). Si el
+backend no publica URL de descarga, la app guarda silencio.

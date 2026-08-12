@@ -248,6 +248,22 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- App de escritorio (aviso de versión nueva) ---
+    # El escritorio es un webview con el frontend HORNEADO en el instalador:
+    # no se actualiza solo. El frontend compara su versión horneada con esta y,
+    # si hay una más nueva Y una URL de descarga, muestra el aviso.
+    version_escritorio: str = Field(
+        default="1.1.0",
+        description="Última versión publicada de la app de escritorio (semver).",
+    )
+    url_descarga_escritorio: str = Field(
+        default="",
+        description=(
+            "URL de descarga del instalador de escritorio. Vacía = todavía no "
+            "hay instalador publicado y el aviso de actualización queda mudo."
+        ),
+    )
+
     # --- Login con Google (OAuth) ---
     github_client_id: str = Field(
         default="",

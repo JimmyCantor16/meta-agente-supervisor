@@ -37,10 +37,18 @@ dependencies:
   http: ^1.2.2
   web_socket_channel: ^3.0.1
   flutter_local_notifications: ^18.0.1
-  # Abre las emisoras en el reproductor del propio telefono: sigue sonando
-  # en segundo plano mientras el auditor vigila.
+  # Fallback: abrir una emisora o canal en el reproductor externo del telefono
+  # (menu contextual) cuando el incrustado no pueda con el stream.
   url_launcher: ^6.3.1
   shared_preferences: ^2.5.5
+  # Radio INCRUSTADA: suena dentro de la app y sigue en segundo plano con
+  # controles en la notificacion y la pantalla de bloqueo (audio_service via
+  # just_audio_background, la envoltura oficial mas simple para este caso).
+  just_audio: ^0.10.6
+  just_audio_background: ^0.0.1-beta.17
+  # TV INCRUSTADA: HLS (.m3u8) reproducido dentro de la app (ExoPlayer en Android).
+  video_player: ^2.14.0
+  chewie: ^1.14.1
 
 dev_dependencies:
   flutter_test:

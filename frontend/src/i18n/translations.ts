@@ -498,6 +498,14 @@ const es = {
     reviewBody: (rama: string) =>
       `El agente entregó su trabajo en la rama «${rama}» con su informe de qué quedó pendiente.`,
   },
+  // Aviso de versión nueva de la app de ESCRITORIO (solo se ve dentro de Tauri).
+  desktopUpdate: {
+    banner: (v: string) => `Hay una versión nueva de la app de escritorio (v${v}).`,
+    download: "Descargar",
+    dismiss: "Descartar aviso",
+    notifTitle: "Actualización disponible",
+    notifBody: (v: string) => `La versión ${v} del Meta-Agente de escritorio ya se puede descargar.`,
+  },
   monitor: {
     title: "Monitor en vivo",
     subtitle: "Cada fase, cada IA y cada acierto/fallo del pipeline, en tiempo real.",
@@ -1075,6 +1083,13 @@ const en: Translation = {
     reviewTitle: "📬 Ready for review",
     reviewBody: (rama: string) =>
       `The agent delivered its work on branch "${rama}" with a report of what's pending.`,
+  },
+  desktopUpdate: {
+    banner: (v: string) => `A new desktop app version is available (v${v}).`,
+    download: "Download",
+    dismiss: "Dismiss notice",
+    notifTitle: "Update available",
+    notifBody: (v: string) => `Meta-Agent desktop version ${v} is ready to download.`,
   },
   monitor: {
     title: "Live monitor",

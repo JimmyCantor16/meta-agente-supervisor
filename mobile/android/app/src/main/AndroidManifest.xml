@@ -1,15 +1,25 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Fase 1: la app habla con el backend por red; en pruebas usa http a la
          IP del PC, por eso se permite tráfico en claro (cleartext). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Notificaciones nativas (Android 13+ exige pedir permiso en runtime). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Radio incrustada (audio_service): mantener el stream sonando con la
+         pantalla apagada y en segundo plano, como servicio de primer plano
+         de tipo "mediaPlayback" (obligatorio desde Android 14 / SDK 34). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <application
         android:label="Meta-Agente · Jamz"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- La actividad pasa a ser AudioServiceActivity (extiende FlutterActivity):
+             es el enganche que audio_service exige para que los controles de la
+             notificación y los botones del auricular lleguen a la app. -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.ryanheise.audioservice.AudioServiceActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -35,6 +45,22 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Servicio de reproducción de audio_service: mantiene la radio sonando
+             en segundo plano y publica los controles multimedia del sistema. -->
+        <service android:name="com.ryanheise.audioservice.AudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true" tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <!-- Botones físicos/bluetooth (play/pausa del auricular). -->
+        <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true" tools:ignore="Instantiatable">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

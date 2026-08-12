@@ -57,6 +57,11 @@ from src.application.metas_proceso import (
 )
 from src.application.publicar_proyecto import PublicarProyectoUseCase
 from src.application.auditoria_despliegues import AuditarDesplieguesUseCase
+from src.application.bandeja_entregas import (
+    BandejaEntregasUseCase,
+    ConflictoMergeError,
+    EntregaNoEncontradaError,
+)
 from src.application.camino_alumno import CaminoAlumnoUseCase
 from src.application.revision_entregas import RevisionEntregasUseCase
 from src.application.trabajos import TrabajosUseCase
@@ -2442,6 +2447,146 @@ def obtener_trabajo(
     if trabajo is None or (trabajo.dueno and trabajo.dueno != (user.sub or "")):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ese trabajo no existe.")
     return TrabajoDTO(**trabajo.model_dump(exclude={"dueno"}))
+
+
+# --- BANDEJA DE ENTREGAS: aprobar o rechazar el trabajo del agente ---
+class VeredictoEntregaDTO(BaseModel):
+    """El veredicto del worker de revisión, ya masticado para decidir."""
+
+    aprobar: bool
+    calidad: int = 0
+    resumen: str = ""
+    mejoras: list[str] = Field(default_factory=list)
+
+
+class EntregaDTO(BaseModel):
+    """Una entrega pendiente en la rama `agente/<slug>`, lista para resolver."""
+
+    slug: str
+    rama: str
+    fecha: str = ""
+    resumen_informe: str = ""
+    #: None = el revisor automático aún no dejó (o no pudo dejar) su REVISION.md.
+    veredicto: VeredictoEntregaDTO | None = None
+    dueno: str = ""
+
+
+class RechazoEntregaRequest(BaseModel):
+    """Cuerpo (opcional) del rechazo: por qué se descarta la entrega."""
+
+    motivo: str = Field(default="", max_length=500)
+
+
+class ResolucionEntregaResponse(BaseModel):
+    """Qué pasó con la entrega: 'aprobada' o 'rechazada'."""
+
+    estado: str
+    slug: str = ""
+
+
+@lru_cache
+def get_bandeja_entregas() -> BandejaEntregasUseCase:
+    """Bandeja de entregas sobre la carpeta de proyectos generados."""
+    return BandejaEntregasUseCase(Path(get_settings().generated_dir))
+
+
+def _resolver_entrega(accion, slug: str, user: UserAccount, account: AccountService, **kwargs):
+    """Ejecuta aprobar/rechazar traduciendo los errores de dominio a HTTP.
+
+    El ORDEN de los `except` importa: los dos errores específicos heredan de
+    `ValueError`, así que se capturan antes que el genérico (404 y 409 antes
+    del 422 de «petición inválida»).
+    """
+    admin = account.is_super_admin(user.email)
+    try:
+        return accion(slug, user.sub or "", es_admin=admin, **kwargs)
+    except EntregaNoEncontradaError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ConflictoMergeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/entregas",
+    response_model=list[EntregaDTO],
+    summary="Las entregas del agente que esperan decisión (aprobar/rechazar).",
+)
+def listar_entregas(
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> list[EntregaDTO]:
+    """La cola de decisiones del usuario, la más nueva primero.
+
+    Cada entrega llega con el resumen del informe y el veredicto del revisor
+    ya masticados: se puede decidir desde el teléfono sin abrir ramas.
+    """
+    admin = account.is_super_admin(user.email)
+    entregas = get_bandeja_entregas().listar(user.sub or "", es_admin=admin)
+    return [EntregaDTO(**e) for e in entregas]
+
+
+@router.post(
+    "/entregas/{slug}/aprobar",
+    response_model=ResolucionEntregaResponse,
+    summary="Aprueba la entrega: merge real a la rama principal del proyecto.",
+)
+def aprobar_entrega(
+    slug: str,
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> ResolucionEntregaResponse:
+    """Integra `agente/<slug>` a la principal (merge --no-ff) y retira la rama.
+
+    Errores de dominio → HTTP: no existe/es de otro → 404, conflicto de
+    merge → 409 (la entrega queda pendiente tal cual), resto → 422.
+    """
+    r = _resolver_entrega(get_bandeja_entregas().aprobar, slug, user, account)
+    return ResolucionEntregaResponse(estado=r["estado"], slug=r.get("slug", slug))
+
+
+@router.post(
+    "/entregas/{slug}/rechazar",
+    response_model=ResolucionEntregaResponse,
+    summary="Rechaza la entrega: la rama se retira sin merge, con constancia.",
+)
+def rechazar_entrega(
+    slug: str,
+    request: RechazoEntregaRequest | None = None,
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> ResolucionEntregaResponse:
+    """El body es opcional: `{motivo}` queda anotado en el registro de rechazos."""
+    motivo = (request.motivo if request else "") or ""
+    r = _resolver_entrega(
+        get_bandeja_entregas().rechazar, slug, user, account, motivo=motivo
+    )
+    return ResolucionEntregaResponse(estado=r["estado"], slug=r.get("slug", slug))
+
+
+# --- VERSIÓN DE ESCRITORIO: qué build es el último y de dónde bajarlo ---
+class VersionEscritorioResponse(BaseModel):
+    """Contrato del aviso de actualización del escritorio."""
+
+    ultima: str
+    #: Vacía = no hay instalador publicado: el frontend no muestra nada.
+    url_descarga: str
+
+
+@router.get(
+    "/version-escritorio",
+    response_model=VersionEscritorioResponse,
+    summary="Última versión publicada de la app de escritorio (público).",
+)
+def version_escritorio() -> VersionEscritorioResponse:
+    """PÚBLICO a propósito: el aviso se pinta antes de iniciar sesión, y no
+    revela nada sensible (la misma info que la página de descargas)."""
+    settings = get_settings()
+    return VersionEscritorioResponse(
+        ultima=settings.version_escritorio,
+        url_descarga=settings.url_descarga_escritorio,
+    )
 
 
 # --- MI CAMINO: racha, cursos, certificados y próximo paso ---
