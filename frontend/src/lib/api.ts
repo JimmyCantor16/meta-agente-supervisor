@@ -442,6 +442,34 @@ export async function recogerCredencialPuente(estado: string): Promise<string | 
   }
 }
 
+// --- Versión publicada de la app de escritorio -------------------------------
+const VERSION_ESCRITORIO_ENDPOINT = `${API_BASE}/api/v1/agent/version-escritorio`;
+
+/** Última versión publicada del instalador de escritorio. */
+export interface VersionEscritorio {
+  ultima: string;
+  url_descarga: string;
+}
+
+/**
+ * Consulta la última versión publicada de la app de escritorio. Endpoint
+ * público (sin sesión). Nunca lanza: ante cualquier fallo devuelve null,
+ * porque el aviso de versión es un extra que jamás debe estorbar.
+ */
+export async function obtenerVersionEscritorio(): Promise<VersionEscritorio | null> {
+  try {
+    const r = await fetch(VERSION_ESCRITORIO_ENDPOINT);
+    if (!r.ok) return null;
+    const datos = (await r.json()) as Partial<VersionEscritorio>;
+    return {
+      ultima: typeof datos.ultima === "string" ? datos.ultima.trim() : "",
+      url_descarga: typeof datos.url_descarga === "string" ? datos.url_descarga.trim() : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- Cuenta por usuario + super-admin ---------------------------------------
 const ACCOUNT_ME_ENDPOINT = `${API_BASE}/api/v1/agent/account/me`;
 const ACCOUNT_UPGRADE_ENDPOINT = `${API_BASE}/api/v1/agent/account/request-upgrade`;
@@ -543,6 +571,7 @@ import type {
   CursoResult,
   DiagnosticoMVP,
   EstadoProyecto,
+  InfoDespliegue,
   MensajeChat,
   MetaProceso,
   NivelResult,
@@ -799,6 +828,72 @@ export function marcarHito(
   hecho: boolean
 ): Promise<MetaProceso> {
   return cursoPost<MetaProceso>("meta/hito", { meta_id: metaId, indice, hecho });
+}
+
+// --- Despliegues automáticos: el agente publica el proyecto en internet -----
+const DESPLIEGUES_ENDPOINT = `${API_BASE}/api/v1/agent/despliegues`;
+
+/**
+ * Pide al agente publicar el proyecto en internet (repo + Render, todo él).
+ * Responde 202 de inmediato: el deploy corre en segundo plano y el progreso
+ * llega por el WebSocket de progreso; el estado final, por `listarDespliegues`.
+ */
+export async function publicarProyecto(
+  slug: string
+): Promise<{ estado: string; slug: string }> {
+  let r: Response;
+  try {
+    r = await fetch(`${PROYECTOS_BASE}/${encodeURIComponent(slug)}/publicar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor para publicar.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as { estado: string; slug: string };
+}
+
+/** Lista los despliegues del agente con su estado real (vivo/fallido/caído…). */
+export async function listarDespliegues(): Promise<InfoDespliegue[]> {
+  let r: Response;
+  try {
+    r = await fetch(DESPLIEGUES_ENDPOINT, { headers: { ...authHeaders() } });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as InfoDespliegue[];
+}
+
+// --- Mi camino: racha, cursos y certificados del alumno ----------------------
+import type { Camino } from "../features/camino/types";
+
+const CAMINO_ENDPOINT = `${API_BASE}/api/v1/agent/camino`;
+
+/**
+ * El camino del alumno: racha de días, actividad de la semana, cursos con su
+ * avance, certificados ganados y el próximo paso sugerido.
+ * @throws {ApiError} Si la respuesta no es exitosa o la red falla.
+ */
+export async function obtenerCamino(): Promise<Camino> {
+  let r: Response;
+  try {
+    r = await fetch(CAMINO_ENDPOINT, { headers: { ...authHeaders() } });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as Camino;
 }
 
 /** El profesor revisa la tarea y decide si el alumno superó la clase. */

@@ -14,15 +14,15 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'auditor.dart';
+import 'bandeja.dart';
 import 'multimedia.dart';
+import 'reproductor.dart';
+import 'sesion.dart';
 import 'package:web_socket_channel/io.dart';
 
-
-// Backend del PC en la Wi-Fi de casa. FIJO (el usuario no lo edita).
-// Backend COMPARTIDO en producción: así el móvil ve en tiempo real lo mismo que
-// la web y el escritorio (los 3 conectados al mismo canal). Para desarrollo
-// local, cambia por 'http://TU_IP_LAN:8000' (el móvil no resuelve 'localhost').
-const _servidor = 'https://metaagente-backend.onrender.com';
+// El backend COMPARTIDO en producción vive en `sesion.dart` (`servidorBase`):
+// así el móvil ve en tiempo real lo mismo que la web y el escritorio (los 3
+// conectados al mismo canal), y la sesión firma todas las llamadas.
 
 final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
 const _canal = AndroidNotificationChannel(
@@ -50,18 +50,42 @@ Future<void> _mostrarNoti(String titulo, String cuerpo) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _initNotis();
+  // audio_service se prepara ANTES de runApp (lo exige just_audio_background):
+  // así la radio sigue sonando en segundo plano con controles en la
+  // notificación y la pantalla de bloqueo. Es idempotente y nunca lanza.
+  await prepararAudioFondo();
   runApp(const MetaAgenteApp());
 }
 
 class MetaAgenteApp extends StatelessWidget {
-  const MetaAgenteApp({super.key});
+  const MetaAgenteApp({
+    super.key,
+    this.conectarAlArrancar = true,
+    this.sesion,
+    this.clienteHttp,
+  });
+
+  /// En los tests se apaga: el WebSocket real lanzado en el arranque dejaba
+  /// timers pendientes y tumbaba el widget_test.
+  final bool conectarAlArrancar;
+
+  /// Sesión inyectable (tests). Si falta, la pantalla crea y carga la suya.
+  final Sesion? sesion;
+
+  /// Cliente HTTP inyectable (tests) para la bandeja de entregas.
+  final http.Client? clienteHttp;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Meta-Agente · Jamz',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: marca, scaffoldBackgroundColor: fondo, brightness: Brightness.dark),
-      home: const HomeScreen(),
+      home: HomeScreen(
+        conectarAlArrancar: conectarAlArrancar,
+        sesion: sesion,
+        clienteHttp: clienteHttp,
+      ),
     );
   }
 }
@@ -73,7 +97,17 @@ class _Evento {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.conectarAlArrancar = true,
+    this.sesion,
+    this.clienteHttp,
+  });
+
+  final bool conectarAlArrancar;
+  final Sesion? sesion;
+  final http.Client? clienteHttp;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -95,14 +129,35 @@ class _HomeScreenState extends State<HomeScreen>
   final List<_Evento> _feed = [];
   final EstadoAuditoria _auditoria = EstadoAuditoria();
   int _pestana = 0;
-  late final AnimationController _pulso =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
 
-  String get _wsUrl => '${_servidor.replaceFirst(RegExp(r'^http'), 'ws')}/api/v1/ws/progreso';
+  // Se crea en initState (no como `late` perezoso): si nunca llegaba a haber
+  // conexión, nadie tocaba el campo hasta `dispose()`, y crearlo AHÍ buscaba
+  // ancestros de un widget ya desmontado (crash al cerrar y en los tests).
+  late final AnimationController _pulso;
+
+  // La sesión del teléfono. Si nadie la inyecta (tests), es nuestra: la
+  // creamos, la cargamos del disco y la liberamos al morir la pantalla.
+  late final Sesion _sesion = widget.sesion ?? Sesion();
+  late final bool _sesionPropia = widget.sesion == null;
+
+  /// Con qué token se abrió el canal actual: si la sesión cambia, se reconecta.
+  String? _tokenWs;
+
+  String get _wsUrl {
+    final base = '${servidorBase.replaceFirst(RegExp(r'^http'), 'ws')}/api/v1/ws/progreso';
+    final token = _sesion.token;
+    // La sesión viaja en la URL porque un WebSocket no lleva cabeceras al
+    // abrirse (igual que canal.ts en la web). Sin ella se escucha igual, pero
+    // solo los eventos generales: los pasos de una generación son de su dueño.
+    return token == null ? base : '$base?token=${Uri.encodeComponent(token)}';
+  }
 
   @override
   void initState() {
     super.initState();
+    _pulso = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1100))
+      ..repeat(reverse: true);
     // Observa el ciclo de vida: al volver del segundo plano hay que revisar la
     // conexión (el sistema corta los sockets ociosos y la píldora se quedaba
     // diciendo "EN VIVO" sobre un canal muerto).
@@ -114,11 +169,27 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted || corridas.isEmpty) return;
       setState(() => _auditoria.historial.addAll(corridas));
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _conectarWs());
+    _sesion.addListener(_alCambiarSesion);
+    if (_sesionPropia) unawaited(_sesion.cargar());
+    if (widget.conectarAlArrancar) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _conectarWs());
+    }
+  }
+
+  /// La sesión cambió (entró, salió o caducó): la pantalla se repinta y el
+  /// canal se reabre con (o sin) el token nuevo, para ver lo que es suyo.
+  void _alCambiarSesion() {
+    if (!mounted) return;
+    setState(() {});
+    if (widget.conectarAlArrancar && _tokenWs != _sesion.token) {
+      _intentos = 0;
+      _conectarWs();
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (!widget.conectarAlArrancar) return;
     if (estado == AppLifecycleState.resumed) {
       _intentos = 0;
       if (!_conectado) _conectarWs();
@@ -129,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// reintentaba cada 5 s para siempre: con el servidor dormido, eso vaciaba
   /// la batería y los datos del teléfono.
   void _reintentar() {
+    if (!widget.conectarAlArrancar) return;
     _reintento?.cancel();
     final espera = Duration(seconds: (5 * (1 << _intentos)).clamp(5, 60));
     _intentos = (_intentos + 1).clamp(0, 4);
@@ -148,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen>
       _ws?.sink.close();
     } catch (_) {}
     try {
+      _tokenWs = _sesion.token; // el token con el que nace ESTE canal
       final c = IOWebSocketChannel.connect(Uri.parse(_wsUrl),
           pingInterval: const Duration(seconds: 15), connectTimeout: const Duration(seconds: 8));
       _ws = c;
@@ -171,12 +244,12 @@ class _HomeScreenState extends State<HomeScreen>
             }
           });
           if (RegExp(r'VIVO|🚀').hasMatch(txt)) {
-            _mostrarNoti('¡Tu sistema está listo! 🎉', txt.replaceAll('🚀', '').trim());
+            _notificarConTurno('¡Tu sistema está listo! 🎉', txt.replaceAll('🚀', '').trim(), txt);
           } else if (RegExp(r'REVISI[ÓO]N PENDIENTE').hasMatch(txt)) {
             // El agente dejó su entrega en una rama: hay algo que revisar.
-            _mostrarNoti('📬 Listo para revisión', txt.replaceAll('📬', '').trim());
+            _notificarConTurno('📬 Listo para revisión', txt.replaceAll('📬', '').trim(), txt);
           } else if (RegExp(r'RETENIDA|no se entrega').hasMatch(txt)) {
-            _mostrarNoti('La generación no terminó', txt);
+            _notificarConTurno('La generación no terminó', txt, txt);
           }
         },
         onError: (_) {
@@ -197,6 +270,16 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// Con sesión, pide TURNO antes de sonar (mismo reparto que la web,
+  /// canal.ts): con los tres aparatos abiertos suena UNO; los demás guardan la
+  /// noticia en el feed, en silencio. Sin sesión, suena siempre (falla abierto).
+  void _notificarConTurno(String titulo, String cuerpo, String textoOriginal) {
+    unawaited(() async {
+      if (!await _sesion.meTocaAvisar(claveDeAviso(textoOriginal))) return;
+      await _mostrarNoti(titulo, cuerpo);
+    }());
+  }
+
   Future<void> _evaluar() async {
     final idea = _idea.text.trim();
     if (idea.isEmpty) return;
@@ -207,10 +290,15 @@ class _HomeScreenState extends State<HomeScreen>
     });
     try {
       final res = await http
-          .post(Uri.parse('$_servidor/api/v1/agent/evaluate'),
-              headers: {'Content-Type': 'application/json'},
+          .post(Uri.parse('$servidorBase/api/v1/agent/evaluate'),
+              headers: _sesion.cabeceras(),
               body: utf8.encode(jsonEncode({'prompt': idea, 'language': 'es'})))
           .timeout(const Duration(seconds: 60));
+      if (res.statusCode == 401) {
+        // La sesión ya no vale: se avisa en una línea, sin tumbar nada.
+        _sesion.marcarCaducada();
+        throw 'Tu sesión caducó: vuelve a entrar desde el icono de sesión.';
+      }
       if (res.statusCode == 429) throw 'Demasiadas peticiones seguidas; espera un minuto.';
       if (res.statusCode != 200) throw 'El servidor respondió ${res.statusCode}';
       final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
@@ -240,6 +328,8 @@ class _HomeScreenState extends State<HomeScreen>
     _idea.dispose();
     _pulso.dispose();
     _ws?.sink.close();
+    _sesion.removeListener(_alCambiarSesion);
+    if (_sesionPropia) _sesion.dispose();
     super.dispose();
   }
 
@@ -253,6 +343,20 @@ class _HomeScreenState extends State<HomeScreen>
           _cabecera(),
           const SizedBox(height: 16),
           _tarjetaEstado(),
+          if (_sesion.caducada) ...[
+            const SizedBox(height: 10),
+            _bloque(
+              tarjeta,
+              const Row(children: [
+                Icon(Icons.info_outline, size: 16, color: aviso),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Tu sesión caducó: vuelve a entrar desde el icono de arriba.',
+                      style: TextStyle(color: aviso, fontSize: 12.5)),
+                ),
+              ]),
+            ),
+          ],
           const SizedBox(height: 16),
           _cajaIdea(),
           const SizedBox(height: 12),
@@ -266,6 +370,8 @@ class _HomeScreenState extends State<HomeScreen>
       PanelAuditor(estado: _auditoria, conectado: _conectado),
       // Multimedia: acompanar la espera
       const PanelMultimedia(),
+      // Entregas: aprobar o rechazar el trabajo del agente desde el teléfono
+      PanelEntregas(sesion: _sesion, cliente: widget.clienteHttp),
     ];
 
     return Scaffold(
@@ -288,6 +394,10 @@ class _HomeScreenState extends State<HomeScreen>
               icon: Icon(Icons.play_circle_outline),
               selectedIcon: Icon(Icons.play_circle),
               label: 'Multimedia'),
+          NavigationDestination(
+              icon: Icon(Icons.inbox_outlined),
+              selectedIcon: Icon(Icons.inbox),
+              label: 'Entregas'),
         ],
       ),
     );
@@ -308,6 +418,21 @@ class _HomeScreenState extends State<HomeScreen>
             ]),
           ),
           _pill(),
+          // La sesión, siempre a un toque: entrar, ver el código o salir.
+          IconButton(
+            tooltip: 'Sesión',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => PantallaSesion(sesion: _sesion)),
+            ),
+            icon: Icon(
+              _sesion.estado == EstadoSesion.conSesion
+                  ? Icons.account_circle
+                  : Icons.account_circle_outlined,
+              color: _sesion.estado == EstadoSesion.conSesion
+                  ? acento
+                  : (_sesion.caducada ? aviso : Colors.white54),
+            ),
+          ),
         ],
       );
 

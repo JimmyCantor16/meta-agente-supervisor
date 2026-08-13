@@ -48,6 +48,12 @@ class PostgresUserRepository(UserRepositoryPort):
             conn.execute(
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS requested_plan TEXT DEFAULT ''"
             )
+            # El nivel vive EN EL USUARIO (no solo en cada curso): sin esta
+            # columna, en los despliegues con DATABASE_URL el nivel medido se
+            # perdía en cada deploy y el profesor re-preguntaba lo ya sabido.
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS nivel TEXT DEFAULT 'desconocido'"
+            )
 
     @staticmethod
     def _to_account(row: dict[str, Any]) -> UserAccount:
@@ -63,6 +69,7 @@ class PostgresUserRepository(UserRepositoryPort):
             lessons_used=row["lessons_used"] or 0,
             approved_by=row["approved_by"] or "",
             created_at=row["created_at"] or "",
+            nivel=row.get("nivel") or "desconocido",
         )
 
     def get(self, sub: str) -> UserAccount | None:
@@ -81,6 +88,27 @@ class PostgresUserRepository(UserRepositoryPort):
                 (sub, email, name, datetime.now(timezone.utc).isoformat()),
             )
         return self.get(sub)  # type: ignore[return-value]
+
+    # ---- nivel del alumno (vive en el usuario, no solo en cada curso) ----
+    #: Los únicos valores válidos; cualquier otra cosa del LLM se descarta.
+    _NIVELES = ("desconocido", "bajo", "medio", "alto")
+
+    def get_nivel(self, sub: str) -> str:
+        """Nivel vigente del usuario, o 'desconocido' si nunca se midió."""
+        with connect(self._dsn) as conn:
+            row = conn.execute(
+                "SELECT nivel FROM users WHERE sub = %s", (sub,)
+            ).fetchone()
+        return (row.get("nivel") if row else "") or "desconocido"
+
+    def set_nivel(self, sub: str, nivel: str) -> None:
+        """Persiste el nivel medido/reajustado. Un valor inválido se ignora."""
+        nivel = (nivel or "").strip().lower()
+        if nivel not in self._NIVELES:
+            logger.warning("Nivel inválido '%s' para %s: se ignora.", nivel, sub)
+            return
+        with connect(self._dsn) as conn:
+            conn.execute("UPDATE users SET nivel = %s WHERE sub = %s", (nivel, sub))
 
     def increment_generation(self, sub: str) -> None:
         with connect(self._dsn) as conn:

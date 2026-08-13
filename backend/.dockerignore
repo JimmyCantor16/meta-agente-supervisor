@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 *.db
-.env
+# Ningún archivo de entorno entra en la imagen: `.env` solo excluía el
+# principal, y una copia de seguridad (`.env.bak-...`) con claves REALES acabó
+# dentro de la imagen construida. Un `.env*` cubre también los `.bak`, `.local`,
+# `.prod`... que aparezcan mañana. La plantilla sí entra: no tiene secretos y la
+# documentación del propio proyecto la referencia.
+.env*
+!.env.example
 generated/
 data/

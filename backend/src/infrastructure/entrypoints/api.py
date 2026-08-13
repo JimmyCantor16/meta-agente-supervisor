@@ -8,9 +8,15 @@ aquí mediante el sistema de dependencias de FastAPI.
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import logging
+import socket
+import threading
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,19 +56,35 @@ from src.application.metas_proceso import (
     ListarMetasUseCase,
     MarcarHitoUseCase,
 )
+from src.application.publicar_proyecto import PublicarProyectoUseCase
+from src.application.auditoria_despliegues import AuditarDesplieguesUseCase
+from src.application.bandeja_entregas import (
+    BandejaEntregasUseCase,
+    ConflictoMergeError,
+    EntregaNoEncontradaError,
+)
+from src.application.camino_alumno import CaminoAlumnoUseCase
+from src.application.revision_entregas import RevisionEntregasUseCase
+from src.application.trabajos import TrabajosUseCase
 from src.config import Settings, get_settings
-from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount
+from src.domain.entities import EvaluationStatus, NivelAutonomia, UserAccount, slugify
 from src.domain.ports import (
+    ActividadRepositoryPort,
+    AgenteCliPort,
     AjustadorModuloPort,
     AuditError,
     CodeAuditorPort,
     CodeTeacherPort,
     CasoRepositoryPort,
     CursoRepositoryPort,
+    DespliegueError,
+    DesplieguePort,
+    DespliegueRepositoryPort,
     DiagnosticadorMVPPort,
     EvaluationRepositoryPort,
     GeneradorMetaPort,
     GeneradorSyllabusPort,
+    GitAlumnoPort,
     MetaRepositoryPort,
     LicenseRequiredError,
     PaymentRequiredError,
@@ -76,6 +98,7 @@ from src.domain.ports import (
     PromptEvaluationError,
     PromptEvaluatorPort,
     SpecPlanPort,
+    TrabajosRepositoryPort,
     UsageRepositoryPort,
     UserRepositoryPort,
 )
@@ -110,7 +133,17 @@ from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
 from src.infrastructure.adapters.postgres_repository import PostgresEvaluationRepository
 from src.infrastructure.adapters.postgres_usage_repository import PostgresUsageRepository
 from src.infrastructure.adapters.postgres_user_repository import PostgresUserRepository
+from src.infrastructure.adapters.mock_render_deploy import MockRenderDeploy
+from src.infrastructure.adapters.render_deploy import RenderDeployAdapter
+from src.infrastructure.adapters.sqlite_despliegues_repository import (
+    SqliteDespliegueRepository,
+)
+from src.infrastructure.adapters.claude_cli_agent import ClaudeCliAgent
+from src.infrastructure.adapters.git_alumno import GitAlumnoAdapter
+from src.infrastructure.adapters.mock_claude_cli import MockClaudeCli
+from src.infrastructure.adapters.sqlite_actividad_repository import SqliteActividadRepository
 from src.infrastructure.adapters.sqlite_repository import SqliteEvaluationRepository
+from src.infrastructure.adapters.sqlite_trabajos_repository import SqliteTrabajosRepository
 from src.infrastructure.adapters.sqlite_usage_repository import SqliteUsageRepository
 from src.infrastructure.adapters.sqlite_user_repository import SqliteUserRepository
 from src.infrastructure.entrypoints.auth import verify_google_token
@@ -234,6 +267,19 @@ class GenerateResponse(BaseModel):
     manual: str | None = Field(
         default=None,
         description="Contenido del manual de usuario (MANUAL.md), si se generó.",
+    )
+    # Honestidad de la entrega (la lee el arnés de tasa de éxito y la interfaz):
+    # cómo terminó la corrida y por qué camino se construyó lo entregado.
+    estado_entrega: str = Field(
+        default="verificado",
+        description="verificado | degradado (rescatado por la cascada) | fallido.",
+    )
+    ruta: str = Field(
+        default="libre",
+        description=(
+            "Camino de construcción: esqueleto | base_dorada | libre | "
+            "degradado_a_base | degradado_a_esqueleto."
+        ),
     )
 
 
@@ -393,6 +439,26 @@ class UpgradeRequest(BaseModel):
     """Petición del usuario para solicitar un plan (queda pendiente de aprobación)."""
 
     plan: str = Field(default="pro")
+
+
+class PublicarResponse(BaseModel):
+    """Acuse de una publicación: el deploy corre en segundo plano (202)."""
+
+    estado: str = Field(default="iniciado")
+    slug: str
+
+
+class DespliegueDTO(BaseModel):
+    """Espejo HTTP de `InfoDespliegue` (GET /agent/despliegues)."""
+
+    slug: str
+    nombre_servicio: str
+    url: str
+    repo: str
+    estado: str
+    detalle: str
+    actualizado_en: str
+    ultimo_chequeo: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -647,7 +713,9 @@ def get_generar_curso_use_case(
     generador: GeneradorSyllabusPort = Depends(get_generador_syllabus),
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> GenerarCursoUseCase:
-    return GenerarCursoUseCase(reader, generador, repo)
+    # Con el repositorio de usuarios, el nivel vive en el USUARIO: un curso
+    # nuevo no vuelve a preguntar lo que el sistema ya midió.
+    return GenerarCursoUseCase(reader, generador, repo, usuarios=get_user_repository())
 
 
 def get_chat_profesor_use_case(
@@ -655,7 +723,7 @@ def get_chat_profesor_use_case(
     chat: ProfesorChatPort = Depends(get_profesor_chat),
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> ChatProfesorUseCase:
-    return ChatProfesorUseCase(reader, chat, repo)
+    return ChatProfesorUseCase(reader, chat, repo, usuarios=get_user_repository())
 
 
 def get_verificar_clase_use_case(
@@ -663,7 +731,56 @@ def get_verificar_clase_use_case(
     chat: ProfesorChatPort = Depends(get_profesor_chat),
     repo: CursoRepositoryPort = Depends(get_curso_repository),
 ) -> VerificarClaseUseCase:
-    return VerificarClaseUseCase(reader, chat, repo)
+    # Los tres extras del nivel vivo: el nivel se persiste en el usuario, la
+    # clase de "cambio" exige un commit REAL, y cada clase superada deja su
+    # huella de actividad (la racha del camino).
+    return VerificarClaseUseCase(
+        reader, chat, repo,
+        usuarios=get_user_repository(),
+        git_alumno=get_git_alumno(),
+        actividad=get_actividad_repository(),
+    )
+
+
+# --- ORQUESTA (fase 2): agente CLI local, trabajos de fondo y camino ---
+@lru_cache
+def get_agente_cli() -> AgenteCliPort:
+    """Provee el agente CLI local: Claude Code real o su gemelo simulado."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> agente CLI SIMULADO (sin binario).")
+        return MockClaudeCli()
+    return ClaudeCliAgent(settings.claude_cli_bin)
+
+
+@lru_cache
+def get_trabajos_repository() -> TrabajosRepositoryPort:
+    """Persistencia de los trabajos de fondo (mismo SQLite local)."""
+    return SqliteTrabajosRepository(get_settings().db_path)
+
+
+def get_trabajos_use_case() -> TrabajosUseCase:
+    """Ciclo de vida de los trabajos de fondo (iniciar/avanzar/completar)."""
+    return TrabajosUseCase(get_trabajos_repository())
+
+
+@lru_cache
+def get_actividad_repository() -> ActividadRepositoryPort:
+    """Registro de actividad diaria del alumno (la señal de la racha)."""
+    return SqliteActividadRepository(get_settings().db_path)
+
+
+@lru_cache
+def get_git_alumno() -> GitAlumnoPort:
+    """Lector de la historia git REAL de los proyectos generados."""
+    return GitAlumnoAdapter(get_settings().generated_dir)
+
+
+def get_camino_use_case() -> CaminoAlumnoUseCase:
+    """El camino del alumno: racha, cursos, certificados y próximo paso."""
+    return CaminoAlumnoUseCase(
+        get_actividad_repository(), get_curso_repository(), get_meta_repository()
+    )
 
 
 @lru_cache
@@ -698,6 +815,58 @@ def get_control_proyecto_use_case(
     secretos: SecretosUseCase = Depends(get_secretos_use_case),
 ) -> ControlProyectoUseCase:
     return ControlProyectoUseCase(runner, get_settings().generated_dir, verifier, secretos)
+
+
+# --- PUBLICACIÓN AUTOMÁTICA (el agente sube el MVP a internet) ---
+@lru_cache
+def get_despliegue() -> DesplieguePort:
+    """Provee el publicador: Render real o simulado, según configuración."""
+    settings = get_settings()
+    if settings.use_mock_llm:
+        logger.warning("USE_MOCK_LLM=true -> despliegue SIMULADO (sin GitHub ni Render).")
+        return MockRenderDeploy()
+    # La clave puede venir del `.env` (pydantic la lee aunque no esté exportada
+    # en os.environ); si aquí va vacía, el adaptador cae al entorno en cada
+    # publicación, para que una clave rotada aplique sin reiniciar.
+    return RenderDeployAdapter(render_api_key=settings.render_api_key or None)
+
+
+@lru_cache
+def get_despliegue_repository() -> DespliegueRepositoryPort:
+    """Persistencia de despliegues (el mismo SQLite local que cursos y casos)."""
+    return SqliteDespliegueRepository(get_settings().db_path)
+
+
+def get_publicar_use_case(
+    despliegue: DesplieguePort = Depends(get_despliegue),
+    repo: DespliegueRepositoryPort = Depends(get_despliegue_repository),
+) -> PublicarProyectoUseCase:
+    """Construye el caso de uso de publicación con sus puertos resueltos."""
+    return PublicarProyectoUseCase(despliegue, repo, get_settings().generated_dir)
+
+
+def get_auditar_despliegues_use_case() -> AuditarDesplieguesUseCase:
+    """Auditoría de salud de los despliegues (la usa el bucle periódico)."""
+    return AuditarDesplieguesUseCase(get_despliegue_repository())
+
+
+def _credenciales_deploy_faltantes(settings: Settings) -> list[str]:
+    """Qué credenciales de publicación faltan (lista vacía = todo listo).
+
+    Se comprueba ANTES de aceptar el encargo: el deploy corre en segundo plano
+    y un fallo de configuración descubierto ahí solo se vería en la lista de
+    despliegues; aquí se convierte en un 503 inmediato con instrucciones.
+    """
+    import os
+
+    faltan: list[str] = []
+    if not (settings.render_api_key or os.environ.get("RENDER_API_KEY", "")).strip():
+        faltan.append("RENDER_API_KEY")
+    if not os.environ.get("GITHUB_TOKEN", "").strip():
+        faltan.append("GITHUB_TOKEN")
+    if not os.environ.get("GITHUB_OWNER", "").strip():
+        faltan.append("GITHUB_OWNER")
+    return faltan
 
 
 @lru_cache
@@ -1140,6 +1309,12 @@ def generate_project(
 
     marcar_dueno(output_path, user.sub, user.email)
 
+    # Fase 2 (Orquesta): si la generación dejó su ENTREGA EN RAMA, el agente
+    # CLI local la revisa en segundo plano — veredicto, REVISION.md y, si el
+    # umbral lo permite, publicación automática. Nunca bloquea la respuesta.
+    if getattr(use_case, "rama_entrega", None):
+        _lanzar_revision_post_entrega(project.slug(), user.sub or "")
+
     return GenerateResponse(
         name=project.name,
         summary=project.summary,
@@ -1148,6 +1323,10 @@ def generate_project(
         run_instructions=project.run_instructions,
         url=use_case.last_url,
         manual=_manual_del_proyecto(project),
+        # La honestidad de la corrida viaja en la respuesta: el arnés de tasa
+        # de éxito y la interfaz distinguen un verificado de un rescatado.
+        estado_entrega=use_case.estado_entrega.value,
+        ruta=use_case.ruta_generacion.value,
     )
 
 
@@ -1462,6 +1641,9 @@ class CriterioDTO(BaseModel):
     #: distinto al lograrlo. Vacíos cuando la clase no exige tocar código.
     archivo: str = ""
     resultado_esperado: str = ""
+    #: Desafío EXTRA opcional para quien va sobrado (nivel medio/alto). El
+    #: frontend lo pinta junto al reto; vacío = no se muestra nada.
+    reto_avanzado: str = ""
 
 
 class ClaseDTO(BaseModel):
@@ -1494,6 +1676,9 @@ class CursoResponse(BaseModel):
     tema: str = ""
     clases: list[ClaseDTO]
     progreso: ProgresoDTO
+    #: True = el profesor YA conoce el nivel del alumno (nivel vivo): el
+    #: frontend se salta la nivelación y solo informa, con opción de re-medirse.
+    nivel_conocido: bool = False
 
 
 class CursoRequest(BaseModel):
@@ -1516,12 +1701,13 @@ class CursoExisteResponse(BaseModel):
     nivel: str = "desconocido"
 
 
-def _curso_response(syllabus, progreso) -> CursoResponse:
+def _curso_response(syllabus, progreso, nivel_conocido: bool = False) -> CursoResponse:
     return CursoResponse(
         titulo_curso=syllabus.titulo_curso,
         resumen=syllabus.resumen,
         arquetipo=syllabus.arquetipo,
         tema=getattr(syllabus, "tema", ""),
+        nivel_conocido=nivel_conocido,
         clases=[
             ClaseDTO(
                 numero=c.numero, titulo=c.titulo, objetivo=c.objetivo,
@@ -1535,6 +1721,9 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
                     pista=c.criterio.pista,
                     archivo=c.criterio.archivo,
                     resultado_esperado=c.criterio.resultado_esperado,
+                    # El reto extra vive en la CLASE del dominio, pero el
+                    # frontend lo lee junto al resto del criterio.
+                    reto_avanzado=getattr(c, "reto_avanzado", "") or "",
                 ),
             )
             for c in syllabus.clases
@@ -1546,6 +1735,21 @@ def _curso_response(syllabus, progreso) -> CursoResponse:
             nivel=progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel,
         ),
     )
+
+
+def _nivel_ya_conocido(progreso, usuario_sub: str) -> bool:
+    """¿El sistema ya sabe el nivel de este alumno? (curso o usuario).
+
+    Leerlo jamás rompe la petición: ante cualquier tropiezo se responde False
+    y el frontend simplemente vuelve a ofrecer la nivelación.
+    """
+    nivel = progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel
+    if (nivel or "desconocido") != "desconocido":
+        return True
+    try:
+        return get_user_repository().get_nivel(usuario_sub) not in ("", "desconocido")
+    except Exception:  # noqa: BLE001 - el nivel es informativo, nunca bloquea
+        return False
 
 
 @router.post(
@@ -1575,7 +1779,9 @@ def iniciar_curso(
         msg = str(exc)
         code = 404 if "no existe" in msg.lower() else 502
         raise HTTPException(status_code=code, detail=msg) from exc
-    return _curso_response(syllabus, progreso)
+    return _curso_response(
+        syllabus, progreso, nivel_conocido=_nivel_ya_conocido(progreso, user.sub)
+    )
 
 
 @router.get(
@@ -1661,7 +1867,11 @@ def estimar_nivel(
     user: UserAccount = Depends(get_current_user),
 ) -> NivelResponse:
     try:
-        nivel, mensaje = use_case.estimar_nivel(request.curso_id, request.respuesta, request.language)
+        # Con el sub del usuario, el nivel medido ANTES de crear el curso
+        # también queda en su cuenta: la próxima vez no se le vuelve a preguntar.
+        nivel, mensaje = use_case.estimar_nivel(
+            request.curso_id, request.respuesta, request.language, usuario_sub=user.sub
+        )
     except AuditError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return NivelResponse(nivel=nivel, mensaje=mensaje)
@@ -2030,6 +2240,473 @@ def secretos_proyecto(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+# --- PUBLICAR EN INTERNET: GitHub + Render, en segundo plano ---
+#: Referencias vivas a las publicaciones en curso: sin retenerlas, el
+#: recolector de basura puede cancelar un asyncio.Task a mitad de deploy.
+_PUBLICACIONES: set[asyncio.Task] = set()
+
+
+@router.post(
+    "/projects/{project_name}/publicar",
+    response_model=PublicarResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Publica el proyecto en internet (repo en GitHub + Render), en segundo plano.",
+)
+async def publicar_proyecto(
+    project_name: str,
+    use_case: PublicarProyectoUseCase = Depends(get_publicar_use_case),
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> PublicarResponse:
+    """Responde 202 al instante; el deploy corre detrás y el progreso viaja
+    por el WebSocket de progreso. La verdad del resultado (vivo/fallido, URL)
+    vive en GET /agent/despliegues, que el caso de uso mantiene al día.
+
+    - 401: sin sesión (misma auth que /generate).
+    - 404: el proyecto no existe o no es de este usuario.
+    - 503: el servidor no tiene las credenciales de publicación.
+    """
+    from src.infrastructure.adapters.duenos_proyecto import es_suyo
+
+    slug = slugify(project_name)
+    ruta = Path(get_settings().generated_dir) / slug
+    if not ruta.is_dir() or not es_suyo(ruta, user.sub, account.is_super_admin(user.email)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El proyecto '{slug}' no existe.",
+        )
+
+    settings = get_settings()
+    if not settings.use_mock_llm:
+        faltan = _credenciales_deploy_faltantes(settings)
+        if faltan:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "La publicación automática no está configurada en este "
+                    "servidor: faltan " + ", ".join(faltan) + ". Defínelas en "
+                    "el entorno del backend y reintenta."
+                ),
+            )
+
+    dueno = user.sub or ""
+
+    def _avanzar(texto: str) -> None:
+        # Cada hito se difunde SOLO a su dueño por el canal de progreso.
+        try:
+            DIFUSOR.difundir(texto, dueno)
+        except Exception:  # noqa: BLE001 - contar el progreso jamás rompe el deploy
+            pass
+
+    async def _publicar_en_fondo() -> None:
+        try:
+            # En un hilo aparte: el deploy bloquea (git, httpx, polls de ~15 min)
+            # y el event loop tiene que seguir sirviendo al resto de usuarios.
+            await asyncio.to_thread(use_case.execute, slug, _avanzar)
+        except DespliegueError as exc:
+            # El fallo de dominio (equivalente al 502 del camino síncrono) ya
+            # quedó persistido como 'fallido' por el caso de uso; aquí solo se
+            # le cuenta al dueño por el canal en vivo.
+            _avanzar(f"🛑 La publicación de «{slug}» falló: {exc}")
+        except Exception:  # noqa: BLE001 - una tarea de fondo jamás tumba la API
+            logger.exception("La publicación de '%s' reventó de forma inesperada.", slug)
+            _avanzar(f"🛑 La publicación de «{slug}» falló de forma inesperada.")
+
+    tarea = asyncio.create_task(_publicar_en_fondo())
+    _PUBLICACIONES.add(tarea)
+    tarea.add_done_callback(_PUBLICACIONES.discard)
+    return PublicarResponse(estado="iniciado", slug=slug)
+
+
+@router.get(
+    "/despliegues",
+    response_model=list[DespliegueDTO],
+    summary="Los despliegues publicados por el agente, con su estado real.",
+)
+def listar_despliegues(
+    repo: DespliegueRepositoryPort = Depends(get_despliegue_repository),
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> list[DespliegueDTO]:
+    """La lista siempre cuenta la verdad: en_curso / vivo / fallido / caido.
+
+    Y solo la SUYA: la tabla de despliegues es única para todo el servidor, así
+    que sin este filtro cualquiera con sesión veía el nombre, el repositorio y
+    la URL de los proyectos publicados por los demás. Se usa el mismo criterio
+    que la galería de proyectos (`duenos_proyecto.es_suyo`): el dueño manda, un
+    proyecto sin marca sigue siendo visible, y el admin lo ve todo.
+    """
+    from src.infrastructure.adapters.duenos_proyecto import es_suyo
+
+    generados = Path(get_settings().generated_dir)
+    admin = account.is_super_admin(user.email)
+    return [
+        DespliegueDTO(**d.model_dump())
+        for d in repo.listar()
+        if es_suyo(generados / d.slug, user.sub or "", admin)
+    ]
+
+
+# --- ORQUESTA: revisión post-entrega en segundo plano + trabajos de fondo ---
+#: Referencias vivas a las revisiones en curso (mismo patrón _PUBLICACIONES):
+#: sin retenerlas, el recolector de basura puede cancelar la tarea a mitad.
+_REVISIONES: set[asyncio.Task] = set()
+
+#: El event loop principal, capturado al arrancar. /generate es un endpoint
+#: SÍNCRONO (corre en el threadpool), así que para crear la tarea asyncio hay
+#: que volver al loop con `call_soon_threadsafe`.
+_LOOP_PRINCIPAL: asyncio.AbstractEventLoop | None = None
+
+
+def _revision_use_case_para(dueno: str) -> RevisionEntregasUseCase:
+    """Arma el worker de revisión con el canal de progreso de SU dueño."""
+    settings = get_settings()
+
+    def _avisar(texto: str) -> None:
+        # El progreso viaja por el MISMO canal que la publicación de fase 1.
+        try:
+            DIFUSOR.difundir(texto, dueno)
+        except Exception:  # noqa: BLE001 - contar el progreso jamás rompe la revisión
+            pass
+
+    return RevisionEntregasUseCase(
+        agente_cli=get_agente_cli(),
+        trabajos=get_trabajos_use_case(),
+        publicar=PublicarProyectoUseCase(
+            get_despliegue(), get_despliegue_repository(), settings.generated_dir
+        ),
+        repo_root=Path(settings.generated_dir),
+        al_avisar=_avisar,
+        publicar_si_calidad=settings.revision_publica_si_calidad,
+    )
+
+
+def _lanzar_revision_post_entrega(slug: str, dueno: str) -> None:
+    """Programa la revisión de la entrega en segundo plano. Best-effort.
+
+    Se salta en silencio si la revisión está apagada (`revision_automatica=no`)
+    o el agente CLI no está disponible; y cualquier tropiezo al programarla se
+    anota sin tocar la respuesta de /generate — la entrega ya está hecha.
+    """
+    try:
+        settings = get_settings()
+        if (settings.revision_automatica or "auto").strip().lower() == "no":
+            return
+        if not get_agente_cli().disponible():
+            logger.info(
+                "Agente CLI no disponible: la entrega de '%s' queda sin revisión automática.",
+                slug,
+            )
+            return
+        worker = _revision_use_case_para(dueno)
+
+        loop = _LOOP_PRINCIPAL
+        if loop is None or loop.is_closed():
+            # Sin loop capturado (arranques exóticos, pruebas síncronas): un
+            # hilo demonio hace el mismo trabajo sin bloquear a nadie.
+            threading.Thread(
+                target=worker.revisar, args=(slug, dueno), daemon=True
+            ).start()
+            return
+
+        def _crear_tarea() -> None:
+            # Corre EN el hilo del loop: aquí sí se puede crear la tarea.
+            tarea = loop.create_task(asyncio.to_thread(worker.revisar, slug, dueno))
+            _REVISIONES.add(tarea)
+            tarea.add_done_callback(_REVISIONES.discard)
+
+        loop.call_soon_threadsafe(_crear_tarea)
+    except Exception as exc:  # noqa: BLE001 - programar la revisión nunca rompe /generate
+        logger.warning("No se pudo lanzar la revisión automática de '%s': %s", slug, exc)
+
+
+class TrabajoDTO(BaseModel):
+    """Espejo HTTP de `TrabajoFondo` (sin el dueño: siempre es el que consulta)."""
+
+    id: str
+    tipo: str
+    estado: str
+    progreso: str
+    resultado: str
+    creado_en: str
+    actualizado_en: str
+
+
+@router.get(
+    "/trabajos",
+    response_model=list[TrabajoDTO],
+    summary="Los trabajos de fondo del usuario (revisiones, publicaciones…).",
+)
+def listar_trabajos(
+    user: UserAccount = Depends(get_current_user),
+) -> list[TrabajoDTO]:
+    """Lo que corre (o corrió) en segundo plano para ESTE usuario.
+
+    Sobrevive a un refresh y a un reinicio: es la respuesta persistente a
+    «¿cómo va lo mío?».
+    """
+    trabajos = get_trabajos_use_case().listar_de(user.sub or "")
+    return [TrabajoDTO(**t.model_dump(exclude={"dueno"})) for t in trabajos]
+
+
+@router.get(
+    "/trabajos/{trabajo_id}",
+    response_model=TrabajoDTO,
+    summary="El detalle de un trabajo de fondo (solo de su dueño).",
+)
+def obtener_trabajo(
+    trabajo_id: str,
+    user: UserAccount = Depends(get_current_user),
+) -> TrabajoDTO:
+    trabajo = get_trabajos_use_case().obtener(trabajo_id)
+    # Mismo 404 para «no existe» y «es de otro»: no se filtra ni la existencia.
+    # Un trabajo sin dueño ('') es visible para todos (criterio de es_suyo).
+    if trabajo is None or (trabajo.dueno and trabajo.dueno != (user.sub or "")):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ese trabajo no existe.")
+    return TrabajoDTO(**trabajo.model_dump(exclude={"dueno"}))
+
+
+# --- BANDEJA DE ENTREGAS: aprobar o rechazar el trabajo del agente ---
+class VeredictoEntregaDTO(BaseModel):
+    """El veredicto del worker de revisión, ya masticado para decidir."""
+
+    aprobar: bool
+    calidad: int = 0
+    resumen: str = ""
+    mejoras: list[str] = Field(default_factory=list)
+
+
+class EntregaDTO(BaseModel):
+    """Una entrega pendiente en la rama `agente/<slug>`, lista para resolver."""
+
+    slug: str
+    rama: str
+    fecha: str = ""
+    resumen_informe: str = ""
+    #: None = el revisor automático aún no dejó (o no pudo dejar) su REVISION.md.
+    veredicto: VeredictoEntregaDTO | None = None
+    dueno: str = ""
+    #: Si quien pregunta puede resolverla (sin marca, dueño, o admin). El móvil
+    #: decide con esto si pinta los botones: comparar `dueno` (un sub) contra
+    #: el email del usuario siempre fallaba.
+    es_suyo: bool = True
+
+
+class RechazoEntregaRequest(BaseModel):
+    """Cuerpo (opcional) del rechazo: por qué se descarta la entrega.
+
+    Sin max_length: el caso de uso ya trunca a 500 al anotar la constancia —
+    un motivo largo se recorta, no rebota con un 422.
+    """
+
+    motivo: str = ""
+
+
+class ResolucionEntregaResponse(BaseModel):
+    """Qué pasó con la entrega: 'aprobada' o 'rechazada'."""
+
+    estado: str
+    slug: str = ""
+
+
+@lru_cache
+def get_bandeja_entregas() -> BandejaEntregasUseCase:
+    """Bandeja de entregas sobre la carpeta de proyectos generados."""
+    return BandejaEntregasUseCase(Path(get_settings().generated_dir))
+
+
+def _resolver_entrega(accion, slug: str, user: UserAccount, account: AccountService, **kwargs):
+    """Ejecuta aprobar/rechazar traduciendo los errores de dominio a HTTP.
+
+    El ORDEN de los `except` importa: los dos errores específicos heredan de
+    `ValueError`, así que se capturan antes que el genérico (404 y 409 antes
+    del 422 de «petición inválida»).
+    """
+    admin = account.is_super_admin(user.email)
+    try:
+        return accion(slug, user.sub or "", es_admin=admin, **kwargs)
+    except EntregaNoEncontradaError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ConflictoMergeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/entregas",
+    response_model=list[EntregaDTO],
+    summary="Las entregas del agente que esperan decisión (aprobar/rechazar).",
+)
+def listar_entregas(
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> list[EntregaDTO]:
+    """La cola de decisiones del usuario, la más nueva primero.
+
+    Cada entrega llega con el resumen del informe y el veredicto del revisor
+    ya masticados: se puede decidir desde el teléfono sin abrir ramas.
+    """
+    admin = account.is_super_admin(user.email)
+    sub = user.sub or ""
+    entregas = get_bandeja_entregas().listar(sub, es_admin=admin)
+    # es_suyo se calcula aquí con el mismo criterio de duenos_proyecto.es_suyo
+    # (sin marca = visible y resoluble por cualquiera; admin ve y puede todo).
+    return [
+        EntregaDTO(**e, es_suyo=admin or not e["dueno"] or e["dueno"] == sub)
+        for e in entregas
+    ]
+
+
+@router.post(
+    "/entregas/{slug}/aprobar",
+    response_model=ResolucionEntregaResponse,
+    summary="Aprueba la entrega: merge real a la rama principal del proyecto.",
+)
+def aprobar_entrega(
+    slug: str,
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> ResolucionEntregaResponse:
+    """Integra `agente/<slug>` a la principal (merge --no-ff) y retira la rama.
+
+    Errores de dominio → HTTP: no existe/es de otro → 404, conflicto de
+    merge → 409 (la entrega queda pendiente tal cual), resto → 422.
+    """
+    r = _resolver_entrega(get_bandeja_entregas().aprobar, slug, user, account)
+    return ResolucionEntregaResponse(estado=r["estado"], slug=r.get("slug", slug))
+
+
+@router.post(
+    "/entregas/{slug}/rechazar",
+    response_model=ResolucionEntregaResponse,
+    summary="Rechaza la entrega: la rama se retira sin merge, con constancia.",
+)
+def rechazar_entrega(
+    slug: str,
+    request: RechazoEntregaRequest | None = None,
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> ResolucionEntregaResponse:
+    """El body es opcional: `{motivo}` queda anotado en el registro de rechazos."""
+    motivo = (request.motivo if request else "") or ""
+    r = _resolver_entrega(
+        get_bandeja_entregas().rechazar, slug, user, account, motivo=motivo
+    )
+    return ResolucionEntregaResponse(estado=r["estado"], slug=r.get("slug", slug))
+
+
+# --- VERSIÓN DE ESCRITORIO: qué build es el último y de dónde bajarlo ---
+class VersionEscritorioResponse(BaseModel):
+    """Contrato del aviso de actualización del escritorio."""
+
+    ultima: str
+    #: Vacía = no hay instalador publicado: el frontend no muestra nada.
+    url_descarga: str
+
+
+@router.get(
+    "/version-escritorio",
+    response_model=VersionEscritorioResponse,
+    summary="Última versión publicada de la app de escritorio (público).",
+)
+def version_escritorio() -> VersionEscritorioResponse:
+    """PÚBLICO a propósito: el aviso se pinta antes de iniciar sesión, y no
+    revela nada sensible (la misma info que la página de descargas)."""
+    settings = get_settings()
+    return VersionEscritorioResponse(
+        ultima=settings.version_escritorio,
+        url_descarga=settings.url_descarga_escritorio,
+    )
+
+
+# --- MI CAMINO: racha, cursos, certificados y próximo paso ---
+class CursoCaminoDTO(BaseModel):
+    """Un curso visto desde el camino: cuánto lleva y si se graduó."""
+
+    curso_id: str = ""
+    proyecto: str = ""
+    titulo: str
+    tema: str = ""
+    total_clases: int = 0
+    completadas: int = 0
+    clase_actual: int = 1
+    graduado: bool = False
+
+
+class CertificadoCaminoDTO(BaseModel):
+    """Un certificado ganado: el curso terminado y cuándo."""
+
+    curso: str
+    curso_id: str = ""
+    fecha: str = ""
+
+
+class MetaCaminoDTO(BaseModel):
+    """Una meta de proceso resumida para el camino."""
+
+    id: str
+    objetivo: str
+    hitos_hechos: int = 0
+    hitos_total: int = 0
+
+
+class CaminoResponse(BaseModel):
+    """El camino completo del alumno: la razón para volver mañana."""
+
+    racha_dias: int
+    #: Los últimos 7 días en orden cronológico (índice 6 = hoy).
+    actividad_semana: list[bool]
+    cursos: list[CursoCaminoDTO]
+    certificados: list[CertificadoCaminoDTO]
+    #: El siguiente paso YA redactado como CTA: el frontend lo pinta tal cual.
+    proximo_paso: str
+    metas: list[MetaCaminoDTO] = Field(default_factory=list)
+
+
+def _frase_proximo_paso(datos: dict) -> str:
+    """Convierte el próximo paso estructurado en la frase que ve el alumno."""
+    paso = datos.get("proximo_paso")
+    if paso:
+        frase = (
+            f"Continúa «{paso.get('titulo', '')}»: clase "
+            f"{paso.get('clase_actual', 1)} de {paso.get('total_clases', 0)}"
+        )
+        if paso.get("clase_titulo"):
+            frase += f" — {paso['clase_titulo']}"
+        return frase + "."
+    if datos.get("cursos"):
+        return (
+            "Terminaste todos tus cursos. 🎓 Pide uno nuevo sobre el tema "
+            "que quieras aprender."
+        )
+    return (
+        "Genera tu primer proyecto (o pide un curso de un tema) y el "
+        "profesor te abre el camino."
+    )
+
+
+@router.get(
+    "/camino",
+    response_model=CaminoResponse,
+    summary="El camino del alumno: racha, cursos, certificados y próximo paso.",
+)
+def camino_del_alumno(
+    user: UserAccount = Depends(get_current_user),
+) -> CaminoResponse:
+    """La señal de hábito se calcula EN EL SERVIDOR con datos reales: nada de
+    contadores del navegador que se pierden al cambiar de aparato."""
+    datos = get_camino_use_case().resumen(user.sub or "")
+    return CaminoResponse(
+        racha_dias=datos["racha_dias"],
+        actividad_semana=datos["actividad_semana"],
+        cursos=[CursoCaminoDTO(**c) for c in datos["cursos"]],
+        certificados=[CertificadoCaminoDTO(**c) for c in datos["certificados"]],
+        proximo_paso=_frase_proximo_paso(datos),
+        metas=[MetaCaminoDTO(**m) for m in datos["metas"]],
+    )
+
+
 # --- AULA EN VIVO: ver el código fuente del proyecto (solo lectura) ---
 _SECRETO_EN_RUTA = ("secretos/", "/.env", ".env", "node_modules/")
 
@@ -2280,6 +2957,62 @@ def admin_approve(
 # ---------------------------------------------------------------------------
 # Factory de la aplicación
 # ---------------------------------------------------------------------------
+#: Cada cuánto se revisa la salud de los despliegues publicados.
+_AUDITORIA_CADA_S = 30 * 60
+
+
+@lru_cache
+def _estado_navegador() -> str:
+    """Sonda (una sola vez por proceso) del navegador del gate de render.
+
+    El entorno no cambia en caliente (instalar Playwright/Chromium exige
+    reconstruir la imagen), así que el resultado se cachea: /health responde
+    al instante en vez de lanzar un Chromium por petición.
+    """
+    from src.infrastructure.adapters.validacion_navegador import healthcheck_navegador
+
+    try:
+        fallo = healthcheck_navegador()
+    except Exception as exc:  # noqa: BLE001 - un healthcheck reporta, no revienta
+        fallo = f"la sonda del navegador no se pudo ejecutar: {exc}"
+    return "ok" if fallo is None else fallo
+
+
+async def _bucle_auditoria_despliegues() -> None:
+    """Revisa cada 30 min que las URLs publicadas sigan vivas.
+
+    Blindado por diseño: cualquier fallo se anota y se espera al siguiente
+    ciclo — un tropiezo del bucle jamás puede tumbar la API. Solo se difunde
+    un aviso cuando algo pasó de 'vivo' a 'caido' (la promesa que se rompió);
+    los demás cambios se leen en GET /agent/despliegues.
+
+    El aviso va SOLO a su dueño: `difundir` sin dueño lo reparte entre todos
+    los conectados, y con varios usuarios eso significaba contarle a cualquiera
+    el nombre y la URL del sistema de otro. Un proyecto sin marca de dueño
+    (los de antes) sigue anunciándose a todos, como en el resto del sistema.
+    """
+    from src.infrastructure.adapters.duenos_proyecto import dueno_de
+
+    while True:
+        try:
+            repo = get_despliegue_repository()
+            previos = {d.slug: d.estado for d in repo.listar()}
+            generados = Path(get_settings().generated_dir)
+            # En un hilo aparte: el chequeo hace HTTP real y hasta espera ~1 min
+            # a que un servicio free de Render despierte.
+            informe = await asyncio.to_thread(get_auditar_despliegues_use_case().execute)
+            for d in informe:
+                if previos.get(d.slug) == "vivo" and d.estado == "caido":
+                    DIFUSOR.difundir(
+                        f"📉 Tu sistema «{d.slug}» dejó de responder ({d.url}). "
+                        f"Detalle: {d.detalle[:160]}",
+                        dueno_de(generados / d.slug) or "",
+                    )
+        except Exception as exc:  # noqa: BLE001 - el bucle jamás tumba la API
+            logger.warning("La auditoría de despliegues tropezó: %s", exc)
+        await asyncio.sleep(_AUDITORIA_CADA_S)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Construye y configura la instancia de FastAPI.
 
@@ -2291,10 +3024,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     settings = settings or get_settings()
 
+    @asynccontextmanager
+    async def _ciclo_de_vida(app: FastAPI):
+        """Tareas que viven con el proceso; ninguna puede impedir el arranque.
+
+        Sustituye a `@app.on_event("startup")`, que está deprecado en FastAPI y
+        desaparecerá en una versión futura: el día que lo retiren, el arranque
+        se quedaría mudo (sin sonda de navegador ni auditoría) o reventaría, sin
+        que nadie hubiera tocado este archivo. Hace exactamente lo mismo que
+        antes; lo posterior al `yield` (apagado) se deja vacío a propósito: las
+        tareas mueren con el proceso, como hasta ahora.
+        """
+        # 0) Se captura el loop principal: los endpoints síncronos (threadpool)
+        #    lo necesitan para programar trabajos de fondo (revisión post-entrega).
+        global _LOOP_PRINCIPAL
+        _LOOP_PRINCIPAL = asyncio.get_running_loop()
+
+        # 1) La sonda del navegador se calienta ya: un entorno sin Chromium se
+        #    ve en los logs (y en /health) ANTES de la primera entrega.
+        async def _calentar_sonda() -> None:
+            try:
+                estado = await asyncio.to_thread(_estado_navegador)
+                if estado != "ok":
+                    logger.error("Gate de render SIN navegador: %s", estado)
+            except Exception:  # noqa: BLE001 - calentar es best-effort
+                pass
+
+        # 2) Auditoría periódica de despliegues (cada 30 min).
+        #    Las referencias se guardan en app.state: sin ellas, el recolector
+        #    de basura podría cancelar las tareas a mitad de ciclo.
+        app.state.tareas_fondo = [
+            asyncio.create_task(_calentar_sonda()),
+            asyncio.create_task(_bucle_auditoria_despliegues()),
+        ]
+
+        yield
+
     app = FastAPI(
         title="Meta-Agente Supervisor de Desarrollo Autónomo",
         description="Evalúa, critica y optimiza prompts de desarrollo con DeepSeek.",
         version="1.1.0",
+        lifespan=_ciclo_de_vida,
     )
 
     # CORS: imprescindible para que el frontend (Vite) consuma la API.
@@ -2334,7 +3104,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:
-        """Endpoint de salud para readiness/liveness checks."""
-        return {"status": "ok"}
+        """Endpoint de salud para readiness/liveness checks.
+
+        `navegador` NO cambia el contrato (el campo `status` sigue igual): es
+        "ok" si el gate de render puede correr, o la descripción del fallo de
+        configuración (falta Playwright / falta su Chromium) si no.
+        """
+        return {"status": "ok", "navegador": _estado_navegador()}
 
     return app

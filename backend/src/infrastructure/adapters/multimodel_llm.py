@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from typing import Callable
 
@@ -38,6 +39,13 @@ class LLMError(Exception):
 
 class MultiModelLLM:
     """Cliente que llama a una cadena de proveedores con fallback y throttling."""
+
+    # Consumo por cuota: (momento, tokens). Varios modelos de la misma cuenta
+    # comparten entrada (`quota_key`). Es a NIVEL DE CLASE a propósito: cada
+    # adaptador crea su propia instancia y, con un libro por instancia, el
+    # throttling no veía el gasto de las demás y se reventaba la cuota gratis.
+    _usage: dict[str, list[tuple[float, int]]] = {}
+    _usage_lock = threading.Lock()
 
     def __init__(
         self,
@@ -77,9 +85,6 @@ class MultiModelLLM:
             )
             for p in candidates
         ]
-        # Consumo por cuota: (momento, tokens). Varios modelos de la misma
-        # cuenta comparten entrada (`quota_key`).
-        self._usage: dict[str, list[tuple[float, int]]] = {}
         logger.info(
             "MultiModelLLM [rol=%s] con %d proveedor(es): %s",
             role or "todos", len(candidates), [p.name for p in candidates],
@@ -288,8 +293,11 @@ class MultiModelLLM:
         """
         now = time.monotonic()
         key = provider.quota_key
-        log = [(t, k) for (t, k) in self._usage.get(key, []) if now - t < 60]
-        self._usage[key] = log
+        # El candado cubre SOLO la poda y la escritura del libro compartido;
+        # los cálculos siguen sobre la copia local, sin retener el lock.
+        with MultiModelLLM._usage_lock:
+            log = [(t, k) for (t, k) in MultiModelLLM._usage.get(key, []) if now - t < 60]
+            MultiModelLLM._usage[key] = log
         if not log:
             return 0.0
 
@@ -309,7 +317,8 @@ class MultiModelLLM:
         return 0.0
 
     def _record(self, quota_key: str, tokens: int) -> None:
-        self._usage.setdefault(quota_key, []).append((time.monotonic(), tokens))
+        with MultiModelLLM._usage_lock:
+            MultiModelLLM._usage.setdefault(quota_key, []).append((time.monotonic(), tokens))
 
     # ------------------------------------------------------------------
     @classmethod

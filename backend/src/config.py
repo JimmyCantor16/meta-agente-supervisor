@@ -7,6 +7,7 @@ clave de API o un valor es inválido, el proceso no levanta y el error es claro.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -104,6 +105,12 @@ class Settings(BaseSettings):
     max_retries: int = Field(default=3, ge=0, le=10)
 
     # --- Persistencia (memoria del agente) ---
+    # Sin PostgreSQL, este archivo es TODA la memoria del sistema: usuarios,
+    # licencias, cupos, cursos, progreso, despliegues, trabajos y actividad.
+    # En un PaaS hay que apuntarlo DENTRO del disco persistente (en Render,
+    # `/app/generated/metaagente.db`; ver render.yaml): el valor por defecto es
+    # relativo al directorio de trabajo, que en el contenedor es efímero y se
+    # borra en cada deploy y en cada reinicio.
     db_path: str = Field(
         default="evaluations.db",
         description="Ruta del archivo SQLite donde se guardan las evaluaciones.",
@@ -143,6 +150,18 @@ class Settings(BaseSettings):
             "<base>/preview/<slug>/ y se sirven a través del backend, en vez de "
             "una dirección a localhost que fuera del servidor no lleva a ningún "
             "sitio. Déjala vacía en desarrollo local."
+        ),
+    )
+
+    # --- Publicación automática (GitHub + Render) ---
+    # Con esta clave el agente publica cada MVP como servicio PROPIO en Render
+    # (repo en GitHub + web service, plan free). Las credenciales de GitHub
+    # reutilizan las GITHUB_TOKEN/GITHUB_OWNER ya existentes (entrega en rama).
+    render_api_key: str = Field(
+        default="",
+        description=(
+            "API key de Render (Account Settings → API Keys). Vacía = la "
+            "publicación automática queda apagada; el resto funciona igual."
         ),
     )
 
@@ -209,6 +228,49 @@ class Settings(BaseSettings):
         description="Dónde se lleva la cuenta del gasto mensual por usuario.",
     )
 
+    # --- Orquesta: agente CLI local y revisión automática de entregas ---
+    # El agente CLI (Claude Code) usa la sesión YA logueada de la máquina: el
+    # coste va contra la suscripción local, no contra una bolsa de créditos.
+    claude_cli_bin: str = Field(
+        default="",
+        description=(
+            "Ruta o nombre del CLI de Claude Code. Vacío = se resuelve por la "
+            "variable CLAUDE_CLI_BIN o buscando 'claude' en el PATH."
+        ),
+    )
+    revision_automatica: str = Field(
+        default="auto",
+        description=(
+            "Revisión de cada entrega en rama por el agente CLI: 'auto' = se "
+            "lanza en segundo plano si el agente está disponible; 'no' = apagada."
+        ),
+    )
+    revision_publica_si_calidad: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description=(
+            "Umbral (1-10) para publicar automáticamente una entrega APROBADA "
+            "por la revisión. 0 = nunca publicar automáticamente."
+        ),
+    )
+
+    # --- App de escritorio (aviso de versión nueva) ---
+    # El escritorio es un webview con el frontend HORNEADO en el instalador:
+    # no se actualiza solo. El frontend compara su versión horneada con esta y,
+    # si hay una más nueva Y una URL de descarga, muestra el aviso.
+    version_escritorio: str = Field(
+        default="1.1.0",
+        description="Última versión publicada de la app de escritorio (semver).",
+    )
+    url_descarga_escritorio: str = Field(
+        default="",
+        description=(
+            "URL de descarga del instalador de escritorio. Vacía = todavía no "
+            "hay instalador publicado y el aviso de actualización queda mudo."
+        ),
+    )
+
     # --- Login con Google (OAuth) ---
     github_client_id: str = Field(
         default="",
@@ -263,6 +325,26 @@ class Settings(BaseSettings):
                 model=self.deepseek_model,
             )
         ]
+
+    def model_post_init(self, __context: object) -> None:
+        """Garantiza que la carpeta de `db_path` existe antes de abrir el SQLite.
+
+        Los repositorios hacen `sqlite3.connect(db_path)` directamente, y sqlite
+        NO crea directorios: si la ruta apunta a una carpeta que todavía no
+        existe, el arranque muere con «unable to open database file» y la API
+        contesta 500 a todo. Mover la base al disco persistente (`DB_PATH=
+        /app/generated/...`) hace justamente eso, así que la garantía va aquí,
+        una sola vez, en vez de repetirla en cada adaptador.
+
+        Nunca lanza: si el directorio no se puede crear (permisos, disco de solo
+        lectura), el error real lo dará sqlite con su propio mensaje.
+        """
+        try:
+            carpeta = Path(self.db_path).expanduser().parent
+            if str(carpeta) not in ("", "."):
+                carpeta.mkdir(parents=True, exist_ok=True)
+        except OSError:  # noqa: S110 - deliberado: el fallo real lo reporta sqlite
+            pass
 
 
 @lru_cache

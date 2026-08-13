@@ -17,10 +17,11 @@ dónde mirar en vez de obligar a abrir 24 archivos a ciegas.
 from __future__ import annotations
 
 import logging
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+from src.infrastructure.adapters.git_util import correr_git
 
 logger = logging.getLogger(__name__)
 
@@ -185,17 +186,9 @@ class EntregaEnRama:
         self._nombre, self._correo = autor
 
     def _git(self, root: Path, *args: str) -> tuple[bool, str]:
-        """Ejecuta git en el proyecto. Nunca lanza: entregar no puede tumbar la generación."""
-        try:
-            proc = subprocess.run(
-                ["git", "-C", str(root), *args],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            return proc.returncode == 0, (proc.stdout or proc.stderr).strip()
-        except (OSError, subprocess.SubprocessError) as exc:
-            return False, str(exc)
+        """Ejecuta git en el proyecto. Nunca lanza: entregar no puede tumbar la
+        generación. Delega en el helper compartido (git_util.correr_git)."""
+        return correr_git(root, *args)
 
     def entregar(self, output_path: str, informe: InformeEntrega) -> str | None:
         """Crea la rama con el trabajo y el informe. Devuelve el nombre de la rama.

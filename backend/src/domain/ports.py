@@ -8,6 +8,9 @@ esencia de la inversión de dependencias en la arquitectura hexagonal.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 from src.domain.entities import (
     AgentEvaluation,
@@ -18,6 +21,7 @@ from src.domain.entities import (
     DeveloperPrompt,
     DiagnosticoMVP,
     EvaluationRecord,
+    InfoDespliegue,
     MetaProceso,
     SpecPlan,
     FewShotExample,
@@ -27,6 +31,7 @@ from src.domain.entities import (
     ProgresoCurso,
     Syllabus,
     TeachingGuide,
+    TrabajoFondo,
     UserAccount,
 )
 
@@ -48,6 +53,14 @@ class AuditError(Exception):
     """Error de dominio para cualquier fallo durante la auditoría de un proyecto."""
 
 
+class DespliegueError(Exception):
+    """Error de dominio para cualquier fallo al PUBLICAR un proyecto en internet.
+
+    Los adaptadores traducen sus fallos técnicos (git, GitHub, la API de Render,
+    timeouts) a esta excepción; el entrypoint la convierte en HTTP 502.
+    """
+
+
 class LicenseRequiredError(Exception):
     """Se agotaron las generaciones gratuitas y no hay licencia activa."""
 
@@ -58,6 +71,15 @@ class PaymentRequiredError(Exception):
 
 class AuthRequiredError(Exception):
     """La acción requiere que el usuario haya iniciado sesión."""
+
+
+class AgenteCliError(Exception):
+    """Error de dominio del AGENTE CLI local (Claude Code u otro).
+
+    Los adaptadores traducen sus fallos técnicos (binario ausente, timeout,
+    salida sin la forma pedida tras reintentos) a esta excepción; los workers
+    la convierten en un trabajo fallido con su detalle, nunca en un 500.
+    """
 
 
 class UserRepositoryPort(ABC):
@@ -93,6 +115,18 @@ class UserRepositoryPort(ABC):
     @abstractmethod
     def list_pending(self) -> list[UserAccount]:
         raise NotImplementedError
+
+    # --- Nivel del alumno (vive en el USUARIO, no solo en cada curso) ---
+    # No son abstractos A PROPÓSITO: los repositorios que aún no lo persisten
+    # (Postgres, mocks antiguos) heredan este respaldo y siguen instanciándose;
+    # el circuito del profesor trata 'desconocido' como "todavía no se midió".
+    def get_nivel(self, sub: str) -> str:
+        """Nivel vigente del usuario ('desconocido' si nunca se midió)."""
+        return "desconocido"
+
+    def set_nivel(self, sub: str, nivel: str) -> None:
+        """Persiste el nivel medido/reajustado. Por defecto no hace nada."""
+        return None
 
 
 class UsageRepositoryPort(ABC):
@@ -408,13 +442,17 @@ class GeneradorSyllabusPort(ABC):
         files: list[GeneratedFile],
         num_clases: int,
         language: str = "es",
-        nivel: str = "desconocido",
+        nivel: str | Callable[[], str] = "desconocido",
         tema: str = "",
     ) -> Syllabus:
         """Diseña el temario, ADAPTADO al nivel del alumno.
 
         Con `nivel='bajo'` los retos avanzados (git, publicar) se plantean de
         forma suave (reflexión) en vez de exigir repo/URL reales de golpe.
+
+        `nivel` puede ser un CALLABLE sin argumentos: el generador lo lee en
+        cada lote de detalle, de modo que un nivel reajustado a mitad de la
+        generación calibra las clases que aún faltan por escribir.
 
         Con `tema` relleno el curso es sobre un TEMA EXTERNO (n8n, SQL): no hay
         `files` que leer, así que ningún criterio puede pedir tocar un archivo
@@ -622,4 +660,204 @@ class CursoRepositoryPort(ABC):
 
     @abstractmethod
     def historial(self, curso_id: str, numero_clase: int) -> list[MensajeChat]:
+        raise NotImplementedError
+
+    def inicio_clase(self, curso_id: str, numero_clase: int) -> str | None:
+        """Cuándo se abrió la clase (ISO con zona), o None si nunca se abrió.
+
+        Lo usa la verificación con git: solo cuentan los commits del alumno
+        POSTERIORES al inicio de la clase. No es abstracto a propósito: los
+        repositorios que no lo registren (mocks antiguos) heredan este None y
+        el juicio simplemente no acota por fecha (generoso antes que injusto).
+        """
+        return None
+
+
+class DesplieguePort(ABC):
+    """Contrato del agente que PUBLICA: convierte una carpeta en una URL pública.
+
+    Implementaciones: Render real (repo en GitHub + web service) o un mock que
+    simula los hitos sin tocar la nube. La aplicación solo conoce este contrato.
+    """
+
+    @abstractmethod
+    def publicar(
+        self,
+        ruta_proyecto: Path,
+        nombre: str,
+        al_avanzar: Callable[[str], None] | None = None,
+    ) -> InfoDespliegue:
+        """Publica el proyecto y devuelve su despliegue ya VIVO.
+
+        Args:
+            ruta_proyecto: Carpeta del proyecto generado en disco.
+            nombre: Nombre/slug con el que se publica (define la URL).
+            al_avanzar: Callback opcional de progreso, hito a hito. Contar el
+                progreso jamás puede romper el despliegue: los adaptadores lo
+                envuelven en try/except.
+
+        Returns:
+            El `InfoDespliegue` final (estado "vivo", con su URL y su repo).
+
+        Raises:
+            DespliegueError: Si la publicación no llegó a estar viva.
+        """
+        raise NotImplementedError
+
+
+class DespliegueRepositoryPort(ABC):
+    """Persistencia de los despliegues publicados: UNO vigente por slug.
+
+    Es la fuente de verdad de GET /agent/despliegues y lo que la auditoría
+    periódica revisa y actualiza (vivo/caido/fallido).
+    """
+
+    @abstractmethod
+    def guardar(self, info: InfoDespliegue) -> None:
+        """Upsert por slug: cada proyecto tiene UN despliegue (el vigente)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def obtener(self, slug: str) -> InfoDespliegue | None:
+        """El despliegue vigente de un proyecto, o None si nunca se publicó."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def listar(self) -> list[InfoDespliegue]:
+        """Todos los despliegues (más recientes primero)."""
+        raise NotImplementedError
+
+
+class AgenteCliPort(ABC):
+    """Contrato del AGENTE CLI local: Claude Code (u otro) por subprocess.
+
+    Es la Orquesta hablando con un agente ya logueado en la máquina: el coste
+    va contra la suscripción local, no contra una bolsa de créditos. Las
+    implementaciones traducen sus fallos a `AgenteCliError`.
+    """
+
+    @abstractmethod
+    def disponible(self) -> bool:
+        """True si el binario del agente existe en este entorno."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def probar(self) -> str | None:
+        """Llamada mínima real de salud. None = sano; texto = qué falló.
+
+        Nunca lanza: la UI muestra el resultado tal cual.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def ejecutar(
+        self,
+        system: str,
+        user: str,
+        validar: Callable | None = None,
+        cwd: Path | None = None,
+        timeout_s: int = 300,
+    ) -> Any:
+        """Una llamada completa al agente. Devuelve dict validado o str.
+
+        `validar` corre DENTRO del bucle de reintentos (regla de oro del
+        proyecto): una salida con la forma equivocada cuenta como fallo del
+        modelo y se pide otra muestra, no tumba la petición.
+
+        Raises:
+            AgenteCliError: Si el agente no pudo completar el encargo.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def ejecutar_stream(
+        self,
+        system: str,
+        user: str,
+        al_evento: Callable[[dict], None],
+        validar: Callable | None = None,
+        cwd: Path | None = None,
+        timeout_s: int = 600,
+    ) -> Any:
+        """Como `ejecutar`, pero emitiendo cada evento del agente según llega.
+
+        `al_evento` recibe cada evento (dict) para enchufarlo al canal de
+        progreso; un callback que lanza jamás aborta el trabajo.
+
+        Raises:
+            AgenteCliError: Si el agente no pudo completar el encargo.
+        """
+        raise NotImplementedError
+
+
+class TrabajosRepositoryPort(ABC):
+    """Persistencia de los TRABAJOS DE FONDO (el "estado.json" generalizado).
+
+    Todo trabajo largo (revisión de una entrega, publicación, futuras
+    generaciones) queda registrado y consultable por HTTP, y sobrevive a un
+    refresh del navegador o a un reinicio del proceso.
+    """
+
+    @abstractmethod
+    def guardar(self, trabajo: TrabajoFondo) -> None:
+        """Upsert por id: cada transición persiste la foto completa."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def obtener(self, id: str) -> TrabajoFondo | None:  # noqa: A002 - id es el nombre natural
+        raise NotImplementedError
+
+    @abstractmethod
+    def listar_de(self, dueno: str, limite: int = 20) -> list[TrabajoFondo]:
+        """Los trabajos de un dueño (más recientes primero)."""
+        raise NotImplementedError
+
+
+class ActividadRepositoryPort(ABC):
+    """Registro de la ACTIVIDAD diaria del alumno: la señal del hábito.
+
+    Una fila por (usuario, día). No guarda QUÉ hizo — eso vive en cursos,
+    chat y despliegues — solo QUE ese día estuvo. De aquí salen la racha y
+    el mapa semanal del camino del alumno.
+    """
+
+    @abstractmethod
+    def registrar(self, usuario: str, fecha_iso: str) -> None:
+        """Marca actividad de un usuario en un día. Idempotente y tolerante:
+        una entrada ilegible se descarta con warning, jamás tumba el flujo
+        que la emite (verificar una clase, publicar...)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def fechas_de(self, usuario: str, limite_dias: int = 120) -> list[str]:
+        """Días con actividad ('yyyy-mm-dd'), el más reciente primero."""
+        raise NotImplementedError
+
+
+class GitAlumnoPort(ABC):
+    """Contrato para mirar la historia REAL de git del proyecto del alumno.
+
+    Con esto el profesor deja de creerse el texto: una clase de "cambio" se
+    supera con un commit del alumno, no contándolo bonito.
+    """
+
+    @abstractmethod
+    def commits_del_alumno(
+        self,
+        slug: str,
+        autor: str,
+        desde_iso: str,
+        archivo: str | None = None,
+    ) -> list[dict]:
+        """Commits del alumno (más reciente primero) como dicts
+        {hash, mensaje, fecha, archivos}.
+
+        Args:
+            slug: Carpeta del proyecto generado.
+            autor: Firma a buscar; vacío = la firma estándar del alumno.
+            desde_iso: Solo commits posteriores a esta fecha ISO; vacío = todos.
+            archivo: Si viene, solo commits que tocan ese archivo.
+
+        Nunca lanza: si git falla o no hay repositorio, devuelve lista vacía.
+        """
         raise NotImplementedError

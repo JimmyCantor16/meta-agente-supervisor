@@ -17,6 +17,13 @@
       rel="stylesheet"
     />
 
+    <!-- PWA: color de la barra del navegador en móvil (verde de marca) y el
+         icono que usa iOS al «Añadir a pantalla de inicio» (iOS ignora los
+         iconos del manifest). El <link rel="manifest"> y el registro del
+         service worker los inyecta vite-plugin-pwa en el build. -->
+    <meta name="theme-color" content="#027E6F" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
     <!-- Favicon en verde de marca, plano. Sin gradiente: es la regla nº1 del
          sistema de diseño (ver tailwind.config.js). -->
     <link

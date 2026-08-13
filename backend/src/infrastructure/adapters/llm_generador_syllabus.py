@@ -24,6 +24,7 @@ vez de tumbar el curso entero. Media clase es recuperable; ninguna, no.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from src.domain.entities import (
     Clase,
@@ -39,6 +40,21 @@ from src.infrastructure.adapters.skills_loader import skill
 logger = logging.getLogger(__name__)
 
 _TIPOS = {"quiz", "cambio", "repo_git", "url_publicada", "reflexion"}
+
+
+def _nivel_de(nivel: str | Callable[[], str]) -> str:
+    """Resuelve el nivel VIGENTE: acepta el string de siempre o un callable.
+
+    El caso de uso pasa un callable para que cada lote del temario se genere
+    con el nivel del momento. Si el callable falla, se degrada a 'desconocido'
+    — nunca puede tumbar la generación del curso.
+    """
+    if callable(nivel):
+        try:
+            nivel = nivel()
+        except Exception:  # noqa: BLE001 - leer el nivel jamás rompe el temario
+            return "desconocido"
+    return str(nivel or "desconocido").strip().lower() or "desconocido"
 
 # Clases por llamada de detalle. Cuatro clases con su contenido y su quiz rondan
 # los 4-5k tokens de salida: entran holgadas en cualquier modelo gratuito.
@@ -176,6 +192,7 @@ Devuelve EXCLUSIVAMENTE un JSON válido (sin markdown):
       "numero": 3,
       "contenido": "La explicación (markdown, 2-4 párrafos). Habla de SU proyecto por su nombre, sus archivos, sus datos reales. Analogías cotidianas. Sin jerga sin traducir.",
       "reto": "El ejercicio práctico concreto de esta clase",
+      "reto_avanzado": "SOLO si el nivel del alumno es medio o alto: un desafío EXTRA opcional que va más allá del reto (más técnico, sin pasos masticados). Si el nivel es bajo o no se indica, deja cadena vacía.",
       "criterio": {
         "descripcion": "Cómo se supera la clase, en cristiano",
         "quiz": [ {"pregunta":"...", "opciones":["a","b","c"], "correcta":1} ],
@@ -197,6 +214,9 @@ REGLAS:
   archivos de arriba (no la inventes) y "resultado_esperado" debe describir un
   cambio VISIBLE en pantalla. El aula le abre ese archivo al alumno; si la ruta
   no existe, se queda mirando 23 archivos sin saber cuál tocar.
+- "reto_avanzado" SOLO se rellena para alumnos de nivel medio/alto (mira el
+  NIVEL DEL ALUMNO del contexto): es el plus retador para quien va sobrado,
+  concreto y sobre SU proyecto/tema. Para nivel bajo o desconocido: "".
 - Tono del profesor paciente: celebra, motiva, cero jerga sin explicar.
 - Todo en el idioma indicado.
 """
@@ -209,25 +229,39 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
 
     def generar(self, proyecto, arquetipo, files, num_clases, language="es",
                 nivel="desconocido", tema="") -> Syllabus:
-        tema = (tema or "").strip()
-        if tema:
-            contexto = self._contexto_tema(tema, language, nivel)
-            rutas_reales: list[str] = []  # sin archivos, ningún criterio puede pedirlos
-        else:
-            contexto = self._contexto(proyecto, arquetipo, files, language, nivel)
-            rutas_reales = [f.path for f in files]
+        """Diseña el temario. `nivel` puede ser un string o un CALLABLE.
 
-        indice = self._pedir_indice(contexto, num_clases, tema)
+        Cuando es un callable (lo pasa el caso de uso), cada LOTE de detalle se
+        genera leyendo el nivel VIGENTE en ese momento — no la foto de cuando
+        se pidió el curso. Es la pieza que hace continuo el "retador para quien
+        sabe, sencillo para quien no".
+        """
+        tema = (tema or "").strip()
+
+        def contexto_con(nivel_txt: str) -> str:
+            if tema:
+                return self._contexto_tema(tema, language, nivel_txt)
+            return self._contexto(proyecto, arquetipo, files, language, nivel_txt)
+
+        rutas_reales: list[str] = [] if tema else [f.path for f in files]
+        nivel_indice = _nivel_de(nivel)
+
+        indice = self._pedir_indice(contexto_con(nivel_indice), num_clases, tema)
         cabeceras = (indice.get("clases") or [])[:num_clases]
         if not cabeceras:
             raise AuditError("El diseñador de cursos no devolvió clases válidas.")
 
         # El detalle se pide en lotes pequeños. Cada lote es independiente: si
         # uno falla, sus clases quedan con lo del índice y el curso sigue en pie.
+        # Y cada lote lee el nivel VIGENTE: si cambió a mitad, el resto del
+        # curso ya sale calibrado al nivel nuevo.
         detalles: dict[int, dict] = {}
         for inicio in range(0, len(cabeceras), _CLASES_POR_LOTE):
             lote = cabeceras[inicio : inicio + _CLASES_POR_LOTE]
-            detalles.update(self._pedir_detalle(contexto, lote, inicio + 1))
+            nivel_lote = _nivel_de(nivel)
+            detalles.update(
+                self._pedir_detalle(contexto_con(nivel_lote), lote, inicio + 1, nivel_lote)
+            )
 
         brutas = [
             self._fusionar(cab, detalles.get(inicio + 1, {}))
@@ -313,7 +347,10 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 
-    def _pedir_detalle(self, contexto: str, lote: list[dict], primero: int) -> dict[int, dict]:
+    def _pedir_detalle(
+        self, contexto: str, lote: list[dict], primero: int,
+        nivel: str = "desconocido",
+    ) -> dict[int, dict]:
         """Fase 2: contenido y quiz de un lote. Si falla, se degrada, no se cae."""
         pedido = "\n".join(
             f"- Clase {primero + i}: «{c.get('titulo')}» · objetivo: {c.get('objetivo')} "
@@ -337,6 +374,12 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
 
         salida: dict[int, dict] = {}
         for c in data.get("clases") or []:
+            if not isinstance(c, dict):
+                continue
+            # El reto avanzado es EXCLUSIVO de medio/alto: si el modelo lo
+            # rellenó igual para un principiante, se descarta aquí, en código.
+            if nivel not in ("medio", "alto"):
+                c.pop("reto_avanzado", None)
             try:
                 salida[int(c.get("numero"))] = c
             except (TypeError, ValueError):
@@ -355,6 +398,7 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
             "concepto_clave": cabecera.get("concepto_clave"),
             "contenido": detalle.get("contenido"),
             "reto": detalle.get("reto"),
+            "reto_avanzado": detalle.get("reto_avanzado"),
             "criterio": criterio,
         }
 
@@ -411,6 +455,7 @@ class LLMGeneradorSyllabus(GeneradorSyllabusPort):
                     objetivo=str(c.get("objetivo") or "").strip()[:400] or "Aprender un paso más.",
                     contenido=str(c.get("contenido") or "").strip()[:4000] or "…",
                     reto=str(c.get("reto") or "").strip()[:600] or "Explora tu proyecto.",
+                    reto_avanzado=str(c.get("reto_avanzado") or "").strip()[:600],
                     concepto_clave=str(c.get("concepto_clave") or "").strip()[:200],
                     criterio=CriterioSuperacion(
                         tipo=TipoCriterio(tipo),

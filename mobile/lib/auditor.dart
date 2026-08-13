@@ -234,6 +234,14 @@ class EstadoAuditoria {
   bool aplicar(String texto) {
     if (texto.startsWith('👋')) return false;
 
+    // Primero el canal estructurado: el backend emite, además de las frases,
+    // eventos JSON de una línea ({"t":"fase",...} — progreso.py). El JSON
+    // manda porque no depende de la redacción: un cambio de frase ya nos
+    // desincronizó en silencio una vez. Si el mensaje no es JSON o el tipo no
+    // se reconoce, se cae a las regex de siempre (textos legados).
+    final evento = _decodificarEvento(texto);
+    if (evento != null && _aplicarEvento(evento)) return true;
+
     if (RegExp(r'Cerebro IA listo').hasMatch(texto)) {
       // Empieza otra: si la anterior no llegó a puerto, queda registrada como
       // cortada en vez de desaparecer sin dejar rastro.
@@ -315,6 +323,95 @@ class EstadoAuditoria {
       proveedores.putIfAbsent(n, () => Proveedor(n)).fallos++;
     }
     return true;
+  }
+
+  /// Intenta leer el mensaje como evento estructurado del backend.
+  ///
+  /// El canal emite JSON de una línea con la clave "t" (ver progreso.py).
+  /// Todo lo demás — frases humanas, textos legados — devuelve null y sigue
+  /// su camino por las regex.
+  Map<String, dynamic>? _decodificarEvento(String texto) {
+    final crudo = texto.trim();
+    if (!crudo.startsWith('{')) return null; // ni intentarlo: es una frase
+    try {
+      final decodificado = jsonDecode(crudo);
+      if (decodificado is Map<String, dynamic> && decodificado.containsKey('t')) {
+        return decodificado;
+      }
+    } catch (_) {
+      // No era JSON válido: que lo intenten las regex.
+    }
+    return null;
+  }
+
+  /// Mapea un evento estructurado a las fases del panel.
+  ///
+  /// Los porcentajes son los MISMOS anclajes que usan las frases, porque los
+  /// dos canales llegan entrelazados en la misma corrida: si el JSON pidiera
+  /// otros números, uno de los dos quedaría mudo por la regla de no
+  /// retroceder. Devuelve true si reconoció el evento; false para que el
+  /// llamador caiga a las regex (tipo nuevo o fase que este móvil no conoce).
+  bool _aplicarEvento(Map<String, dynamic> evento) {
+    if ('${evento['t']}' != 'fase') return false;
+
+    final nombre = '${evento['fase'] ?? ''}';
+    final paso = (evento['paso'] as num?)?.toInt() ?? 0;
+    final de = (evento['de'] as num?)?.toInt() ?? 0;
+    final texto = '${evento['detalle'] ?? ''}';
+
+    switch (nombre) {
+      case 'entender':
+        _marcar(0, EstadoFase.enCurso);
+        porcentaje = _subir(12);
+        faseActual = 'Entendiendo tu idea';
+        if (texto.isNotEmpty) detalle = texto;
+        return true;
+      case 'planificar':
+        _marcar(1, EstadoFase.enCurso);
+        porcentaje = _subir(15);
+        faseActual = 'Diseñando la estructura';
+        if (texto.isNotEmpty) detalle = texto;
+        return true;
+      case 'escribir':
+        if (de > 0) {
+          // Con paso/de es la misma información que «Escribiendo X de Y»:
+          // mismo cálculo, para que ambos canales cuenten la misma historia.
+          _marcar(2, EstadoFase.enCurso, detalle: '$paso de $de');
+          porcentaje = _subir(20 + ((paso / de) * 35).round());
+          detalle = 'archivo $paso de $de';
+        } else {
+          _marcar(2, EstadoFase.enCurso);
+          porcentaje = _subir(20);
+          if (texto.isNotEmpty) detalle = texto;
+        }
+        faseActual = 'Escribiendo el código';
+        return true;
+      case 'verificar':
+        if (paso > 1) {
+          // Un reintento: mismo tratamiento que la frase «intento N».
+          _marcar(4, EstadoFase.enCurso, detalle: 'corrigiendo');
+          porcentaje = _subir(80);
+          faseActual = 'Corrigiendo detalles';
+        } else {
+          // Primera pasada: por debajo del 68 de «Instalando», que ocurre
+          // dentro de la verificación y aún tiene que poder verse subir.
+          _marcar(4, EstadoFase.enCurso,
+              detalle: de > 0 ? 'intento ${paso < 1 ? 1 : paso} de $de' : '');
+          porcentaje = _subir(60);
+          faseActual = 'Verificando';
+        }
+        if (texto.isNotEmpty) detalle = texto;
+        return true;
+      case 'publicar':
+        // Empieza la publicación; el 100 y el archivado siguen llegando con
+        // el mensaje final de VIVO/RETENIDA, que además trae la URL.
+        _marcar(5, EstadoFase.enCurso);
+        porcentaje = _subir(95);
+        faseActual = 'Publicando';
+        if (texto.isNotEmpty) detalle = texto;
+        return true;
+    }
+    return false; // fase que este móvil aún no conoce: que decidan las regex
   }
 
   /// El porcentaje nunca retrocede: verlo bajar destruye la confianza.

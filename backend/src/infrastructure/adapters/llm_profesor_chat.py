@@ -106,13 +106,23 @@ class LLMProfesorChat(ProfesorChatPort):
                 "su respuesta; si te las pega, enseña el concepto para que las "
                 f"deduzca él):\n{preguntas}\n"
             )
+        # El reto avanzado solo existe para el alumno de nivel ALTO vigente:
+        # a los demás ni se les nombra, para no abrumar. Y como el nivel se
+        # reajusta clase a clase, quien sube de nivel lo empieza a ver.
+        reto_extra = ""
+        if nivel == "alto" and getattr(clase, "reto_avanzado", ""):
+            reto_extra = (
+                "RETO AVANZADO (extra, opcional — este alumno va sobrado: "
+                f"menciónaselo cuando encaje, sin resolvérselo): {clase.reto_avanzado}\n"
+            )
         user = (
             f"[Responde en {idioma}]\n"
             + (f"NIVEL DEL ALUMNO: {guia}\n" if guia else "")
             + f"CLASE {clase.numero}: {clase.titulo}\n"
             f"Objetivo: {clase.objetivo}\n"
             f"Reto de la clase (NO lo resuelvas tú): {clase.reto}\n"
-            f"{examen}\n"
+            + reto_extra
+            + f"{examen}\n"
             f"CONTEXTO DEL PROYECTO DEL ALUMNO:\n{contexto_proyecto}\n\n"
             f"CONVERSACIÓN:\n{hist}\n\n"
             f"Responde al último mensaje del alumno como su profesor."

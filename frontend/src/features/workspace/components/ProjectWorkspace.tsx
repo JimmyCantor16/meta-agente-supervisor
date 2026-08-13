@@ -5,6 +5,7 @@ import { AulaEnVivo } from "./AulaEnVivo";
 import { AuditSubsection, TeacherSubsection } from "./DashboardEvaluacion";
 import { MetasProceso } from "./MetasProceso";
 import { ProfesorChat } from "./ProfesorChat";
+import { PublicarEnInternet } from "./PublicarEnInternet";
 import { SistemaEnVivo } from "./SistemaEnVivo";
 import type { MisionClase } from "../types";
 
@@ -82,6 +83,9 @@ export function ProjectWorkspace({
 
       {/* Panel "Tu sistema en vivo": encender/abrir/apagar, URL y puerto. */}
       <SistemaEnVivo projectName={projectName} />
+
+      {/* El agente publica el proyecto en internet por ti (repo + Render). */}
+      <PublicarEnInternet projectName={projectName} />
 
       {tab === "curso" ? (
         aulaAlLado && mision ? (

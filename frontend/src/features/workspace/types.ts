@@ -129,6 +129,8 @@ export interface CriterioClase {
   archivo: string;
   /** Qué debería verse distinto cuando el cambio esté bien hecho. */
   resultado_esperado: string;
+  /** Reto opcional para quien quiere ir más allá. Opcional: backends viejos no lo mandan. */
+  reto_avanzado?: string;
 }
 
 /**
@@ -193,6 +195,11 @@ export interface CursoResult {
   tema?: string;
   clases: ClaseCurso[];
   progreso: ProgresoCurso;
+  /**
+   * true = el profesor YA conoce el nivel del alumno (nivel vivo del backend):
+   * se salta la nivelación y solo se informa. Opcional: backends viejos no lo mandan.
+   */
+  nivel_conocido?: boolean;
 }
 
 export interface MensajeChat {
@@ -257,6 +264,25 @@ export interface ArchivoContenido {
 export interface ProjectSummary {
   name: string;
   files: number;
+}
+
+// ===== Despliegues automáticos (el agente publica en internet) =====
+
+/** Estados por los que pasa un despliegue hecho por el agente. */
+export type EstadoDespliegue = "en_curso" | "vivo" | "fallido" | "caido";
+
+// Espejo de la entidad `InfoDespliegue` del dominio (GET /agent/despliegues).
+export interface InfoDespliegue {
+  slug: string;
+  nombre_servicio: string;
+  url: string;
+  repo: string;
+  estado: EstadoDespliegue;
+  detalle: string;
+  /** Fecha ISO del último cambio de estado. */
+  actualizado_en: string;
+  /** Fecha ISO del último chequeo de salud (null si aún no hubo). */
+  ultimo_chequeo: string | null;
 }
 
 // Estado de uso y licencia.

@@ -21,9 +21,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # JavaScript (React #31, imports rotos...). Un chequeo HTTP jamás ve eso, y el
 # usuario final no sabe depurar una página en blanco. Pesa, pero es la
 # diferencia entre entregar software y entregar un enlace roto.
+# La última línea VERIFICA que Chromium quedó de verdad: si falta, el BUILD
+# falla aquí mismo, en vez de producir una imagen que entrega URLs sin gate
+# (el runtime lo degradaría a un ERROR en logs que nadie mira a tiempo).
 RUN pip install --no-cache-dir playwright \
     && playwright install --with-deps chromium \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && python -c "from pathlib import Path; from playwright.sync_api import sync_playwright; p = sync_playwright().start(); ruta = Path(p.chromium.executable_path); p.stop(); assert ruta.exists(), 'Chromium ausente: %s' % ruta; print('Gate de render verificado: chromium en %s' % ruta)"
 
 # Copia el código (ver .dockerignore para lo excluido).
 COPY . .

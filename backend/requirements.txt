@@ -1,9 +1,24 @@
 # --- Framework web ---
-fastapi>=0.111.0
+# El tope superior es deliberado: FastAPI sigue en 0.x, donde una MINOR puede
+# retirar API (p. ej. `@app.on_event`). Sin techo, un `pip install` de un
+# despliegue futuro traería sola una versión nunca probada aquí. 0.141.x es la
+# que corre hoy en la imagen; al subirlo, súbelo a mano y vuelve a probar.
+fastapi>=0.111.0,<0.142.0
 uvicorn[standard]>=0.30.0
 
 # --- Cliente LLM (DeepSeek vía SDK de OpenAI, por compatibilidad) ---
-openai>=1.30.0
+# Mismo motivo que el techo de FastAPI: sin él, una MAJOR nueva entra sola en el
+# siguiente despliegue (Render reconstruye desde cero) y toda la IA del producto
+# depende de este SDK. La 3.x está probada contra el proveedor real; el salto a
+# la 4.x se hace a mano y con prueba.
+openai>=1.30.0,<3.0.0
+
+# --- Cliente HTTP asíncrono ---
+# Se importa DIRECTAMENTE (render_deploy, vista_previa, curso_profesor, api),
+# así que va declarado. Hasta ahora entraba de rebote como dependencia de
+# `openai`: el día que openai cambiara de cliente HTTP, el arranque reventaba
+# con ModuleNotFoundError sin que nadie hubiera tocado el código.
+httpx>=0.27.0,<0.29.0
 
 # --- Validación y configuración ---
 pydantic>=2.7.0

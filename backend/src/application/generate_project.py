@@ -16,9 +16,11 @@ import logging
 from src.application.diagnostico_mvp import senales_visibilidad
 from src.domain.entities import (
     CasoGeneracion,
+    EstadoEntrega,
     EstadoMVP,
     GeneratedFile,
     GeneratedProject,
+    RutaGeneracion,
 )
 from src.domain.ports import (
     CasoRepositoryPort,
@@ -95,6 +97,12 @@ class GenerateProjectUseCase:
         self.frontend_error: str | None = None
         # Si el gate de "MVP visible" tuvo que relanzar por entregar solo JSON.
         self.relanzado_por_visibilidad: bool = False
+        # Honestidad de la entrega: cómo terminó la corrida (verificado /
+        # degradado / fallido) y por qué camino se construyó lo entregado.
+        # El entrypoint expone `estado_entrega` en el DTO de /generate;
+        # `ruta_generacion` se persiste en el banco de casos (harness).
+        self.estado_entrega: EstadoEntrega = EstadoEntrega.VERIFICADO
+        self.ruta_generacion: RutaGeneracion = RutaGeneracion.LIBRE
 
     def execute(self, prompt: str, language: str = "es") -> tuple[GeneratedProject, str]:
         """Genera, escribe y auto-verifica el proyecto.
@@ -104,7 +112,10 @@ class GenerateProjectUseCase:
         entregarlo (gate anti-Azure) y guarda el caso para las ideas futuras.
 
         Returns:
-            Tupla (proyecto final, ruta absoluta donde quedó escrito).
+            Tupla (proyecto final, ruta absoluta donde quedó escrito). El estado
+            honesto de la corrida queda en atributos: `estado_entrega`
+            (verificado/degradado/fallido, para el DTO de la API) y
+            `ruta_generacion` (el camino de construcción, para el banco de casos).
 
         Raises:
             ValueError: Si el prompt está vacío.
@@ -120,6 +131,8 @@ class GenerateProjectUseCase:
         self.rama_entrega = None
         self.intentos_verificacion = 0
         self.atascos = []
+        self.estado_entrega = EstadoEntrega.VERIFICADO
+        self.ruta_generacion = RutaGeneracion.LIBRE
 
         project, output_path = self._generar_y_verificar(original, language)
         self._guardar_caso(original, project)
@@ -182,6 +195,9 @@ class GenerateProjectUseCase:
         logger.info("Generando proyecto a partir del prompt (%d caracteres)...", len(prompt_gen))
         _fase("escribir", "Escribiendo el código de tu sistema")
         project = self._generator.generate(prompt_gen, language)
+        # Se anota por qué camino salió (esqueleto/base/libre): el banco de
+        # casos lo persiste y la cascada decide con él si hay peldaño más abajo.
+        self.ruta_generacion = self._ruta_construccion(project)
 
         # El spec+plan se guarda como material del alumno y guía del proyecto.
         if spec is not None:
@@ -301,15 +317,186 @@ class GenerateProjectUseCase:
             self._launch(project, output_path)
             self.frontend_error = final_error
         else:
-            # Se registra el final del error (donde está el diagnóstico), no los
-            # primeros 200 caracteres, que solo mostraban la cabecera inútil del
-            # traceback y dejaban a ciegas a quien revisa los logs.
+            # Antes aquí se "entregaba igual", con el fallo registrado solo en
+            # los logs: el usuario recibía un sistema roto indistinguible de uno
+            # bueno salvo url=null. Ahora se DEGRADA EN CASCADA hacia piezas
+            # correctas por construcción y, si nada salva la entrega, queda
+            # marcada como FALLIDA sin adornos.
+            # (Se registra el final del error, donde está el diagnóstico.)
             logger.warning(
-                "El proyecto se entrega con un fallo pendiente tras %d intentos:\n%s",
+                "El bucle agotó los %d intentos sin verificar:\n%s\n--- cascada de degradación ---",
                 _MAX_FIX_ATTEMPTS,
                 final_error[-1500:],
             )
+            project, output_path = self._degradar_en_cascada(
+                project, output_path, original, language
+            )
         return project, output_path
+
+    # ------------------------------------------------------------------
+    # Cascada de degradación: nunca entregar un roto indistinguible de un bueno
+    # ------------------------------------------------------------------
+    def _ruta_construccion(self, project: GeneratedProject) -> RutaGeneracion:
+        """Detecta por qué camino se construyó un proyecto ya generado.
+
+        El esqueleto probado deja su archivo marcador y las bases doradas se
+        declaran en sus instrucciones de ejecución; todo lo demás es generación
+        libre. El import va DENTRO y protegido: detectar la ruta jamás puede
+        impedir la generación.
+        """
+        try:
+            from src.infrastructure.adapters.skeleton_fullstack import MARCADOR
+
+            if any(f.path == MARCADOR for f in project.files):
+                return RutaGeneracion.ESQUELETO
+        except Exception:  # noqa: BLE001 - detectar la ruta es best-effort
+            pass
+        if "Sistema Base verificado" in (project.run_instructions or ""):
+            return RutaGeneracion.BASE_DORADA
+        return RutaGeneracion.LIBRE
+
+    def _degradar_en_cascada(
+        self, project: GeneratedProject, output_path: str, original: str, language: str
+    ) -> tuple[GeneratedProject, str]:
+        """El bucle se rindió: en vez de entregar el fallo, se baja por peldaños.
+
+        (a) Se reintenta la idea FORZANDO el arquetipo/base dorada más cercano
+            (correcta por construcción). UNA sola vez.
+        (b) Si tampoco verifica, se construye el esqueleto genérico. UNA vez.
+
+        Si algún peldaño salva la entrega, `estado_entrega` queda en DEGRADADO
+        (se entregó, pero no lo que se generó primero). Si ninguno, queda en
+        FALLIDO y se devuelve el proyecto original con su fallo declarado.
+        """
+        if self._ruta_construccion(project) is not RutaGeneracion.LIBRE:
+            # Ya venía de esqueleto/base dorada (correcto por construcción) y
+            # aun así no verificó: no hay peldaño más abajo al que bajar.
+            self.estado_entrega = EstadoEntrega.FALLIDO
+            self.atascos.append(
+                "Entrega FALLIDA: ni la pieza correcta por construcción pasó la verificación."
+            )
+            _fase("verificar", "No conseguí dejar el sistema verificado; la entrega queda marcada como fallida")
+            return project, output_path
+
+        # --- Peldaño (a): la base dorada más cercana, forzada -------------
+        _fase(
+            "escribir",
+            "El primer intento no pasó la verificación; reconstruyendo sobre una base probada...",
+        )
+        candidato = self._instanciar_base_cercana(original, language)
+        entregado = self._verificar_y_entregar_degradado(
+            candidato, original, language, RutaGeneracion.DEGRADADO_A_BASE
+        )
+        if entregado is not None:
+            self.atascos.append(
+                "La generación libre no verificó; se entregó reconstruido sobre una base dorada."
+            )
+            return entregado
+
+        # --- Peldaño (b): el esqueleto genérico garantizado ----------------
+        _fase(
+            "escribir",
+            "La base probada tampoco encajó; levantando el esqueleto genérico garantizado...",
+        )
+        esqueleto = self._construir_esqueleto_generico(original)
+        entregado = self._verificar_y_entregar_degradado(
+            esqueleto, original, language, RutaGeneracion.DEGRADADO_A_ESQUELETO
+        )
+        if entregado is not None:
+            self.atascos.append(
+                "Ni la generación libre ni la base verificaron; se entregó el esqueleto genérico."
+            )
+            return entregado
+
+        # --- Ningún peldaño salvó la entrega: se dice sin adornos ----------
+        self.estado_entrega = EstadoEntrega.FALLIDO
+        self.atascos.append("Entrega FALLIDA: ni la cascada de degradación la salvó.")
+        _fase("verificar", "No conseguí dejar un sistema verificado; la entrega queda marcada como fallida")
+        return project, output_path
+
+    def _verificar_y_entregar_degradado(
+        self,
+        candidato: GeneratedProject | None,
+        original: str,
+        language: str,
+        ruta: RutaGeneracion,
+    ) -> tuple[GeneratedProject, str] | None:
+        """Escribe, verifica y entrega un candidato de la cascada.
+
+        Devuelve la tupla (proyecto, ruta en disco) si el peldaño salvó la
+        entrega, o None si tampoco verificó (el llamador decide el siguiente
+        peldaño). Nunca lanza: un peldaño roto no tumba la cascada.
+        """
+        if candidato is None or self._verifier is None:
+            return None
+        try:
+            ruta_disco = self._writer.write(candidato)
+            if self._verifier.verify(ruta_disco) is not None:
+                logger.warning(
+                    "Cascada: el candidato '%s' (ruta %s) tampoco pasó la verificación.",
+                    candidato.slug(), ruta.value,
+                )
+                return None
+            self.ruta_generacion = ruta
+            self.estado_entrega = EstadoEntrega.DEGRADADO
+            logger.info(
+                "Cascada: '%s' verificado por la ruta '%s'; se entrega DEGRADADO (honesto).",
+                candidato.slug(), ruta.value,
+            )
+            _fase("publicar", "La reconstrucción sí verificó; arrancando tu sistema")
+            return self._entregar(candidato, ruta_disco, original, language)
+        except Exception as exc:  # noqa: BLE001 - un peldaño roto no tumba la cascada
+            logger.warning("Cascada: falló el peldaño '%s': %s", ruta.value, exc)
+            return None
+
+    def _instanciar_base_cercana(self, original: str, language: str) -> GeneratedProject | None:
+        """Fuerza la clasificación al arquetipo MÁS CERCANO e instancia su base.
+
+        Reusa el clasificador existente (que ya llama al LLM vía MultiModelLLM)
+        en modo rescate: mejor una base dorada que cubra el 80% de la idea que
+        un proyecto libre que no arranca. Devuelve None si ni así hay arquetipo.
+        """
+        try:
+            from src.infrastructure.adapters.instanciador_bases import (
+                decidir_arquetipo,
+                instanciar,
+            )
+            from src.infrastructure.adapters.multimodel_llm import MultiModelLLM
+
+            prompt_rescate = (
+                f"{original}\n\n"
+                "MODO RESCATE: la generación libre de esta idea YA FALLÓ la "
+                "verificación. Elige el arquetipo MÁS CERCANO aunque el calce no "
+                "sea perfecto (recorta la idea a lo que la base sí cubre) y "
+                "responde con confianza 'alta' o 'media'. Responde 'libre' SOLO "
+                "si ningún arquetipo puede representar ni una parte útil de la idea."
+            )
+            manifiesto = decidir_arquetipo(MultiModelLLM(role="prompt"), prompt_rescate, language)
+            if manifiesto is None:
+                logger.warning("Cascada: ni en modo rescate hubo arquetipo utilizable.")
+                return None
+            logger.info("Cascada: rescate con la base dorada '%s'.", manifiesto["arquetipo"])
+            return instanciar(manifiesto)
+        except Exception as exc:  # noqa: BLE001 - el rescate es best-effort
+            logger.warning("Cascada: no se pudo instanciar la base cercana: %s", exc)
+            return None
+
+    def _construir_esqueleto_generico(self, original: str) -> GeneratedProject | None:
+        """Último peldaño: el esqueleto CRUD probado, correcto por construcción.
+
+        NO llama a ningún LLM: usa la plantilla verificada con un nombre digno
+        derivado de la idea. Genérico, pero ARRANCA — y el modo profesor enseña
+        después a moldearlo hacia lo que se pidió.
+        """
+        try:
+            from src.infrastructure.adapters.skeleton_fullstack import construir
+
+            palabras = [p for p in original.split() if p.strip()][:5]
+            nombre = " ".join(palabras)[:60] or "Mi Sistema"
+            return construir(nombre, "elementos", "Escribe algo...")
+        except Exception as exc:  # noqa: BLE001 - el último peldaño es best-effort
+            logger.warning("Cascada: no se pudo construir el esqueleto genérico: %s", exc)
+            return None
 
     def _normalizar_determinista(self, output_path: str) -> None:
         """Aplica los fixes deterministas (sin IA) antes de verificar/entregar:
@@ -521,6 +708,14 @@ class GenerateProjectUseCase:
         """Guarda el caso en el banco: qué se pidió, qué salió y qué se aprendió."""
         if self._caso_repo is None:
             return
+        # La ruta se recalcula sobre el proyecto FINAL (el gate de visibilidad
+        # pudo relanzar y cambiar de camino), salvo que la cascada ya la haya
+        # fijado en un valor degradado: ese diagnóstico no se pisa.
+        if self.ruta_generacion not in (
+            RutaGeneracion.DEGRADADO_A_BASE,
+            RutaGeneracion.DEGRADADO_A_ESQUELETO,
+        ):
+            self.ruta_generacion = self._ruta_construccion(project)
         tiene_frontend, tiene_api = senales_visibilidad(project.files)
         if not tiene_frontend and tiene_api:
             estado = EstadoMVP.VACIO
@@ -536,6 +731,14 @@ class GenerateProjectUseCase:
             problemas.append(self.frontend_error[:300])
         if not self.last_url and estado != EstadoMVP.VACIO:
             problemas.append("No se pudo entregar una URL viva.")
+        # El estado honesto de la entrega también alimenta el RAG: una idea que
+        # obligó a degradar (o falló del todo) es una lección para las similares.
+        if self.estado_entrega == EstadoEntrega.FALLIDO:
+            problemas.append("Entrega FALLIDA: ni la cascada de degradación la salvó.")
+        elif self.estado_entrega == EstadoEntrega.DEGRADADO:
+            problemas.append(
+                "La generación original no verificó; se entregó por la cascada de degradación."
+            )
 
         try:
             self._caso_repo.guardar(CasoGeneracion(
@@ -544,6 +747,7 @@ class GenerateProjectUseCase:
                 estado_mvp=estado,
                 tuvo_url=bool(self.last_url),
                 relanzado=self.relanzado_por_visibilidad,
+                ruta=self.ruta_generacion,
                 problemas=problemas,
                 num_archivos=len(project.files),
             ))

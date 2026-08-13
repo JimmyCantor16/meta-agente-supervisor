@@ -41,16 +41,27 @@ class SqliteCursoRepository(CursoRepositoryPort):
                     completadas   TEXT NOT NULL DEFAULT '[]',
                     total_clases  INTEGER NOT NULL DEFAULT 0,
                     graduado      INTEGER NOT NULL DEFAULT 0,
-                    nivel         TEXT NOT NULL DEFAULT 'desconocido'
+                    nivel         TEXT NOT NULL DEFAULT 'desconocido',
+                    racha_primeras  INTEGER NOT NULL DEFAULT 0,
+                    fallos_seguidos INTEGER NOT NULL DEFAULT 0,
+                    clase_fallando  INTEGER NOT NULL DEFAULT 0
                 )
             """)
-            # Migración para bases existentes: añade 'nivel' si falta (idempotente).
+            # Migración para bases existentes: añade columnas si faltan (idempotente).
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(curso_progreso)")}
             if "nivel" not in cols:
                 conn.execute(
                     "ALTER TABLE curso_progreso ADD COLUMN nivel TEXT NOT NULL "
                     "DEFAULT 'desconocido'"
                 )
+            # Contadores del NIVEL VIVO: racha de clases al primer intento y
+            # fallos consecutivos en la misma clase (con qué clase se cuentan).
+            for columna in ("racha_primeras", "fallos_seguidos", "clase_fallando"):
+                if columna not in cols:
+                    conn.execute(
+                        f"ALTER TABLE curso_progreso ADD COLUMN {columna} "
+                        "INTEGER NOT NULL DEFAULT 0"
+                    )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS curso_chat (
                     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,12 +104,14 @@ class SqliteCursoRepository(CursoRepositoryPort):
         with self._connect() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO curso_progreso "
-                "(curso_id, usuario_sub, proyecto, clase_actual, completadas, total_clases, graduado, nivel) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(curso_id, usuario_sub, proyecto, clase_actual, completadas, total_clases, graduado, nivel, "
+                "racha_primeras, fallos_seguidos, clase_fallando) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (progreso.curso_id, progreso.usuario_sub, progreso.proyecto,
                  progreso.clase_actual, json.dumps(progreso.completadas),
                  progreso.total_clases, 1 if progreso.graduado else 0,
-                 progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel),
+                 progreso.nivel.value if hasattr(progreso.nivel, "value") else progreso.nivel,
+                 progreso.racha_primeras, progreso.fallos_seguidos, progreso.clase_fallando),
             )
 
     def cargar_progreso(self, curso_id) -> ProgresoCurso | None:
@@ -129,12 +142,19 @@ class SqliteCursoRepository(CursoRepositoryPort):
     def _row_to_progreso(row: sqlite3.Row) -> ProgresoCurso:
         claves = row.keys()
         nivel = row["nivel"] if "nivel" in claves else "desconocido"
+
+        def entero(nombre: str) -> int:
+            return int(row[nombre] or 0) if nombre in claves else 0
+
         return ProgresoCurso(
             curso_id=row["curso_id"], usuario_sub=row["usuario_sub"],
             proyecto=row["proyecto"], clase_actual=row["clase_actual"],
             completadas=json.loads(row["completadas"] or "[]"),
             total_clases=row["total_clases"], graduado=bool(row["graduado"]),
             nivel=nivel or "desconocido",
+            racha_primeras=entero("racha_primeras"),
+            fallos_seguidos=entero("fallos_seguidos"),
+            clase_fallando=entero("clase_fallando"),
         )
 
     # ---- chat ----
@@ -152,3 +172,28 @@ class SqliteCursoRepository(CursoRepositoryPort):
                 (curso_id, numero_clase),
             ).fetchall()
         return [MensajeChat(rol=r["rol"], texto=r["texto"]) for r in rows]
+
+    def inicio_clase(self, curso_id, numero_clase) -> str | None:
+        """Cuándo se abrió la clase (ISO UTC), o None si nunca se abrió.
+
+        Es el primer mensaje del chat de esa clase (la bienvenida del profesor).
+        Lo usa la verificación con git: solo cuentan los commits del alumno
+        POSTERIORES al inicio de la clase — un cambio de hace un mes no supera
+        la clase de hoy.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MIN(creado_en) AS inicio FROM curso_chat "
+                "WHERE curso_id = ? AND numero_clase = ?",
+                (curso_id, numero_clase),
+            ).fetchone()
+        inicio = (row["inicio"] if row else None) or None
+        if not inicio:
+            return None
+        # SQLite guarda "YYYY-MM-DD HH:MM:SS" en UTC pero sin zona; se devuelve
+        # en ISO con zona explícita para que `git log --since` no lo lea en hora
+        # local y descarte commits válidos.
+        texto = str(inicio).strip().replace(" ", "T")
+        if not texto.endswith(("Z", "+00:00")) and "+" not in texto[10:]:
+            texto += "+00:00"
+        return texto
