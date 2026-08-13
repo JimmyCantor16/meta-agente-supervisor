@@ -12,6 +12,10 @@
 #     Render le añadió un sufijo al nombre.
 #   - Añade la URL del frontend a los orígenes autorizados de Google OAuth.
 
+# OJO (agosto 2026): la base declarada aquí abajo NO existe hoy en la cuenta
+# (la de plan free caduca a los 30 días). Mientras no se recree, `DATABASE_URL`
+# llega vacía al backend, `uses_postgres` es False y la persistencia entera
+# recae en el SQLite de `DB_PATH`, que ya apunta al disco persistente.
 databases:
   # Base de datos PostgreSQL: sustituye al archivo SQLite local, porque el
   # disco de los servicios de Render es efímero y se borra en cada deploy.
@@ -46,6 +50,24 @@ services:
         fromDatabase:
           name: metaagente-db
           property: connectionString
+      # Dónde vive el SQLite cuando NO hay PostgreSQL (hoy: la base free del
+      # blueprint no existe, así que `uses_postgres` es False y TODO —usuarios,
+      # licencias, cupos, cursos, progreso, despliegues, trabajos y actividad—
+      # cae en este archivo).
+      #
+      # `/app/generated` es el ÚNICO punto de montaje del disco persistente (ver
+      # `disk` arriba). El valor por defecto de `db_path` resuelve a
+      # `/app/evaluations.db`, que está FUERA del disco: se borraba entero en
+      # cada deploy y en cada reinicio, y el usuario volvía a encontrarse sin
+      # cuenta ni licencia. Con esta ruta, la base sobrevive a ambos.
+      #
+      # Va como archivo suelto en la raíz del disco, no en una subcarpeta, a
+      # propósito: la galería de proyectos y la bandeja de entregas enumeran
+      # `generated/` filtrando por `is_dir()`, así que un ARCHIVO (y sus
+      # `-wal`/`-shm`) es invisible para ellas, mientras que una subcarpeta
+      # aparecería como si fuera un proyecto más del usuario.
+      - key: DB_PATH
+        value: /app/generated/metaagente.db
       # Redis interno ya existente (caché / estado compartido).
       # Valor: redis://red-d9e08hjtqb8s739ifllg:6379
       - key: REDIS_URL
@@ -85,6 +107,19 @@ services:
       # --- Ajustes no secretos ---
       - key: USE_MOCK_LLM
         value: "false"
+      # Aviso de actualización de la app de escritorio. El frontend compara la
+      # versión HORNEADA en el instalador con esta y, si hay una más nueva Y una
+      # URL de descarga, enseña el aviso. Estaban puestas a mano en el dashboard:
+      # declararlas aquí evita que el blueprint mienta sobre lo que corre.
+      # Debe ir SIEMPRE igual a la del instalador publicado
+      # (`desktop/src-tauri/tauri.conf.json`); si se adelanta, el aviso sale
+      # para una descarga que todavía no existe.
+      - key: VERSION_ESCRITORIO
+        value: "1.1.0"
+      # La URL cambia con cada instalador publicado (y a veces es un enlace
+      # privado), así que se rellena en el dashboard, no aquí.
+      - key: URL_DESCARGA_ESCRITORIO
+        sync: false
       - key: FREE_GENERATION_LIMIT
         value: "3"
       - key: FREE_LESSON_LIMIT

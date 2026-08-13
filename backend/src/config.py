@@ -7,6 +7,7 @@ clave de API o un valor es inválido, el proceso no levanta y el error es claro.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -104,6 +105,12 @@ class Settings(BaseSettings):
     max_retries: int = Field(default=3, ge=0, le=10)
 
     # --- Persistencia (memoria del agente) ---
+    # Sin PostgreSQL, este archivo es TODA la memoria del sistema: usuarios,
+    # licencias, cupos, cursos, progreso, despliegues, trabajos y actividad.
+    # En un PaaS hay que apuntarlo DENTRO del disco persistente (en Render,
+    # `/app/generated/metaagente.db`; ver render.yaml): el valor por defecto es
+    # relativo al directorio de trabajo, que en el contenedor es efímero y se
+    # borra en cada deploy y en cada reinicio.
     db_path: str = Field(
         default="evaluations.db",
         description="Ruta del archivo SQLite donde se guardan las evaluaciones.",
@@ -318,6 +325,26 @@ class Settings(BaseSettings):
                 model=self.deepseek_model,
             )
         ]
+
+    def model_post_init(self, __context: object) -> None:
+        """Garantiza que la carpeta de `db_path` existe antes de abrir el SQLite.
+
+        Los repositorios hacen `sqlite3.connect(db_path)` directamente, y sqlite
+        NO crea directorios: si la ruta apunta a una carpeta que todavía no
+        existe, el arranque muere con «unable to open database file» y la API
+        contesta 500 a todo. Mover la base al disco persistente (`DB_PATH=
+        /app/generated/...`) hace justamente eso, así que la garantía va aquí,
+        una sola vez, en vez de repetirla en cada adaptador.
+
+        Nunca lanza: si el directorio no se puede crear (permisos, disco de solo
+        lectura), el error real lo dará sqlite con su propio mensaje.
+        """
+        try:
+            carpeta = Path(self.db_path).expanduser().parent
+            if str(carpeta) not in ("", "."):
+                carpeta.mkdir(parents=True, exist_ok=True)
+        except OSError:  # noqa: S110 - deliberado: el fallo real lo reporta sqlite
+            pass
 
 
 @lru_cache

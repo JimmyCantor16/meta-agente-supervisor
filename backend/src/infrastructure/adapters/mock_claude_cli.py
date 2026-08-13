@@ -55,7 +55,13 @@ class MockClaudeCli(AgenteCliPort):
         allowed_tools: list[str] | None = None,
         clave_esperada: str | None = None,
     ) -> Any:
-        """Devuelve algo coherente con el contrato pedido, al instante."""
+        """Devuelve algo coherente con el contrato pedido, al instante.
+
+        Paridad EXACTA con el adaptador real, incluida la parte que engaña: el
+        retorno de `validar` se descarta y lo que sale es el DICT, no la
+        entidad. El mock no puede ser más amable que el CLI o el consumidor se
+        rompería solo en producción.
+        """
         self._registrar_uso()
         if validar is None and clave_esperada is None:
             return _TEXTO_PLANO

@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from src.domain.entities import VeredictoRevision
 from src.domain.ports import AgenteCliError, AgenteCliPort
 from src.infrastructure.adapters.git_util import correr_git
@@ -107,6 +109,48 @@ _SYSTEM_REVISOR = (
 
 def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _veredicto_desde(slug: str, data: Any) -> VeredictoRevision:
+    """Normaliza el JSON del revisor y lo convierte en ``VeredictoRevision``.
+
+    Se usa en DOS momentos, y es a propósito:
+
+      1. como ``validar`` dentro del bucle de reintentos del agente, donde solo
+         importa que NO lance (una forma equivocada cuenta como fallo del
+         modelo y se pide otra muestra);
+      2. sobre lo que el puerto devuelve al terminar, donde sí importa el valor.
+
+    El contrato de ``AgenteCliPort.ejecutar`` dice que el retorno de ``validar``
+    se DESCARTA —es un chequeo, igual que en ``MultiModelLLM``— y ambos
+    adaptadores devuelven el dict crudo. Suponer lo contrario dejaba muerta la
+    revisión entera: el ``isinstance`` de después fallaba SIEMPRE, también con
+    el CLI real. Por eso la entidad la construye este caso de uso, aquí.
+
+    Campos que NO decide el modelo: ``slug`` (lo pone quien encarga la
+    revisión), ``publicado`` (lo decide el worker al publicar) y ``fecha``.
+
+    Raises:
+        ValueError: si no es un objeto JSON o le falta el resumen.
+        ValidationError: si los campos no cumplen el contrato del dominio.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(f"El veredicto debe ser un objeto JSON, no {type(data).__name__}.")
+    resumen = str(data.get("resumen") or "").strip()
+    if not resumen:
+        raise ValueError("El veredicto necesita un resumen no vacío.")
+    limpio = {
+        "slug": slug,
+        "aprobar": data.get("aprobar"),
+        "calidad": data.get("calidad"),
+        "resumen": resumen[:600],
+        # Máximo 5 mejoras, cada una acotada: el contrato manda.
+        "mejoras": [str(m).strip()[:300] for m in (data.get("mejoras") or [])][:5],
+        # El modelo NO decide si se publicó: eso lo decide este worker.
+        "publicado": False,
+        "fecha": _ahora(),
+    }
+    return VeredictoRevision.model_validate(limpio)
 
 
 def _revision_como_markdown(veredicto: VeredictoRevision) -> str:
@@ -323,28 +367,16 @@ class RevisionEntregasUseCase:
         El validador corre DENTRO de ``ejecutar`` (regla de oro del proyecto):
         si el agente devuelve JSON parseable pero con la forma equivocada,
         cuenta como fallo suyo y el puerto reintenta/salta de proveedor.
+
+        Y el veredicto se construye AQUÍ, con lo que el puerto devuelve: su
+        contrato manda descartar el retorno de ``validar``, así que confiar en
+        él dejaba la revisión muerta al 100% (ver ``_veredicto_desde``).
         """
 
-        def validar(data: Any) -> VeredictoRevision:
-            if not isinstance(data, dict):
-                raise ValueError(
-                    f"El veredicto debe ser un objeto JSON, no {type(data).__name__}."
-                )
-            resumen = str(data.get("resumen") or "").strip()
-            if not resumen:
-                raise ValueError("El veredicto necesita un resumen no vacío.")
-            limpio = {
-                "slug": slug,
-                "aprobar": data.get("aprobar"),
-                "calidad": data.get("calidad"),
-                "resumen": resumen[:600],
-                # Máximo 5 mejoras, cada una acotada: el contrato manda.
-                "mejoras": [str(m).strip()[:300] for m in (data.get("mejoras") or [])][:5],
-                # El modelo NO decide si se publicó: eso lo decide este worker.
-                "publicado": False,
-                "fecha": _ahora(),
-            }
-            return VeredictoRevision.model_validate(limpio)
+        def validar(data: Any) -> None:
+            # Solo chequeo: el puerto tira el retorno. Si no cumple, lanza y el
+            # agente reintenta con otra muestra.
+            _veredicto_desde(slug, data)
 
         user = (
             f"PROYECTO: {slug}\n\n"
@@ -355,10 +387,18 @@ class RevisionEntregasUseCase:
             "Emite tu veredicto AHORA como un único objeto JSON."
         )
         resultado = self._agente.ejecutar(_SYSTEM_REVISOR, user, validar=validar)
-        if not isinstance(resultado, VeredictoRevision):
-            # El puerto devolvió texto plano: sin la forma exacta no hay veredicto.
-            raise AgenteCliError("El agente no devolvió un veredicto JSON con la forma pedida.")
-        return resultado
+        # Lo normal es un dict (ambos adaptadores devuelven el JSON crudo); se
+        # admite también la entidad ya construida por si algún adaptador futuro
+        # la devuelve. Cualquier otra cosa —texto plano incluido— no es veredicto.
+        if isinstance(resultado, VeredictoRevision):
+            return resultado
+        try:
+            return _veredicto_desde(slug, resultado)
+        except (ValidationError, ValueError) as exc:
+            raise AgenteCliError(
+                "El agente no devolvió un veredicto JSON con la forma pedida: "
+                f"{str(exc)[:200]}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Archivado: REVISION.md como commit nuevo en la rama, por PLOMERÍA

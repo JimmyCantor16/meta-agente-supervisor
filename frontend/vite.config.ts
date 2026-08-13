@@ -47,10 +47,18 @@ export default defineConfig({
         // precacheado (el equivalente offline del `try_files` de Nginx y
         // del rewrite /* de Render)…
         navigateFallback: "index.html",
-        // …pero NUNCA /api: una navegación directa a /api/... debe llegar
-        // al backend (vía el rewrite de Render o el proxy de Nginx), no al
-        // shell de la SPA.
-        navigateFallbackDenylist: [/^\/api\//],
+        // …pero NUNCA estas rutas, que TIENEN que salir a la red. Comprobado
+        // con el sitio apagado: sin la lista, el service worker respondía a
+        // /preview/<slug>/ con el shell del Meta-Agente desde su caché, así
+        // que el MVP del usuario nunca llegaba a pintarse.
+        //   · /api/**      → el backend (rewrite de Render o proxy de Nginx).
+        //   · /preview/**  → el proxy que sirve los MVP generados; vive en el
+        //     backend, pero si alguien abre esa ruta bajo el dominio del
+        //     frontend, el SW no debe quedársela.
+        // Ojo: workbox compara contra `pathname + search`, así que anclar con
+        // ^ es correcto y `/?puente=CODIGO` (el puente de sesión con el
+        // escritorio) NO cae aquí: sigue recibiendo el index con su query.
+        navigateFallbackDenylist: [/^\/api\//, /^\/preview\//],
         // Precache SOLO de los assets del build (más los iconos de public/).
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
         // El bundle principal ronda 1 MB (CodeMirror + hls.js); margen para

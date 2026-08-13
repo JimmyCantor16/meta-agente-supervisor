@@ -245,6 +245,13 @@ class ClaudeCliAgent(AgenteCliPort):
         `validar` corre DENTRO del bucle de reintentos (misma filosofía que
         `MultiModelLLM`): si el JSON parsea pero no cumple el contrato, cuenta
         como fallo del modelo y se pide otra muestra (1 reintento extra máximo).
+
+        OJO, y es a propósito: el RETORNO de `validar` se DESCARTA — es un
+        chequeo, no un constructor. Lo que sale de aquí es el DICT, nunca la
+        entidad; quien necesite una entidad la construye él con ese dict (así
+        lo hace `revision_entregas._veredicto_desde`). Dar por hecho lo
+        contrario dejó la revisión de entregas muerta al 100 % en agosto de
+        2026: su `isinstance(resultado, VeredictoRevision)` no daba True jamás.
         """
         comando = self._comando("json", allowed_tools)
         dir_trabajo = self._resolver_cwd(cwd)

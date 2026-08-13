@@ -13,6 +13,7 @@ import ipaddress
 import logging
 import socket
 import threading
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse
@@ -2324,10 +2325,26 @@ async def publicar_proyecto(
 )
 def listar_despliegues(
     repo: DespliegueRepositoryPort = Depends(get_despliegue_repository),
-    user: UserAccount = Depends(get_current_user),  # noqa: ARG001 - solo autentica
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
 ) -> list[DespliegueDTO]:
-    """La lista siempre cuenta la verdad: en_curso / vivo / fallido / caido."""
-    return [DespliegueDTO(**d.model_dump()) for d in repo.listar()]
+    """La lista siempre cuenta la verdad: en_curso / vivo / fallido / caido.
+
+    Y solo la SUYA: la tabla de despliegues es única para todo el servidor, así
+    que sin este filtro cualquiera con sesión veía el nombre, el repositorio y
+    la URL de los proyectos publicados por los demás. Se usa el mismo criterio
+    que la galería de proyectos (`duenos_proyecto.es_suyo`): el dueño manda, un
+    proyecto sin marca sigue siendo visible, y el admin lo ve todo.
+    """
+    from src.infrastructure.adapters.duenos_proyecto import es_suyo
+
+    generados = Path(get_settings().generated_dir)
+    admin = account.is_super_admin(user.email)
+    return [
+        DespliegueDTO(**d.model_dump())
+        for d in repo.listar()
+        if es_suyo(generados / d.slug, user.sub or "", admin)
+    ]
 
 
 # --- ORQUESTA: revisión post-entrega en segundo plano + trabajos de fondo ---
@@ -2968,11 +2985,19 @@ async def _bucle_auditoria_despliegues() -> None:
     ciclo — un tropiezo del bucle jamás puede tumbar la API. Solo se difunde
     un aviso cuando algo pasó de 'vivo' a 'caido' (la promesa que se rompió);
     los demás cambios se leen en GET /agent/despliegues.
+
+    El aviso va SOLO a su dueño: `difundir` sin dueño lo reparte entre todos
+    los conectados, y con varios usuarios eso significaba contarle a cualquiera
+    el nombre y la URL del sistema de otro. Un proyecto sin marca de dueño
+    (los de antes) sigue anunciándose a todos, como en el resto del sistema.
     """
+    from src.infrastructure.adapters.duenos_proyecto import dueno_de
+
     while True:
         try:
             repo = get_despliegue_repository()
             previos = {d.slug: d.estado for d in repo.listar()}
+            generados = Path(get_settings().generated_dir)
             # En un hilo aparte: el chequeo hace HTTP real y hasta espera ~1 min
             # a que un servicio free de Render despierte.
             informe = await asyncio.to_thread(get_auditar_despliegues_use_case().execute)
@@ -2980,7 +3005,8 @@ async def _bucle_auditoria_despliegues() -> None:
                 if previos.get(d.slug) == "vivo" and d.estado == "caido":
                     DIFUSOR.difundir(
                         f"📉 Tu sistema «{d.slug}» dejó de responder ({d.url}). "
-                        f"Detalle: {d.detalle[:160]}"
+                        f"Detalle: {d.detalle[:160]}",
+                        dueno_de(generados / d.slug) or "",
                     )
         except Exception as exc:  # noqa: BLE001 - el bucle jamás tumba la API
             logger.warning("La auditoría de despliegues tropezó: %s", exc)
@@ -2998,10 +3024,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     settings = settings or get_settings()
 
+    @asynccontextmanager
+    async def _ciclo_de_vida(app: FastAPI):
+        """Tareas que viven con el proceso; ninguna puede impedir el arranque.
+
+        Sustituye a `@app.on_event("startup")`, que está deprecado en FastAPI y
+        desaparecerá en una versión futura: el día que lo retiren, el arranque
+        se quedaría mudo (sin sonda de navegador ni auditoría) o reventaría, sin
+        que nadie hubiera tocado este archivo. Hace exactamente lo mismo que
+        antes; lo posterior al `yield` (apagado) se deja vacío a propósito: las
+        tareas mueren con el proceso, como hasta ahora.
+        """
+        # 0) Se captura el loop principal: los endpoints síncronos (threadpool)
+        #    lo necesitan para programar trabajos de fondo (revisión post-entrega).
+        global _LOOP_PRINCIPAL
+        _LOOP_PRINCIPAL = asyncio.get_running_loop()
+
+        # 1) La sonda del navegador se calienta ya: un entorno sin Chromium se
+        #    ve en los logs (y en /health) ANTES de la primera entrega.
+        async def _calentar_sonda() -> None:
+            try:
+                estado = await asyncio.to_thread(_estado_navegador)
+                if estado != "ok":
+                    logger.error("Gate de render SIN navegador: %s", estado)
+            except Exception:  # noqa: BLE001 - calentar es best-effort
+                pass
+
+        # 2) Auditoría periódica de despliegues (cada 30 min).
+        #    Las referencias se guardan en app.state: sin ellas, el recolector
+        #    de basura podría cancelar las tareas a mitad de ciclo.
+        app.state.tareas_fondo = [
+            asyncio.create_task(_calentar_sonda()),
+            asyncio.create_task(_bucle_auditoria_despliegues()),
+        ]
+
+        yield
+
     app = FastAPI(
         title="Meta-Agente Supervisor de Desarrollo Autónomo",
         description="Evalúa, critica y optimiza prompts de desarrollo con DeepSeek.",
         version="1.1.0",
+        lifespan=_ciclo_de_vida,
     )
 
     # CORS: imprescindible para que el frontend (Vite) consuma la API.
@@ -3038,32 +3101,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from src.infrastructure.entrypoints.vista_previa import router as preview_router
 
     app.include_router(preview_router)
-
-    @app.on_event("startup")
-    async def _arrancar_tareas_de_fondo() -> None:
-        """Tareas que viven con el proceso; ninguna puede impedir el arranque."""
-        # 0) Se captura el loop principal: los endpoints síncronos (threadpool)
-        #    lo necesitan para programar trabajos de fondo (revisión post-entrega).
-        global _LOOP_PRINCIPAL
-        _LOOP_PRINCIPAL = asyncio.get_running_loop()
-
-        # 1) La sonda del navegador se calienta ya: un entorno sin Chromium se
-        #    ve en los logs (y en /health) ANTES de la primera entrega.
-        async def _calentar_sonda() -> None:
-            try:
-                estado = await asyncio.to_thread(_estado_navegador)
-                if estado != "ok":
-                    logger.error("Gate de render SIN navegador: %s", estado)
-            except Exception:  # noqa: BLE001 - calentar es best-effort
-                pass
-
-        # 2) Auditoría periódica de despliegues (cada 30 min).
-        #    Las referencias se guardan en app.state: sin ellas, el recolector
-        #    de basura podría cancelar las tareas a mitad de ciclo.
-        app.state.tareas_fondo = [
-            asyncio.create_task(_calentar_sonda()),
-            asyncio.create_task(_bucle_auditoria_despliegues()),
-        ]
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:
