@@ -5,10 +5,13 @@ construido el proyecto y cómo extenderlo **respetando la arquitectura**.
 
 ## Qué es
 
-Meta-Agente web que convierte una idea en un proyecto de software real y enseña
-a completarlo. Backend FastAPI (arquitectura hexagonal) + Frontend React/TS/Tailwind
-(feature-driven). IA vía proveedores gratuitos compatibles con OpenAI (Groq por
-defecto), con **fallback multi-modelo**.
+Meta-Agente web que convierte una idea en un proyecto de software real, **lo
+publica en internet** y enseña a completarlo. Backend FastAPI (arquitectura
+hexagonal) + Frontend React/TS/Tailwind (feature-driven), más un móvil Flutter
+y un escritorio Tauri que hablan con el MISMO backend. IA vía proveedores
+gratuitos compatibles con OpenAI (Groq por defecto), con **fallback
+multi-modelo**, y un **agente CLI local** (Claude Code) para el trabajo pesado
+en las máquinas del equipo.
 
 ## Cómo correr / reconstruir
 
@@ -71,12 +74,146 @@ No lo pongas si el adaptador ya es **defensivo** (`data.get(...)` con valores po
 defecto, como `llm_diagnostico_mvp` o `skeleton_generator`): esos degradan a
 propósito y un validador estricto los volvería más frágiles, no menos.
 
+## Agente CLI local: `AgenteCliPort` / `ClaudeCliAgent`
+
+Segundo motor de IA, aparte del multi-modelo: `ClaudeCliAgent`
+(`adapters/claude_cli_agent.py`) lanza `claude -p` por `subprocess` usando la
+sesión YA logueada de la máquina (patrón heredado de `ripor-extracccion`), así
+que el coste va contra la suscripción local y no contra una bolsa de créditos.
+Puerto en `domain/ports.py` (`AgenteCliPort`: `disponible`, `probar`,
+`ejecutar`, `ejecutar_stream`), error de dominio `AgenteCliError`, y mock
+`MockClaudeCli` cuando `USE_MOCK_LLM=true`.
+
+**REGLA DE ORO (costó un bug entero): `validar` es un CHEQUEO y su retorno se
+DESCARTA.** `ejecutar()` devuelve el **dict**, nunca la entidad — exactamente
+igual que `MultiModelLLM.chat_json`. Quien consuma construye la entidad él:
+
+```python
+datos = agente.ejecutar(SYSTEM, user, validar=VeredictoRevision.model_validate)
+veredicto = VeredictoRevision.model_validate(datos)   # ← SIEMPRE, aquí
+```
+
+Dar por hecho lo contrario (`isinstance(resultado, VeredictoRevision)`) no da
+True JAMÁS: así estuvo la revisión automática de entregas muerta al 100% sin
+que saltara ninguna alarma, porque el `isinstance` fallaba en silencio. Ver
+`revision_entregas._veredicto_desde` como referencia de cómo se hace bien.
+
+Seguridad, innegociable:
+- **Nunca** se pasa `--dangerously-skip-permissions`.
+- `allowed_tools` sale de una **lista blanca fija** (`Read`, `Write`, `Edit`,
+  `Glob`, `Grep` — **Bash NO está**); pedir otra cosa es error, no se filtra en
+  silencio. El `cwd` lo confina el llamador a `generated/<slug>`.
+- Encoding explícito (`utf-8`) en todo subprocess: en Windows, `text=True` sin
+  `encoding` deja mojibake en las tildes.
+
+**En Docker/Render NO existe el binario `claude`.** Por eso la revisión
+automática de entregas solo corre en las máquinas del equipo: si
+`disponible()` es False (o `REVISION_AUTOMATICA=no`), se degrada con un `log
+INFO` y la entrega sigue su curso — nunca es un error ni rompe `/generate`.
+
+## Publicación autónoma: de carpeta a URL viva (fase 1)
+
+El agente publica el MVP él solo, sin que nadie toque el dashboard.
+
+- `DesplieguePort` + `DespliegueRepositoryPort` (`domain/ports.py`), error de
+  dominio `DespliegueError` (→ 502), entidad `InfoDespliegue` con estado
+  `en_curso | vivo | fallido | caido`.
+- `adapters/render_deploy.py` (`RenderDeployAdapter`): copia el proyecto a una
+  carpeta temporal **fuera de todo árbol git**, detecta el stack y escribe un
+  Dockerfile genérico, crea/reutiliza el repo en GitHub por API REST (nada de
+  CLI `gh`: no existe en el contenedor), crea o redespliega un web service
+  Docker plan free en Render, y hace poll cada 15 s hasta `live` (tope ~15 min).
+  Ningún secreto se loguea: las URLs con token se redactan antes de reportar.
+  Mock: `mock_render_deploy.py`.
+- `POST /api/v1/agent/projects/{slug}/publicar` responde **202** al instante y
+  el deploy corre en una tarea de fondo; el progreso viaja por el WebSocket y
+  la verdad del resultado vive en `GET /api/v1/agent/despliegues`.
+- Los despliegues se persisten (SQLite, uno vigente por slug) y un **bucle de
+  auditoría cada 30 min** vuelve a llamar a cada URL: lo que dejó de responder
+  pasa a `caido`, y un `en_curso` huérfano (>45 min) a `fallido`, para que la
+  lista no mienta nunca.
+
+**Credenciales SOLO por entorno**: `RENDER_API_KEY`, `GITHUB_TOKEN`,
+`GITHUB_OWNER`. Se comprueban ANTES de aceptar el encargo: si falta alguna, la
+ruta devuelve un **503 limpio** diciendo cuál — no un crash ni un fallo mudo
+descubierto media hora después en la lista de despliegues.
+
+## Trabajos de fondo y bandeja de entregas
+
+- **`TrabajoFondo` + `TrabajosRepositoryPort`**: generalización del `estado.json`
+  de ripor. Todo lo que tarda (revisión de una entrega, publicación…) queda
+  registrado y se consulta en `GET /api/v1/agent/trabajos` (y `/trabajos/{id}`).
+  Sobrevive a un refresh del navegador y a un reinicio del proceso: es la
+  respuesta persistente a «¿cómo va lo mío?».
+- **Bandeja de entregas** (`application/bandeja_entregas.py`): `GET
+  /api/v1/agent/entregas` lista las ramas `agente/<slug>` que esperan decisión,
+  con el resumen del informe y el veredicto del revisor ya masticados para
+  decidir **desde el teléfono**. Aprobar = `merge --no-ff` real, ejecutado en un
+  **worktree temporal desacoplado** (el working tree del proyecto no se toca);
+  un conflicto → 409 y la entrega queda pendiente. Rechazar = se borra la rama
+  sin merge y queda constancia en `data/entregas_rechazadas.jsonl`.
+
+## Modo profesor adaptativo (fase 3)
+
+- **El nivel vive en el USUARIO, no en el curso** (`UserRepositoryPort.get_nivel`
+  / `set_nivel`, no abstractos a propósito para no romper repos antiguos): viaja
+  entre cursos, así que el segundo curso ya no vuelve a preguntar. Se **reajusta
+  con evidencia** tras cada clase (`reajustar_nivel`, pura y testeable: sube o
+  baja UN escalón por racha de aciertos a la primera o fallos seguidos, y
+  resetea los contadores). El temario lee el nivel por **callable** en cada lote,
+  así un reajuste a mitad calibra las clases que aún faltan por escribir.
+- **La clase de tipo `cambio` exige un commit REAL** del alumno (`GitAlumnoPort`
+  → `adapters/git_alumno.py`), posterior al inicio de la clase y tocando
+  `criterio.archivo` si lo hay. La reflexión se sigue pidiendo —explicar lo que
+  hiciste es parte de aprender— pero como **complemento**: sola ya no supera la
+  clase. Sin el puerto (mocks, cursos de tema libre) se conserva el juicio por
+  reflexión de siempre.
+- `Clase.reto_avanzado`: desafío extra que el generador solo rellena para nivel
+  medio/alto y que el profesor solo menciona si el nivel VIGENTE es alto.
+- **Racha y camino**: `ActividadRepositoryPort` guarda una fila por
+  (usuario, día) — solo QUE estuvo, no qué hizo — y `GET /api/v1/agent/camino`
+  arma racha, cursos, certificados y próximo paso **en el servidor** (nada de
+  contadores en el cliente). Ojo con la zona horaria: se escribe y se lee con la
+  fecha LOCAL del servidor; mezclar UTC al leer partiría rachas reales de noche.
+- El aula (`AulaEnVivo` + `EditorCodigo`) trae **CodeMirror**: el alumno edita,
+  compila y el commit queda — que es justo la evidencia que pide la clase.
+
+## Privacidad entre usuarios — REGLA
+
+**Todo listado o difusión que pueda cruzar usuarios filtra por dueño.** El
+criterio único es `adapters/duenos_proyecto`: `es_suyo(ruta, sub, es_admin)` y
+`dueno_de(ruta)` — el dueño manda, un proyecto sin marca sigue siendo visible
+(compatibilidad), y el admin lo ve todo.
+
+- Se aplica ya en la galería de proyectos, en `GET /agent/despliegues`, en la
+  bandeja de entregas y en `/trabajos` (un trabajo de otro da **404**, el mismo
+  que si no existiera: no se filtra ni la existencia).
+- `DIFUSOR.difundir(texto, dueno)` va **SIEMPRE con dueño**. Sin dueño, el aviso
+  se reparte entre TODOS los conectados: así se le contó a cualquiera el nombre
+  y la URL del sistema de otro. Dos fugas reales entraron por olvidar esto —
+  una en la lista de despliegues y otra en los avisos del WebSocket.
+
+Si añades una ruta que lista algo del servidor o un aviso que sale por el
+WebSocket, el filtro por dueño es parte de la ruta, no un extra.
+
 ## Frontend (feature-driven)
 
 - Estado por feature con hooks en `features/<feature>/hooks/` + componentes.
 - **i18n obligatorio**: todo texto visible va en `src/i18n/translations.ts`, y hay
   que rellenarlo en **es Y en** (TypeScript falla si falta una clave).
 - Llamadas HTTP en `src/lib/api.ts`; `ApiError` lleva `.status` (útil p. ej. 402=licencia).
+- La web es **PWA instalable** (`vite-plugin-pwa`, ver `vite.config.ts`). Regla
+  del service worker: `/api/**` va `NetworkOnly` y `/api/**` + `/preview/**`
+  están en el `navigateFallbackDenylist` — cachear ahí rompía licencias y
+  progreso, y devolvía el shell del Meta-Agente en vez del MVP del usuario.
+- **Escritorio**: se construye con `desktop/build-desktop.ps1` (Tauri, modo
+  nube: la ventana carga el frontend y habla con el backend compartido). El
+  script **hornea** `VITE_API_URL` y `VITE_APP_VERSION` en el build — sin la
+  primera, TODO el REST muere dentro de la app. `AvisoVersion.tsx` compara la
+  versión horneada contra `GET /api/v1/agent/version-escritorio` y avisa de la
+  descarga; esa versión debe coincidir con `tauri.conf.json`, `Cargo.toml`,
+  `package.json` y `VERSION_ESCRITORIO` del backend, o el aviso sale para un
+  instalador que todavía no existe.
 
 ## Sistema de diseño (tema claro) — REGLA VISUAL
 
@@ -147,8 +284,35 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
 
 ## Gotchas conocidos
 
+- **PERSISTENCIA EN PRODUCCIÓN (el más caro).** Hoy **no hay PostgreSQL viva**:
+  la base free del blueprint caducó a los 30 días y el servicio **no recibe
+  `DATABASE_URL`**, así que `uses_postgres` es False y TODO —usuarios,
+  licencias, cupos, cursos, progreso, despliegues, trabajos y actividad— vive en
+  el SQLite de `settings.db_path`. El **único** disco persistente está montado
+  en `/app/generated`, de modo que **`DB_PATH=/app/generated/metaagente.db`** es
+  lo único que evita que se borre entero en CADA deploy y en cada reinicio (el
+  valor por defecto cae en `/app/evaluations.db`, fuera del disco, y el usuario
+  se encontraba sin cuenta ni licencia). Va como archivo suelto en la raíz del
+  disco a propósito: la galería y la bandeja enumeran `generated/` filtrando por
+  `is_dir()`, así que un archivo (y sus `-wal`/`-shm`) es invisible para ellas.
+- **El servicio vivo NO está gestionado por blueprint.** Editar `render.yaml` no
+  cambia nada en producción: las variables se ponen **por el panel de Render o
+  por su API**. El blueprint sirve de documentación y para recrear la infra
+  desde cero; si tocas una variable ahí, tócala también en el servicio real.
 - **Groq free**: ~12.000 tokens/min y límites diarios. Si se agota, añade otro
   proveedor a `LLM_PROVIDERS` (Gemini/OpenRouter) — el fallback se encarga.
+- **Chromium es obligatorio en la imagen**: el `backend/Dockerfile` instala
+  Playwright + Chromium y **falla el build** si al final no está. Es
+  deliberado: el gate anti-página-en-blanco no puede faltar en silencio (si no,
+  la imagen entrega URLs sin verificar y solo queda un ERROR en logs que nadie
+  mira a tiempo).
+- **Manifest de la PWA**: `/manifest.webmanifest` debe servirse con
+  `Content-Type: application/manifest+json` o Chrome lo ignora y la app deja de
+  ser instalable. En el static site de Render la cabecera está puesta **por
+  API** (ver el comentario de `render.yaml`), no por el build.
+- **`claude` no existe en el contenedor**: cualquier capacidad que dependa del
+  agente CLI (hoy, la revisión automática de entregas) solo corre en las
+  máquinas del equipo. Detéctalo con `disponible()` y degrada, no falles.
 - **Login Google**: la app OAuth debe estar en **"En producción"** o el usuario
   agregado como **usuario de prueba**, o Google bloquea el acceso. El botón usa
   Google Identity Services; el `GOOGLE_CLIENT_ID` va en `.env` y el frontend lo lee
@@ -157,6 +321,12 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
 
 ## Estado / roadmap
 
-Hecho: multi-modelo, UI Skywork, login Google, licencia, modo profesor, memoria/RAG.
-Pendiente: **app de escritorio** (Tauri recomendado — requiere instalar Rust; maneja
-mejor el OAuth de Google que Electron). Futuro: escopar la licencia por usuario.
+Hecho: multi-modelo, UI Skywork, login Google, licencia, modo profesor,
+memoria/RAG, **publicación autónoma en Render** (fase 1), **agente CLI local +
+trabajos de fondo y bandeja de entregas** (fase 2), **profesor adaptativo con
+nivel por usuario, evidencia en git y camino/racha** (fase 3), PWA instalable,
+móvil Flutter que aprueba entregas y **escritorio Tauri** (`build-desktop.ps1`,
+modo nube) con aviso de versión nueva.
+Pendiente: recrear la PostgreSQL (hoy toda la persistencia es SQLite sobre el
+disco), poner el servicio bajo blueprint para que `render.yaml` mande de verdad,
+y escopar la licencia por usuario.

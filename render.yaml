@@ -11,6 +11,14 @@
 #   - Confirma la URL real del backend y ajústala en el `rewrite` de abajo si
 #     Render le añadió un sufijo al nombre.
 #   - Añade la URL del frontend a los orígenes autorizados de Google OAuth.
+#
+# OJO — ESTE ARCHIVO NO MANDA SOBRE EL SERVICIO VIVO (agosto 2026).
+# Los servicios en producción NO están gestionados por blueprint: se crearon a
+# mano y Render no los sincroniza con este archivo. Editar aquí una variable,
+# una cabecera o una ruta NO cambia nada en producción — hay que aplicarlo por
+# el panel de Render o por su API. Este archivo vale como documentación fiel de
+# lo que corre y como receta para recrear la infraestructura desde cero; si
+# cambias algo aquí, cámbialo TAMBIÉN en el servicio real (y al revés).
 
 # OJO (agosto 2026): la base declarada aquí abajo NO existe hoy en la cuenta
 # (la de plan free caduca a los 30 días). Mientras no se recree, `DATABASE_URL`
@@ -135,6 +143,21 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
+    # Cabeceras de respuesta del sitio estático.
+    #
+    # El frontend es una PWA instalable y Chrome IGNORA el manifest si no llega
+    # con `Content-Type: application/manifest+json` (Render lo serviría como
+    # texto/octet-stream por la extensión .webmanifest, y la instalación deja
+    # de ofrecerse sin decir por qué).
+    #
+    # OJO: en el sitio VIVO esta cabecera está puesta POR LA API de Render, no
+    # por este archivo (ver el aviso de arriba: el servicio no está gestionado
+    # por blueprint). Se declara aquí para que el blueprint no mienta y para que
+    # una recreación desde cero salga ya instalable.
+    headers:
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
     routes:
       # Equivale al `proxy_pass` de Nginx en Docker: el frontend sigue llamando
       # a rutas relativas /api/... y Render las reenvía al backend.
