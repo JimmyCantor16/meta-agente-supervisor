@@ -134,7 +134,7 @@ def _index_html(d: DominioApp) -> str:
 """
 
 
-def _styles(d: DominioApp) -> str:
+def _styles(app_name: str, tono: str) -> str:
     """Todo el CSS de la aplicación generada.
 
     Las decisiones vienen de una revisión con jueces enfrentados, no de gusto:
@@ -158,10 +158,10 @@ def _styles(d: DominioApp) -> str:
       encabezado se despega y las filas pasan por debajo de una cabecera sin raya.
     """
     fondo, papel, acento, tinta, tinta2, linea, borde = _PALETAS.get(
-        (d.tono or "neutro").lower(), _PALETAS["neutro"]
+        (tono or "neutro").lower(), _PALETAS["neutro"]
     )
     return (
-        f"/* {d.app_name} — la paleta responde al dominio, no es una plantilla unica. */\n"
+        f"/* {app_name} — la paleta responde al dominio, no es una plantilla unica. */\n"
         "*{box-sizing:border-box}\n"
         ":root{\n"
         f"  --fondo:{fondo}; --papel:{papel}; --acento:{acento};\n"
@@ -184,6 +184,17 @@ def _styles(d: DominioApp) -> str:
         "body:has(.app) .wrap{max-width:1360px;padding-block:0}\n"
         ".app{background:var(--papel);border-radius:var(--r-g);box-shadow:var(--sombra);\n"
         "  overflow:hidden}\n"
+        "/* La hoja de las pantallas sueltas: entrar, crear cuenta, el carrito.\n"
+        "   FALTABA, y no era un detalle: sin fondo propio, esas pantallas caian\n"
+        "   directamente sobre el degradado oscuro del body con el texto en\n"
+        "   --tinta, que es oscuro. Resultado: el titulo, las etiquetas y los\n"
+        "   textos de ayuda se leian negro sobre negro. Era la PRIMERA pantalla\n"
+        "   de toda aplicacion generada, y parecia rota. */\n"
+        ".card{background:var(--papel);border-radius:var(--r-g);box-shadow:var(--sombra);\n"
+        "  padding:clamp(1.1rem,4vw,1.9rem)}\n"
+        ".card h1{margin:0 0 .15rem;font-size:1.45rem;line-height:1.2;\n"
+        "  letter-spacing:-.02em;font-weight:660}\n"
+        ".card .sub{margin:0 0 1.1rem;color:var(--tinta-2);font-size:.92rem}\n"
         ".barra{display:flex;align-items:center;gap:.85rem;padding:.9rem clamp(1rem,2.5vw,1.75rem);\n"
         "  border-bottom:1px solid var(--linea);background:var(--papel);\n"
         "  position:sticky;top:0;z-index:20}\n"
@@ -379,9 +390,9 @@ _URL_POR_MOTOR = {
 }
 
 
-def _env_example(d: DominioApp) -> str:
+def _env_example(motor: str, tabla: str) -> str:
     """Las variables que el proyecto lee, con un ejemplo de cada una."""
-    url = _URL_POR_MOTOR[d.motor].format(base=d.tabla)
+    url = _URL_POR_MOTOR[motor].format(base=tabla)
     return (
         "# Copia este archivo a `.env` y ajusta los valores.\n\n"
         "# Conexión a la base de datos. El código la lee de aquí: no hay ninguna\n"
@@ -393,9 +404,9 @@ def _env_example(d: DominioApp) -> str:
     )
 
 
-def _compose(d: DominioApp) -> str:
+def _compose(motor: str, tabla: str) -> str:
     """Solo tiene sentido si hay un motor que levantar aparte."""
-    if d.motor == "mysql":
+    if motor == "mysql":
         servicio = (
             "  base:\n"
             "    image: mysql:8.4\n"
@@ -403,10 +414,10 @@ def _compose(d: DominioApp) -> str:
             "      MYSQL_ROOT_PASSWORD: clave\n"
             "      MYSQL_USER: usuario\n"
             "      MYSQL_PASSWORD: clave\n"
-            f"      MYSQL_DATABASE: {d.tabla}\n"
+            f"      MYSQL_DATABASE: {tabla}\n"
             "    ports: ['3306:3306']\n"
         )
-        url = f"mysql+pymysql://usuario:clave@base:3306/{d.tabla}"
+        url = f"mysql+pymysql://usuario:clave@base:3306/{tabla}"
     else:
         servicio = (
             "  base:\n"
@@ -414,10 +425,10 @@ def _compose(d: DominioApp) -> str:
             "    environment:\n"
             "      POSTGRES_USER: usuario\n"
             "      POSTGRES_PASSWORD: clave\n"
-            f"      POSTGRES_DB: {d.tabla}\n"
+            f"      POSTGRES_DB: {tabla}\n"
             "    ports: ['5432:5432']\n"
         )
-        url = f"postgresql://usuario:clave@base:5432/{d.tabla}"
+        url = f"postgresql://usuario:clave@base:5432/{tabla}"
     return (
         "services:\n"
         "  app:\n"
@@ -429,12 +440,12 @@ def _compose(d: DominioApp) -> str:
     )
 
 
-def _configure(d: DominioApp) -> str:
-    motor_legible = {"sqlite": "SQLite", "mysql": "MySQL", "postgres": "PostgreSQL"}[d.motor]
+def _configure(app_name: str, motor: str) -> str:
+    motor_legible = {"sqlite": "SQLite", "mysql": "MySQL", "postgres": "PostgreSQL"}[motor]
     pasos = (
         "No hay que instalar ninguna base de datos: SQLite es un archivo\n"
         "(`app.db`) que se crea solo la primera vez que arrancas.\n"
-        if d.motor == "sqlite"
+        if motor == "sqlite"
         else
         f"Necesitas un {motor_legible} en marcha. La forma más rápida es\n"
         "`docker compose up`, que levanta la base y la app juntas.\n\n"
@@ -442,7 +453,7 @@ def _configure(d: DominioApp) -> str:
         "dentro de `.env`. Las tablas se crean solas al arrancar.\n"
     )
     return (
-        f"# Configurar {d.app_name}\n\n"
+        f"# Configurar {app_name}\n\n"
         "## 1. Las variables\n\n"
         "Copia `.env.example` a `.env`:\n\n"
         "```\ncp .env.example .env\n```\n\n"
@@ -457,9 +468,9 @@ def _configure(d: DominioApp) -> str:
     )
 
 
-def _deploy(d: DominioApp) -> str:
+def _deploy(app_name: str, motor: str) -> str:
     return (
-        f"# Publicar {d.app_name} en internet\n\n"
+        f"# Publicar {app_name} en internet\n\n"
         "Pensado para alguien que no lo ha hecho nunca. Render tiene plan gratis\n"
         "y es lo más corto.\n\n"
         "## 1. Sube el código a GitHub\n\n"
@@ -476,7 +487,7 @@ def _deploy(d: DominioApp) -> str:
             "## 3. La base de datos\n\n"
             "En Render, **New → PostgreSQL**. Copia su *Internal Database URL* y\n"
             "pégala como variable `DATABASE_URL` en tu servicio.\n\n"
-            if d.motor != "sqlite"
+            if motor != "sqlite"
             else
             "## 3. La base de datos\n\n"
             "No hace falta nada: SQLite viaja con la aplicación. Ten en cuenta que\n"
@@ -491,17 +502,17 @@ def _deploy(d: DominioApp) -> str:
     )
 
 
-def _manifest(d: DominioApp) -> str:
+def _manifest(app_name: str, tono: str) -> str:
     """La app es INSTALABLE (PWA): en el teléfono queda con icono propio.
 
     Rutas y alcance RELATIVOS a propósito: así la instalación funciona igual
     servida en la raíz que bajo el proxy `/preview/<slug>/`.
     """
-    fondo, _, acento, *_ = _PALETAS.get((d.tono or "neutro").lower(), _PALETAS["neutro"])
+    fondo, _, acento, *_ = _PALETAS.get((tono or "neutro").lower(), _PALETAS["neutro"])
     return json.dumps(
         {
-            "name": d.app_name,
-            "short_name": d.app_name[:12].strip(),
+            "name": app_name,
+            "short_name": app_name[:12].strip(),
             "start_url": "./",
             "scope": "./",
             "display": "standalone",
@@ -544,10 +555,10 @@ self.addEventListener("fetch", (e) => {
 '''
 
 
-def _icono(d: DominioApp) -> str:
+def _icono(app_name: str, tono: str) -> str:
     """Isotipo simple: la inicial del sistema sobre su color de acento."""
-    fondo, _, acento, *_ = _PALETAS.get((d.tono or "neutro").lower(), _PALETAS["neutro"])
-    inicial = html.escape((d.app_name.strip() or "A")[0].upper())
+    fondo, _, acento, *_ = _PALETAS.get((tono or "neutro").lower(), _PALETAS["neutro"])
+    inicial = html.escape((app_name.strip() or "A")[0].upper())
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
         f'<rect width="64" height="64" rx="14" fill="{acento}"/>'
@@ -630,7 +641,7 @@ def construir_desde_dominio(d: DominioApp) -> GeneratedProject:
         "backend/infrastructure/web.py": be._web(d),
         "backend/main.py": be._main(),
         "frontend/index.html": _index_html(d),
-        "frontend/styles.css": _styles(d),
+        "frontend/styles.css": _styles(d.app_name, d.tono),
         "frontend/js/app.js": fe.js_app(),
         "frontend/js/api.js": fe.js_api(),
         "frontend/js/state.js": fe.js_state(),
@@ -643,19 +654,19 @@ def construir_desde_dominio(d: DominioApp) -> GeneratedProject:
         "frontend/js/components/board.js": fe.js_board(),
         "README.md": _readme(d),
         "MANUAL.md": _manual(d),
-        "CONFIGURE.md": _configure(d),
-        "DEPLOY.md": _deploy(d),
-        ".env.example": _env_example(d),
+        "CONFIGURE.md": _configure(d.app_name, d.motor),
+        "DEPLOY.md": _deploy(d.app_name, d.motor),
+        ".env.example": _env_example(d.motor, d.tabla),
         # PWA: instalable en el teléfono, con su icono. manifest y sw viven en
         # la RAÍZ (los sirve main.py) para que su alcance cubra la página.
-        "frontend/manifest.json": _manifest(d),
+        "frontend/manifest.json": _manifest(d.app_name, d.tono),
         "frontend/sw.js": _sw(),
-        "frontend/icon.svg": _icono(d),
+        "frontend/icon.svg": _icono(d.app_name, d.tono),
         MARCADOR: "esqueleto por dominio v4",
     }
     # El compose solo tiene sentido si hay un motor que levantar aparte.
     if d.motor != "sqlite":
-        archivos["docker-compose.yml"] = _compose(d)
+        archivos["docker-compose.yml"] = _compose(d.motor, d.tabla)
     return GeneratedProject(
         name=d.app_name,
         summary=(

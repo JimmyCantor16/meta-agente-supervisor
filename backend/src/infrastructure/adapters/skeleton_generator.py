@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 
 from src.domain.dominio_app import DominioApp
+from src.domain.dominio_tienda import MINIMO_PRODUCTOS, DominioTienda
 from src.domain.entities import GeneratedFile, GeneratedProject
 from src.domain.ports import ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import MultiModelLLM
@@ -28,6 +29,11 @@ _SYSTEM = (
     "Primero elige el tipo:\n"
     "- 'crud_login': app donde el usuario inicia sesión y gestiona registros "
     "(catas, gastos, inventario, clientes, tareas, hábitos, citas...).\n"
+    "- 'tienda': se COMPRA. Hay cosas con precio que un visitante mira, echa a "
+    "un carrito y paga (una tienda en línea, un e-commerce, «un carrito de "
+    "compras», una cafetería que vende por internet). La señal es el carrito o "
+    "la venta al público, no la palabra «productos»: un almacén donde el dueño "
+    "apunta su inventario NO es una tienda, es 'crud_login'.\n"
     "- 'landing': página de presentación de un producto, servicio o negocio, "
     "SIN login ni base de datos.\n"
     "- 'por_clases': la idea es DEMASIADO GRANDE para una sola entrega — pide "
@@ -89,6 +95,17 @@ _SYSTEM = (
     '"fecha":"2026-08-10","hora":"11:00"}\n'
     "    ]\n"
     "  },\n"
+    '  "tienda": {\n'
+    '    "app_name":"Ropa Aurora", "rubro":"ropa", "tono":"vivo",\n'
+    '    "motor":"sqlite", "moneda":"$", "envio":8000,\n'
+    '    "categorias":["Camisas","Pantalones","Calzado"],\n'
+    '    "productos":[\n'
+    '      {"nombre":"Camisa de lino","precio":89000,"categoria":"Camisas",\n'
+    '       "descripcion":"Lino lavado, corte holgado.","stock":14},\n'
+    '      {"nombre":"Pantalón chino","precio":120000,"categoria":"Pantalones",\n'
+    '       "descripcion":"Algodón elástico, tiro medio.","stock":9}\n'
+    "    ]\n"
+    "  },\n"
     '  "title":"...", "tagline":"...", "cta":"...", "sections":[{"heading":"...","text":"..."}],\n'
     '  "temario": {\n'
     '    "titulo":"Plataforma de Trading",\n'
@@ -122,6 +139,18 @@ _SYSTEM = (
     "  · Una clave por cada campo, con el MISMO 'nombre' que arriba. Las fechas "
     "en formato AAAA-MM-DD y repartidas en las últimas semanas. Los números sin "
     "símbolos de moneda ni unidades: solo la cifra.\n\n"
+    "Reglas de la tienda (solo si el tipo es 'tienda'):\n"
+    "- 'productos': OBLIGATORIO, entre 6 y 15, con precio REAL del oficio y del "
+    "país (una camisa no cuesta 5). Nombres de catálogo de verdad, no «Producto "
+    "1». Es lo primero que se ve: un escaparate con cuatro cosas inventadas "
+    "hunde la tienda entera.\n"
+    "- cada producto lleva 'categoria', y esa categoría debe estar en "
+    "'categorias' (2 a 5).\n"
+    "- 'stock': unidades disponibles, entre 3 y 40. Deja alguno bajo (2-4) para "
+    "que se vea el aviso de «quedan pocos».\n"
+    "- 'envio': coste de envío en la misma moneda; 0 si es gratis.\n"
+    "- 'precio' y 'envio' van SIN símbolo de moneda ni puntos de miles: solo la "
+    "cifra (89000, no «$89.000»).\n\n"
     "Si el tipo es 'por_clases': rellena 'temario' con 4 a 8 clases (cada una "
     "debe dejar algo USABLE por sí solo, no un andamio a medias) Y rellena "
     "'dominio' con lo que se construye en la CLASE 1, siguiendo las mismas "
@@ -132,7 +161,7 @@ _SYSTEM = (
 
 #: Lo que el clasificador tiene permitido responder. Cualquier otra cosa se
 #: ignora: un tipo inventado dejaría la construcción sin camino.
-_TIPOS_VALIDOS = ("crud_login", "por_clases", "landing", "otro")
+_TIPOS_VALIDOS = ("crud_login", "tienda", "por_clases", "landing", "otro")
 
 
 def _contrato_del_clasificador(datos: dict) -> None:
@@ -155,6 +184,19 @@ def _contrato_del_clasificador(datos: dict) -> None:
     tipo = str(datos.get("tipo") or "").strip().lower()
     if tipo not in _TIPOS_VALIDOS:
         raise ValueError(f"'tipo' inválido: {tipo!r}; se esperaba uno de {_TIPOS_VALIDOS}")
+
+    # Una tienda se sostiene sobre su catálogo: sin productos no hay escaparate,
+    # y un escaparate con dos cosas se lee como un fallo del generador.
+    if tipo == "tienda":
+        bruto = datos.get("tienda")
+        if not isinstance(bruto, dict) or not bruto.get("productos"):
+            raise ValueError("'tipo' es 'tienda' pero no trae 'tienda' con 'productos'")
+        # El retorno se DESCARTA: esto solo comprueba que se pueda construir.
+        if not DominioTienda.model_validate(bruto).sanear().construible:
+            raise ValueError(
+                f"la tienda no llega a {MINIMO_PRODUCTOS} productos utilizables"
+            )
+        return
 
     # 'landing' y 'otro' se sostienen solos: el primero tiene valores por
     # omisión para cada texto y el segundo se va al generador libre. Solo los
@@ -192,6 +234,18 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         # replantear la respuesta entera, no solo retocar el modelo de datos.
         datos = self._replantear_con_experto(datos, prompt)
         tipo = (datos or {}).get("tipo")
+        if tipo == "tienda":
+            proyecto = self._construir_tienda(datos)
+            if proyecto is not None:
+                return proyecto
+            # Una tienda sin catálogo utilizable no se rescata inventando
+            # productos: se intenta como app de gestión, que al menos es honesta
+            # sobre lo que entrega.
+            logger.warning("Esqueleto: 'tienda' sin catálogo construible; se prueba como CRUD.")
+            proyecto = self._construir_por_dominio(datos)
+            if proyecto is not None:
+                return proyecto
+            return self._fallback.generate(prompt, language)
         if tipo == "crud_login":
             proyecto = self._construir_por_dominio(datos)
             if proyecto is not None:
@@ -271,6 +325,38 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         return construir_desde_dominio(dominio)
 
     @staticmethod
+    def _construir_tienda(datos: dict) -> GeneratedProject | None:
+        """Construye la TIENDA a partir del catálogo que diseñó el modelo.
+
+        Devuelve None si el catálogo no da para una tienda: el llamador decide.
+        """
+        bruto = datos.get("tienda")
+        if not isinstance(bruto, dict) or not bruto.get("productos"):
+            return None
+        try:
+            from src.infrastructure.adapters.skeleton_tienda_armar import (
+                construir_desde_tienda,
+            )
+
+            tienda = DominioTienda.model_validate(bruto).sanear()
+        except Exception as exc:  # noqa: BLE001 - un catálogo inválido no tumba la generación
+            logger.warning("La tienda propuesta no era válida (%s).", exc)
+            return None
+        if not tienda.construible:
+            logger.warning(
+                "La tienda solo trae %d producto(s) utilizables; hacen falta %d.",
+                len(tienda.productos), MINIMO_PRODUCTOS,
+            )
+            return None
+
+        logger.info(
+            "Esqueleto TIENDA: '%s' · %d productos · %d categoría(s) · envío=%s · tono=%s",
+            tienda.app_name, len(tienda.productos), len(tienda.categorias),
+            tienda.envio, tienda.tono,
+        )
+        return construir_desde_tienda(tienda)
+
+    @staticmethod
     def _replantear_con_experto(datos: dict | None, prompt: str) -> dict | None:
         """Deja que el agente experto replantee la respuesta, si el plan lo incluye.
 
@@ -305,6 +391,7 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
                     "prompt": prompt[:4000],
                     "tipo_propuesto": datos.get("tipo"),
                     "dominio": datos.get("dominio"),
+                    "tienda": datos.get("tienda"),
                     "temario": datos.get("temario"),
                 },
             )
@@ -329,6 +416,12 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
                         )
                         dominio = {**dominio, "ejemplos": previos}
                 replanteado["dominio"] = dominio
+
+            # Un catálogo mejor pensado es justo lo que se le pide al experto en
+            # una tienda: los precios y el surtido son el 90% de lo que se ve.
+            tienda = aporte.datos.get("tienda")
+            if isinstance(tienda, dict) and tienda.get("productos"):
+                replanteado["tienda"] = tienda
 
             temario = aporte.datos.get("temario")
             if isinstance(temario, dict) and temario.get("clases"):
@@ -372,6 +465,9 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         if tipo == "crud_login":
             dominio = datos.get("dominio")
             return bool(isinstance(dominio, dict) and dominio.get("campos"))
+        if tipo == "tienda":
+            tienda = datos.get("tienda")
+            return bool(isinstance(tienda, dict) and tienda.get("productos"))
         return True
 
     @staticmethod

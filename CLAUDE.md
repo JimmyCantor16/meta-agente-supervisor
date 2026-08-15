@@ -238,6 +238,13 @@ si necesitas un color, radio o sombra, sale de ahí.
 `ProfesorChat.tsx` es la pantalla de referencia ya migrada. El resto se migra
 pantalla por pantalla siguiendo ese ejemplo.
 
+**Ojo con el CSS de las apps GENERADAS** (que es otro sistema, el de
+`skeleton_dominio_armar._styles`): ahí el `body` tiene un degradado OSCURO y
+`--tinta` es oscuro, así que todo lo que se dibuje suelto sobre el body va negro
+sobre negro. Las pantallas sueltas necesitan la hoja `.card`. Faltaba, y durante
+meses el login y el registro —la PRIMERA pantalla de toda app generada— salieron
+ilegibles. Si añades una pantalla que no vive dentro de `.app`, dale `.card`.
+
 ## Convenciones importantes
 
 - **Mocks**: cada agente de IA tiene su mock; con `USE_MOCK_LLM=true` todo funciona
@@ -251,6 +258,46 @@ pantalla por pantalla siguiendo ese ejemplo.
   + lotes de 4 clases, y si un lote falla esas clases se quedan con su título en
   vez de perderse el curso. Si añades algo que devuelva una lista larga, trocéalo
   desde el principio.
+
+## Las DOS formas del esqueleto: app de gestión y TIENDA
+
+`SkeletonProjectGenerator` clasifica la idea y elige forma. Dos construyen algo
+de verdad y no deben confundirse:
+
+- **`crud_login`** (`DominioApp` → `skeleton_dominio_armar`): una entidad con sus
+  campos, login y catálogos de apoyo. Es la forma correcta para casi todo:
+  citas, gastos, inventario, clientes.
+- **`tienda`** (`DominioTienda` → `skeleton_tienda_armar`): se COMPRA. Catálogo
+  público, carrito, checkout, historial y panel del dueño.
+
+**Por qué existe la segunda** (costó una queja en producción): «un carrito de
+compras» entraba como `crud_login` y salía un CRUD de «Pedidos» donde se elegía
+UN producto de un desplegable y **el total se escribía a mano**. Un pedido con
+varias líneas y un total calculado no caben en una entidad plana. La señal para
+elegir `tienda` es el carrito o la venta al público, **no** la palabra
+«productos»: un almacén donde el dueño apunta su inventario es `crud_login`.
+
+**REGLA INNEGOCIABLE de la tienda: el precio y el total los pone el SERVIDOR**,
+leyéndolos de su base. El navegador manda solo `producto_id` y `cantidad`; el
+DTO `LineaIn` ni siquiera tiene campo de precio. Un carrito que acepta el precio
+del cliente deja comprar por lo que uno quiera con solo abrir las herramientas
+del navegador. `pruebas/la_tienda_vende.py` lo comprueba colando un precio de 1.
+
+El stock se descuenta con un UPDATE condicionado (`filter(stock >= unidades)`),
+no leyendo-y-escribiendo: entre leer y escribir caben dos compras de la última
+unidad. Y las cantidades se agrupan por producto antes de validar, o partir la
+compra en dos líneas burla el tope.
+
+Lo que la tienda REUTILIZA (no lo dupliques): el CSS base y la paleta, el
+manifest, el service worker, el icono, el compose y los documentos de despliegue
+salen de `skeleton_dominio_armar` —por eso esos ayudantes reciben primitivas
+(`app_name`, `tono`, `motor`, `tabla`) y no el dominio—, y las pantallas de
+entrar y crear cuenta salen tal cual de `skeleton_dominio_front`.
+
+**Si reutilizas un adaptador, respeta los NOMBRES de su puerto.** `TokenService`
+lo implementa `JwtTokenService` con `issue`/`username_from`; declararlo con otros
+nombres no falla al escribirlo, falla al ARRANCAR con un error sobre clases
+abstractas que no menciona el problema real.
 
 ## Qué debe cumplir un MVP generado
 
@@ -283,6 +330,21 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
   (los acentos/ñ mal codificados dan 400 "error parsing the body").
 
 ## Gotchas conocidos
+
+- **El clasificador del esqueleto llama a `chat_json` CON `validar`.** No se lo
+  quites. Sin él, un proveedor que devuelve `{"tipo":"crud_login"}` y poco más
+  contaba como éxito, la cadena se paraba con modelos sanos sin probar y la
+  construcción caía a una plantilla genérica. En agosto de 2026 un «carrito de
+  compras» en producción salió como un sitio llamado **«Mi App»** con una lista
+  de «elementos» por exactamente esto.
+- **Ninguna rama de degradación debe entregar una plantilla con el nombre de
+  nadie.** Si no hay dominio construible se delega en el generador libre: un
+  intento real sobre la idea, aunque salga imperfecto, vale más que otra app —
+  la misma para todos— que no es la que se pidió.
+- **`display` en una clase ANULA el atributo `hidden`** (misma especificidad que
+  la regla del navegador). Por eso el CSS de la tienda declara
+  `[hidden]{display:none !important}`: sin eso, `.cuentas` seguía en pantalla,
+  vacía, debajo de «tu carrito está vacío».
 
 - **PERSISTENCIA EN PRODUCCIÓN (el más caro).** Hoy **no hay PostgreSQL viva**:
   la base free del blueprint caducó a los 30 días y el servicio **no recibe
@@ -321,7 +383,9 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
 
 ## Estado / roadmap
 
-Hecho: multi-modelo, UI Skywork, login Google, licencia, modo profesor,
+Hecho: **esqueleto de TIENDA** (catálogo público, carrito, checkout con total
+calculado en el servidor, stock y panel del dueño), multi-modelo, UI Skywork,
+login Google, licencia, modo profesor,
 memoria/RAG, **publicación autónoma en Render** (fase 1), **agente CLI local +
 trabajos de fondo y bandeja de entregas** (fase 2), **profesor adaptativo con
 nivel por usuario, evidencia en git y camino/racha** (fase 3), PWA instalable,
