@@ -331,6 +331,18 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
 
 ## Gotchas conocidos
 
+- **Lo accesorio DEGRADA, lo sustancial se RECHAZA** (`domain/dominio_app.py`).
+  La validación es de todo el dominio a la vez, así que un valor de adorno mal
+  puesto se llevaba la aplicación entera. Por eso `Campo.tipo` traduce sinónimos
+  y cae a `texto` si no lo reconoce, y `motor` cae a `sqlite` (los modelos piden
+  Mongo a menudo, y no hay entorno que prestarles). En cambio `app_name`,
+  `entidad` y `entidad_plural` siguen siendo obligatorios: si falta la identidad
+  de la app, es mucho mejor que el contrato lo rechace y lo intente el siguiente
+  proveedor que construir algo llamado «Mi App». Un cálculo con operación
+  desconocida se DESCARTA (marca `_INVALIDA`, la tira `sanear()`), nunca se
+  adivina: un número equivocado bajo una etiqueta que suena bien es peor que no
+  tenerlo. Logs del 15-ago-2026, 05:28:56: `campos.1.tipo='lista'` y
+  `motor='mongodb'` tiraron un carrito de compras entero.
 - **El clasificador del esqueleto llama a `chat_json` CON `validar`.** No se lo
   quites. Sin él, un proveedor que devuelve `{"tipo":"crud_login"}` y poco más
   contaba como éxito, la cadena se paraba con modelos sanos sin probar y la
@@ -363,6 +375,14 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
   desde cero; si tocas una variable ahí, tócala también en el servicio real.
 - **Groq free**: ~12.000 tokens/min y límites diarios. Si se agota, añade otro
   proveedor a `LLM_PROVIDERS` (Gemini/OpenRouter) — el fallback se encarga.
+- **El ORDEN de `LLM_PROVIDERS` en producción no es el de tu `.env`**, y eso
+  hace que un fallo se reproduzca en el servidor y no en tu máquina. En agosto
+  de 2026 los dos primeros del rol `prompt` eran `github-gpt4.1-mini` y
+  `github-gpt4o-mini`, que devuelven **410 Gone** desde que GitHub retiró sus
+  Models: gastaban un viaje cada uno y dejaban a `mistral-small` de primero real.
+  Si depuras algo del LLM, mira ANTES la cadena que corre de verdad (panel de
+  Render o su API), no la local. Y quita de la lista lo que esté muerto: el
+  fallback lo sortea, pero pagando latencia en cada petición.
 - **Chromium es obligatorio en la imagen**: el `backend/Dockerfile` instala
   Playwright + Chromium y **falla el build** si al final no está. Es
   deliberado: el gate anti-página-en-blanco no puede faltar en silencio (si no,

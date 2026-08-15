@@ -38,6 +38,32 @@ TipoCampo = Literal[
 #: Cálculos que el sistema sabe hacer sobre una columna numérica.
 TipoCalculo = Literal["suma", "promedio", "maximo", "minimo", "conteo"]
 
+#: Marca para una operación que no reconocemos. Existe para poder ACEPTAR el
+#: cálculo en la validación y tirarlo después en `sanear()`, en vez de reventar
+#: el dominio entero por un número de adorno.
+_INVALIDA = "no_soportada"
+
+#: Lo que se admite AL VALIDAR: las operaciones buenas más la marca de descarte.
+TipoCalculoBruto = Literal["suma", "promedio", "maximo", "minimo", "conteo", "no_soportada"]
+
+#: Cómo llaman los modelos a los tipos que sí sabemos construir. No es capricho
+#: suyo: piden en inglés, en jerga de SQL o de formulario HTML. Traducirlo es
+#: gratis; rechazarlo cuesta la aplicación entera.
+_SINONIMOS_TIPO = {
+    "string": "texto", "str": "texto", "text": "texto", "varchar": "texto",
+    "textarea": "texto_largo", "longtext": "texto_largo", "parrafo": "texto_largo",
+    "descripcion": "texto_largo",
+    "int": "entero", "integer": "entero", "number": "entero", "numero": "entero",
+    "cantidad": "entero",
+    "float": "decimal", "double": "decimal", "money": "decimal",
+    "precio": "decimal", "moneda": "decimal", "real": "decimal",
+    "date": "fecha", "datetime": "fecha", "timestamp": "fecha",
+    "select": "opcion", "enum": "opcion", "lista": "opcion", "list": "opcion",
+    "choice": "opcion", "categoria": "opcion",
+    "bool": "booleano", "boolean": "booleano", "checkbox": "booleano", "si_no": "booleano",
+    "foreign_key": "relacion", "fk": "relacion", "referencia": "relacion",
+}
+
 _IDENT = re.compile(r"^[a-z][a-z0-9_]{0,29}$")
 
 _ACENTOS = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
@@ -81,6 +107,23 @@ class Campo(BaseModel):
     @classmethod
     def _normalizar(cls, v: object) -> str:
         return _a_identificador(str(v or ""))
+
+    @field_validator("tipo", mode="before")
+    @classmethod
+    def _tipo_conocido(cls, v: object) -> str:
+        """Traduce el tipo que pide el modelo al que sabemos construir.
+
+        Un tipo desconocido degrada a `texto`, que siempre funciona. NO se
+        rechaza, y esa es toda la cuestión: la validación es de todo el dominio
+        a la vez, así que un `"tipo": "lista"` en el segundo campo tumbaba la
+        aplicación ENTERA y el usuario recibía la plantilla genérica. Pasó en
+        producción el 15-ago-2026 con un carrito de compras. Un campo de texto
+        de más es un detalle; quedarse sin aplicación, no.
+        """
+        crudo = str(v or "texto").strip().lower()
+        if crudo in _SINONIMOS_TIPO:
+            return _SINONIMOS_TIPO[crudo]
+        return crudo if crudo in TipoCampo.__args__ else "texto"
 
     @property
     def es_numerico(self) -> bool:
@@ -172,7 +215,7 @@ class Calculo(BaseModel):
     """
 
     etiqueta: str = Field(..., description="Cómo se muestra. P. ej. 'Total gastado'.")
-    operacion: TipoCalculo = "suma"
+    operacion: TipoCalculoBruto = "suma"
     campo: str = Field(default="", description="Sobre qué campo se calcula (vacío para 'conteo').")
 
     @model_validator(mode="before")
@@ -188,6 +231,27 @@ class Calculo(BaseModel):
         if isinstance(datos, dict) and "operacion" not in datos and datos.get("tipo"):
             datos = {**datos, "operacion": datos["tipo"]}
         return datos
+
+    @field_validator("operacion", mode="before")
+    @classmethod
+    def _operacion_conocida(cls, v: object) -> str:
+        """Traduce la operación; lo que no se reconozca lo descarta `sanear()`.
+
+        Aquí NO se adivina: un cálculo con la operación mal puesta enseña un
+        número equivocado bajo una etiqueta que suena bien, y con ese número se
+        toman decisiones. Por eso lo desconocido se marca (`_INVALIDA`) para que
+        el saneado lo tire, en vez de convertirlo en una suma silenciosa.
+        """
+        crudo = str(v or "").strip().lower()
+        equivalentes = {
+            "total": "suma", "sum": "suma", "sumatoria": "suma",
+            "media": "promedio", "average": "promedio", "avg": "promedio", "mean": "promedio",
+            "max": "maximo", "mayor": "maximo",
+            "min": "minimo", "menor": "minimo",
+            "count": "conteo", "cuenta": "conteo", "numero": "conteo", "cantidad": "conteo",
+        }
+        crudo = equivalentes.get(crudo, crudo)
+        return crudo if crudo in TipoCalculo.__args__ else _INVALIDA
 
     @field_validator("campo", mode="before")
     @classmethod
@@ -298,6 +362,26 @@ class DominioApp(BaseModel):
         default="sqlite",
         description="Motor pedido EXPLÍCITAMENTE en el encargo; sqlite si no se nombra ninguno.",
     )
+
+    @field_validator("motor", mode="before")
+    @classmethod
+    def _motor_servible(cls, v: object) -> str:
+        """Un motor que no sabemos levantar cae a SQLite en vez de tumbar el dominio.
+
+        Los modelos piden Mongo con frecuencia. No hay entorno que se lo preste
+        —está prohibido a propósito—, pero rechazarlo con un error de validación
+        se llevaba por delante el dominio COMPLETO: el usuario no se quedaba sin
+        Mongo, se quedaba sin aplicación. Con SQLite la aplicación existe, y es
+        lo que el encargo iba a recibir de todas formas.
+        """
+        crudo = str(v or "sqlite").strip().lower()
+        equivalentes = {
+            "postgresql": "postgres", "psql": "postgres", "pg": "postgres",
+            "mariadb": "mysql", "my_sql": "mysql",
+            "sqlite3": "sqlite", "": "sqlite",
+        }
+        crudo = equivalentes.get(crudo, crudo)
+        return crudo if crudo in ("sqlite", "mysql", "postgres") else "sqlite"
     #: Registros de ejemplo, uno por diccionario, con las claves de `campos`.
     #:
     #: Por qué es tan importante como el modelo de datos: una aplicación que abre
@@ -374,11 +458,13 @@ class DominioApp(BaseModel):
         if not limpios:
             limpios = [Campo(nombre="descripcion", etiqueta="Descripción", tipo="texto")]
 
-        # Un cálculo sobre algo que no es número no se puede hacer.
+        # Un cálculo sobre algo que no es número no se puede hacer, y uno cuya
+        # operación no reconocimos tampoco: se descarta antes que enseñar una
+        # cifra equivocada bajo una etiqueta que suena correcta.
         numericos = {c.nombre for c in limpios if c.es_numerico}
         calculos = [
             c for c in self.calculos
-            if c.operacion == "conteo" or c.campo in numericos
+            if c.operacion != _INVALIDA and (c.operacion == "conteo" or c.campo in numericos)
         ][:4]
 
         campos_finales = limpios[:8]
