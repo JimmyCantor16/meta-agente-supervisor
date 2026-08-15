@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import logging
 
+from src.domain.dominio_app import DominioApp
 from src.domain.entities import GeneratedFile, GeneratedProject
 from src.domain.ports import ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import MultiModelLLM
-from src.infrastructure.adapters.skeleton_fullstack import MARCADOR, construir
+from src.infrastructure.adapters.skeleton_fullstack import MARCADOR
 from src.infrastructure.adapters.skeleton_landing import construir_landing
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,52 @@ _SYSTEM = (
 )
 
 
+#: Lo que el clasificador tiene permitido responder. Cualquier otra cosa se
+#: ignora: un tipo inventado dejaría la construcción sin camino.
+_TIPOS_VALIDOS = ("crud_login", "por_clases", "landing", "otro")
+
+
+def _contrato_del_clasificador(datos: dict) -> None:
+    """Comprueba que la respuesta del clasificador SE PUEDA construir.
+
+    Corre DENTRO del bucle de fallback (ver `MultiModelLLM.chat_json`), y ese es
+    justo el punto: el modo de fallo típico del tier gratis no es JSON roto —eso
+    ya se detecta— sino JSON impecable con la FORMA inventada. Sin esta
+    comprobación, un proveedor que contestaba `{"tipo": "crud_login"}` y poco más
+    contaba como ÉXITO, la cadena se paraba ahí con proveedores sanos sin probar,
+    y el usuario recibía la plantilla genérica «Mi App» en lugar de su idea. Así
+    se entregó un «carrito de compras» convertido en una lista de «elementos».
+
+    Es un CHEQUEO: su retorno se descarta, y lanzar es la forma de decir «este
+    proveedor no sirve, prueba el siguiente».
+    """
+    if not isinstance(datos, dict):
+        raise ValueError("la respuesta no es un objeto JSON")
+
+    tipo = str(datos.get("tipo") or "").strip().lower()
+    if tipo not in _TIPOS_VALIDOS:
+        raise ValueError(f"'tipo' inválido: {tipo!r}; se esperaba uno de {_TIPOS_VALIDOS}")
+
+    # 'landing' y 'otro' se sostienen solos: el primero tiene valores por
+    # omisión para cada texto y el segundo se va al generador libre. Solo los
+    # dos que construyen una app POR DOMINIO necesitan que el dominio exista.
+    if tipo not in ("crud_login", "por_clases"):
+        return
+
+    bruto = datos.get("dominio")
+    if not isinstance(bruto, dict) or not bruto.get("campos"):
+        raise ValueError(f"'tipo' es {tipo!r} pero no trae 'dominio' con 'campos'")
+    # El retorno se DESCARTA a propósito: aquí solo se comprueba que el dominio
+    # sea válido. Quien construye vuelve a validar con `sanear()`.
+    DominioApp.model_validate(bruto)
+
+    if tipo == "por_clases":
+        temario = datos.get("temario")
+        clases = temario.get("clases") if isinstance(temario, dict) else None
+        if not (isinstance(clases, list) and len(clases) >= 2):
+            raise ValueError("'tipo' es 'por_clases' pero el temario no trae 2+ clases")
+
+
 class SkeletonProjectGenerator(ProjectGeneratorPort):
     """Usa el esqueleto probado para CRUD+login; delega el resto al generador libre."""
 
@@ -149,11 +196,17 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
             proyecto = self._construir_por_dominio(datos)
             if proyecto is not None:
                 return proyecto
-            # Sin dominio utilizable se cae al esqueleto de siempre: una app
-            # genérica que funciona es mejor que ninguna.
-            app_name = str(datos.get("app_name") or "Mi App")[:60]
-            logger.warning("Esqueleto: sin dominio válido; se usa la plantilla básica.")
-            return construir(app_name, "elementos", "Escribe algo...")
+            # Sin dominio utilizable NO se entrega la plantilla genérica. Durante
+            # meses esta rama devolvió `construir("Mi App", "elementos", ...)`, y
+            # eso no es «una app genérica que funciona»: es OTRA app, la misma
+            # para todos, con el nombre y las palabras de nadie. Quien pidió un
+            # carrito de compras recibía una lista de «elementos» y con razón lo
+            # leyó como que el agente no había hecho nada. Un intento real sobre
+            # la idea de verdad, aunque salga imperfecto, siempre vale más.
+            logger.warning(
+                "Esqueleto: 'crud_login' sin dominio construible; se delega al generador libre."
+            )
+            return self._fallback.generate(prompt, language)
         if tipo == "por_clases":
             proyecto = self._construir_primera_clase(datos)
             if proyecto is not None:
@@ -216,10 +269,6 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
             len(dominio.calculos), dominio.tono,
         )
         return construir_desde_dominio(dominio)
-
-    #: Lo que el experto tiene permitido decidir. Cualquier otra cosa se ignora:
-    #: un tipo inventado dejaría la construcción sin camino.
-    _TIPOS_VALIDOS = ("crud_login", "por_clases", "landing", "otro")
 
     @staticmethod
     def _replantear_con_experto(datos: dict | None, prompt: str) -> dict | None:
@@ -314,7 +363,7 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         pedir «por clases» sin temario acaba en la rama de emergencia y el
         usuario recibe algo peor que antes de pagar.
         """
-        if tipo not in SkeletonProjectGenerator._TIPOS_VALIDOS:
+        if tipo not in _TIPOS_VALIDOS:
             return False
         if tipo == "por_clases":
             temario = datos.get("temario")
@@ -371,7 +420,9 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
 
     def _extraer(self, prompt: str) -> dict | None:
         try:
-            data = self._llm.chat_json(_SYSTEM, prompt, temperature=0.1)
+            data = self._llm.chat_json(
+                _SYSTEM, prompt, temperature=0.1, validar=_contrato_del_clasificador
+            )
         except Exception as exc:  # noqa: BLE001 - si el LLM falla, se delega
             logger.warning("Esqueleto: no se pudo clasificar la idea (%s); se delega.", exc)
             return None
