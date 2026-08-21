@@ -18,8 +18,8 @@
 
 .dx-flow--grid {
   background-image:
-    linear-gradient(rgba(140, 150, 190, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(140, 150, 190, 0.07) 1px, transparent 1px);
+    linear-gradient(rgb(var(--dx-line-rgb) / 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--dx-line-rgb) / 0.09) 1px, transparent 1px);
   background-size: 26px 26px;
 }
 

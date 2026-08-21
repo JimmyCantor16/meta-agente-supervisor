@@ -20,6 +20,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from src.domain import contrato_dixel
 from src.domain.entities import (
     Clase,
     MensajeChat,
@@ -636,7 +637,13 @@ class VerificarClaseUseCase:
                 pasos += f"\nPista: {criterio.pista}"
             return False, pasos
 
-        # Hay commit real. La reflexión complementa: se pide, pero no basta.
+        # Hay commit real. Si lo tocado es un componente de DIXEL, el contrato
+        # se corrige SOLO: es objetivo, cuesta milisegundos y no gasta cupo.
+        reparo = self._contrato_dixel(syllabus, archivo)
+        if reparo:
+            return False, reparo
+
+        # La reflexión complementa: se pide, pero no basta.
         if not texto:
             ultimo = commits[0]
             return False, (
@@ -652,6 +659,44 @@ class VerificarClaseUseCase:
                 f"«{ultimo.get('mensaje', '')}». Así trabaja un dev de verdad."
             )
         return aprobado, msg
+
+
+    def _contrato_dixel(self, syllabus: Syllabus, archivo: str | None) -> str:
+        """Si el curso es sobre DIXEL, el contrato de la librería se exige.
+
+        Enseñar la librería sin exigir su contrato sería enseñarla a medias: la
+        razón de que 200 componentes se sientan uno solo es justamente que
+        ninguno anima `width` ni monta su propio reloj. Y como esas reglas son
+        objetivas, el veredicto no lo da un modelo: lo da `domain/contrato_dixel`,
+        gratis y sin margen de opinión.
+
+        Fuera de un proyecto DIXEL no se aplica nada: se mira que el proyecto
+        SEA la librería (su contrato y su núcleo) antes de juzgar por ella.
+        """
+        if not archivo:
+            return ""
+        ruta = archivo.replace("\\", "/")
+        if not (contrato_dixel.es_componente(ruta) or ruta.endswith(".css")):
+            return ""
+        try:
+            archivos = self._reader.read(syllabus.proyecto)
+        except Exception as exc:  # noqa: BLE001 - no poder leer no puede dar 500
+            logger.debug("No se pudo leer '%s' para el contrato DIXEL: %s", syllabus.proyecto, exc)
+            return ""
+        rutas = {f.path.replace("\\", "/"): f.content for f in archivos}
+        es_dixel = "CONTRACT.md" in rutas and any(r.endswith("core/dixel.js") for r in rutas)
+        if not es_dixel or ruta not in rutas:
+            return ""
+        faltas = contrato_dixel.revisar({ruta: rutas[ruta]})
+        if not faltas:
+            return ""
+        return (
+            "¡Veo tu commit! Pero el contrato de la librería todavía no se "
+            "cumple, y ese contrato es media asignatura:\n\n"
+            + contrato_dixel.resumen(faltas)
+            + "\n\nArregla eso, vuelve a compilar y te reviso otra vez. "
+            "No es burocracia: es lo que hace que 200 componentes se sientan uno solo. 💪"
+        )
 
 
 # ===========================================================================

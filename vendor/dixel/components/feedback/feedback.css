@@ -748,7 +748,7 @@
 }
 
 [data-dx-theme='light'] .dx-loadover {
-  background: rgba(246, 246, 251, 0.7);
+  background: rgb(var(--dx-bg-rgb) / 0.7);
 }
 
 .dx-loadover--fullscreen {

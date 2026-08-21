@@ -75,7 +75,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgba(7, 7, 13, var(--dx-stage-dim, 0.55)) 92%);
+  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgb(var(--dx-bg-rgb) / var(--dx-stage-dim, 0.55)) 92%);
   pointer-events: none;
   z-index: 2;
 }

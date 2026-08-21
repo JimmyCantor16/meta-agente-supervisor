@@ -3320,7 +3320,7 @@ button.dx-chart-legend-item { background: none; border: 0; cursor: pointer; font
 }
 
 [data-dx-theme='light'] .dx-loadover {
-  background: rgba(246, 246, 251, 0.7);
+  background: rgb(var(--dx-bg-rgb) / 0.7);
 }
 
 .dx-loadover--fullscreen {
@@ -3599,8 +3599,8 @@ button.dx-chart-legend-item { background: none; border: 0; cursor: pointer; font
 
 .dx-flow--grid {
   background-image:
-    linear-gradient(rgba(140, 150, 190, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(140, 150, 190, 0.07) 1px, transparent 1px);
+    linear-gradient(rgb(var(--dx-line-rgb) / 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--dx-line-rgb) / 0.09) 1px, transparent 1px);
   background-size: 26px 26px;
 }
 
@@ -9731,7 +9731,7 @@ body.dx-dragging * {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgba(7, 7, 13, var(--dx-stage-dim, 0.55)) 92%);
+  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgb(var(--dx-bg-rgb) / var(--dx-stage-dim, 0.55)) 92%);
   pointer-events: none;
   z-index: 2;
 }
