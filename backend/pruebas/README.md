@@ -27,6 +27,7 @@ Esos ocho son **offline**: no tocan la red ni gastan cupo de ningún modelo.
 | `datos_de_ejemplo.py` | Que la app no se entregue vacía: los ejemplos mal formados se descartan sin tumbar la generación, los números se leen bien en todos los formatos, y el modo visita solo se ofrece si hay algo que ver. |
 | `agente_experto.py` | Qué plan usa experto y en qué momento; que cuando entra mejora algo comprobable; que el tope de gasto corta de verdad; y que sin clave el sistema sigue funcionando. |
 | `contrato_en_el_fallback.py` | Que un proveedor que devuelve JSON con la FORMA equivocada no tumba la petición: cuenta como fallo suyo y el siguiente lo intenta. |
+| `postgres_gemelos.py` | Que cada repositorio PostgreSQL responde EXACTAMENTE igual que su gemelo SQLite (mismos guiones, mismos resultados) y que la migración lleva las filas sin duplicarlas ni perder la zona horaria. Necesita una base: ver su cabecera. |
 | `persistencia_no_se_borra.py` | Que una base fuera del disco persistente se detecta y se grita al arrancar (el fallo más caro del proyecto), y que la copia del SQLite restaura de verdad y rota. |
 | `contrato_dixel.py` | Que el contrato de DIXEL se corrige por máquina: cada regla salta con el código que la incumple, un componente correcto pasa limpio, y la librería real cumple su propio contrato salvo tres desvíos conocidos. |
 | `licencia_por_usuario.py` | Que la licencia y el cupo son de cada usuario: activarla no licencia a los demás, ni el contador de uno se le enseña a otro; y que un repositorio antiguo sigue funcionando en global. |

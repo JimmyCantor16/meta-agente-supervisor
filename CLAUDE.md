@@ -413,15 +413,14 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
   `[hidden]{display:none !important}`: sin eso, `.cuentas` seguía en pantalla,
   vacía, debajo de «tu carrito está vacío».
 
-- **PERSISTENCIA EN PRODUCCIÓN (el más caro).** Hoy **no hay PostgreSQL viva**:
-  la base free del blueprint caducó a los 30 días y el servicio **no recibe
-  `DATABASE_URL`**, así que `uses_postgres` es False y TODO —usuarios,
-  licencias, cupos, cursos, progreso, despliegues, trabajos y actividad— vive en
-  el SQLite de `settings.db_path`. El **único** disco persistente está montado
-  en `/app/generated`, de modo que **`DB_PATH=/app/generated/metaagente.db`** es
-  lo único que evita que se borre entero en CADA deploy y en cada reinicio (el
-  valor por defecto cae en `/app/evaluations.db`, fuera del disco, y el usuario
-  se encontraba sin cuenta ni licencia). Ahora eso **se dice en voz alta**: al
+- **PERSISTENCIA EN PRODUCCIÓN (el más caro, y peor de lo que se creía).**
+  Comprobado por la API de Render el 21-ago-2026: **el servicio NO tiene disco**
+  (la cuenta no tiene ninguno; el plan free de Render no admite discos) y **no
+  hay PostgreSQL viva**. O sea que el `disk:` de `render.yaml` nunca se aplicó:
+  hoy `/app/generated` es efímero y TODO —usuarios, licencias, cupos, cursos,
+  progreso, despliegues, trabajos y actividad, más los MVP entregados— se borra
+  en CADA deploy (hay 8 desde el 4-ago) y en cada reinicio. `DB_PATH` dentro de
+  `generated` ayuda solo si alguna vez hay disco de verdad. Ahora eso **se dice en voz alta**: al
   arrancar se registra dónde vive la base y, si está fuera del disco estando en
   el PaaS, sale un ERROR; `/health` lo publica en `persistencia`. Y hay copia:
   `RESPALDO_DB_HORAS` (24 por defecto) y `python -m tools.respaldo_db`
@@ -430,6 +429,15 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
   bandeja enumeran `generated/` filtrando por `is_dir()`, así que un archivo (y
   sus `-wal`/`-shm`) es invisible para ellas, mientras que una subcarpeta
   `respaldos/` aparecería como un proyecto más del usuario.
+- **Los NUEVE repositorios tienen ya gemelo PostgreSQL.** Durante meses solo lo
+  tenían tres (evaluaciones, usuarios y uso): encender `DATABASE_URL` habría
+  partido el estado en dos almacenes —el usuario en Postgres y su curso en un
+  SQLite efímero— sin que nada fallara a la vista. Ahora también cursos,
+  trabajos, actividad, despliegues, metas y casos. `pruebas/postgres_gemelos.py`
+  los pone a hacer lo mismo que sus gemelos SQLite y compara los resultados; y
+  `python -m tools.migrar_a_postgres` mueve las filas (idempotente, conservando
+  la zona horaria del inicio de cada clase, que es lo que decide si los commits
+  del alumno cuentan).
 - **El servicio vivo NO está gestionado por blueprint.** Editar `render.yaml` no
   cambia nada en producción: las variables se ponen **por el panel de Render o
   por su API**. El blueprint sirve de documentación y para recrear la infra
@@ -479,13 +487,17 @@ material de curso con corrector de contrato; **licencia y cupo por usuario**
 (activar una clave ya no licencia a toda la instancia); persistencia con aviso
 al arrancar y copia automática.
 
-Pendiente, y **solo se puede hacer desde la cuenta de Render** (hace falta la
-credencial):
-1. Recrear la PostgreSQL y poner `DATABASE_URL` en el servicio. **Ojo**: hoy
-   solo tienen gemelo Postgres los repositorios de evaluaciones, usuarios y
-   uso; cursos, trabajos, actividad, despliegues, metas y casos siguen siendo
-   SQLite. Encender la base sin escribir esos adaptadores partiría el estado en
-   dos sitios — o se escriben, o se sigue en SQLite (que hoy está a salvo).
-2. Adoptar el blueprint (`render.yaml`) para que el archivo mande de verdad, y
-   poner ahí `RESPALDO_DB_HORAS`.
-3. Podar de `LLM_PROVIDERS` los modelos retirados de GitHub.
+Pendiente:
+1. **Una PostgreSQL de verdad donde apuntar.** El código ya está listo (los
+   nueve gemelos y la migración), pero la cuenta de Render **no admite otra base
+   free** («cannot have more than one active free tier database»: la única la
+   ocupa `bitacora-linkysign-db`, que además caduca el 14-sep-2026). Hace falta
+   decidir dónde vive: una Postgres externa gratuita sin caducidad (Neon,
+   Supabase), un esquema aparte dentro de la base free existente, o pagar una en
+   Render. Luego, `DATABASE_URL` en el servicio y `migrar_a_postgres`.
+2. **Los MVP entregados siguen siendo efímeros**: sin disco, `generated/` se
+   borra en cada deploy. Postgres salva el estado, no las carpetas; para los
+   proyectos hace falta disco (plan de pago) o subirlos a GitHub.
+3. Adoptar el blueprint (`render.yaml`) para que el archivo mande de verdad,
+   y quitar de ahí el `disk:` que hoy no se aplica.
+4. Podar de `LLM_PROVIDERS` los modelos retirados de GitHub (panel de Render).

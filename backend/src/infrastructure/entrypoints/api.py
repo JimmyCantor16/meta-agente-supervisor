@@ -132,6 +132,12 @@ from src.infrastructure.adapters.multistack import (
 )
 from src.infrastructure.adapters.project_writer import FileSystemProjectWriter
 from src.infrastructure.adapters.postgres_repository import PostgresEvaluationRepository
+from src.infrastructure.adapters.postgres_actividad_repository import PostgresActividadRepository
+from src.infrastructure.adapters.postgres_caso_repository import PostgresCasoRepository
+from src.infrastructure.adapters.postgres_curso_repository import PostgresCursoRepository
+from src.infrastructure.adapters.postgres_despliegues_repository import PostgresDespliegueRepository
+from src.infrastructure.adapters.postgres_meta_repository import PostgresMetaRepository
+from src.infrastructure.adapters.postgres_trabajos_repository import PostgresTrabajosRepository
 from src.infrastructure.adapters.postgres_usage_repository import PostgresUsageRepository
 from src.infrastructure.adapters.postgres_user_repository import PostgresUserRepository
 from src.infrastructure.adapters.mock_render_deploy import MockRenderDeploy
@@ -548,9 +554,12 @@ def get_caso_repository() -> CasoRepositoryPort:
     """Banco de casos: la memoria que aprende de cada idea y cada fallo.
 
     Vive donde ocurre la generación con URL (local/escritorio), por eso usa el
-    mismo SQLite que el resto de datos locales.
+    mismo almacén que el resto de los datos.
     """
-    return SqliteCasoRepository(get_settings().db_path)
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresCasoRepository(settings.database_url)
+    return SqliteCasoRepository(settings.db_path)
 
 
 @lru_cache
@@ -691,8 +700,11 @@ def get_code_teacher() -> CodeTeacherPort:
 # --- CURSO INTERACTIVO DEL PROFESOR ---
 @lru_cache
 def get_curso_repository() -> CursoRepositoryPort:
-    """Persistencia del curso (SQLite en el mismo db que el resto)."""
-    return SqliteCursoRepository(get_settings().db_path)
+    """Persistencia del curso (PostgreSQL en cloud, SQLite en local)."""
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresCursoRepository(settings.database_url)
+    return SqliteCursoRepository(settings.db_path)
 
 
 @lru_cache
@@ -756,8 +768,11 @@ def get_agente_cli() -> AgenteCliPort:
 
 @lru_cache
 def get_trabajos_repository() -> TrabajosRepositoryPort:
-    """Persistencia de los trabajos de fondo (mismo SQLite local)."""
-    return SqliteTrabajosRepository(get_settings().db_path)
+    """Persistencia de los trabajos de fondo (PostgreSQL en cloud, SQLite en local)."""
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresTrabajosRepository(settings.database_url)
+    return SqliteTrabajosRepository(settings.db_path)
 
 
 def get_trabajos_use_case() -> TrabajosUseCase:
@@ -768,7 +783,10 @@ def get_trabajos_use_case() -> TrabajosUseCase:
 @lru_cache
 def get_actividad_repository() -> ActividadRepositoryPort:
     """Registro de actividad diaria del alumno (la señal de la racha)."""
-    return SqliteActividadRepository(get_settings().db_path)
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresActividadRepository(settings.database_url)
+    return SqliteActividadRepository(settings.db_path)
 
 
 @lru_cache
@@ -834,8 +852,11 @@ def get_despliegue() -> DesplieguePort:
 
 @lru_cache
 def get_despliegue_repository() -> DespliegueRepositoryPort:
-    """Persistencia de despliegues (el mismo SQLite local que cursos y casos)."""
-    return SqliteDespliegueRepository(get_settings().db_path)
+    """Persistencia de despliegues (el mismo almacén que cursos y casos)."""
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresDespliegueRepository(settings.database_url)
+    return SqliteDespliegueRepository(settings.db_path)
 
 
 def get_publicar_use_case(
@@ -872,8 +893,11 @@ def _credenciales_deploy_faltantes(settings: Settings) -> list[str]:
 
 @lru_cache
 def get_meta_repository() -> MetaRepositoryPort:
-    """Persistencia de las metas de proceso (mismo SQLite local)."""
-    return SqliteMetaRepository(get_settings().db_path)
+    """Persistencia de las metas de proceso (mismo almacén que el resto)."""
+    settings = get_settings()
+    if settings.uses_postgres:
+        return PostgresMetaRepository(settings.database_url)
+    return SqliteMetaRepository(settings.db_path)
 
 
 @lru_cache
