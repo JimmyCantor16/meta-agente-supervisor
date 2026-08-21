@@ -152,6 +152,27 @@ class UsageRepositoryPort(ABC):
         """Guarda la licencia activada."""
         raise NotImplementedError
 
+    # -- Variante por usuario ------------------------------------------
+    # NO son abstractas a propósito (mismo criterio que `get_nivel`/`set_nivel`
+    # en `UserRepositoryPort`): un repositorio antiguo sigue funcionando y se
+    # comporta como antes, global. Los adaptadores vivos SÍ las implementan,
+    # porque una licencia global la activa uno y la disfrutan todos.
+    def generations_used_de(self, usuario: str) -> int:
+        """Generaciones de ESE usuario."""
+        return self.generations_used()
+
+    def record_generation_de(self, usuario: str) -> None:
+        """Suma una generación a ESE usuario."""
+        self.record_generation()
+
+    def active_license_de(self, usuario: str) -> str | None:
+        """Licencia activa de ESE usuario."""
+        return self.active_license()
+
+    def set_license_de(self, usuario: str, key: str) -> None:
+        """Guarda la licencia de ESE usuario."""
+        self.set_license(key)
+
 
 class PromptEvaluatorPort(ABC):
     """Contrato que debe cumplir cualquier motor de evaluación de prompts.

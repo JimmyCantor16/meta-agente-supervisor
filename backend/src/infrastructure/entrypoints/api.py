@@ -2822,9 +2822,12 @@ def list_projects(
     response_model=UsageResponse,
     summary="Estado de uso y licencia (generaciones gratis restantes).",
 )
-def get_usage(usage: UsageService = Depends(get_usage_service)) -> UsageResponse:
-    """Devuelve cuántas generaciones se han usado y si hay licencia."""
-    return UsageResponse(**usage.status())
+def get_usage(
+    user: UserAccount = Depends(get_current_user),
+    usage: UsageService = Depends(get_usage_service),
+) -> UsageResponse:
+    """Cuántas generaciones ha usado ESTE usuario y si tiene licencia."""
+    return UsageResponse(**usage.status(user.sub or ""))
 
 
 @router.post(
@@ -2834,15 +2837,17 @@ def get_usage(usage: UsageService = Depends(get_usage_service)) -> UsageResponse
 )
 def activate_license(
     request: LicenseRequest,
+    user: UserAccount = Depends(get_current_user),
     usage: UsageService = Depends(get_usage_service),
 ) -> UsageResponse:
-    """Activa la licencia si la clave es válida; si no, devuelve 400."""
-    if not usage.activate(request.key):
+    """Activa la licencia PARA QUIEN LA ACTIVA; si la clave no vale, 400."""
+    sub = user.sub or ""
+    if not usage.activate(request.key, sub):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Clave de licencia inválida.",
         )
-    return UsageResponse(**usage.status())
+    return UsageResponse(**usage.status(sub))
 
 
 # ---------------------------------------------------------------------------

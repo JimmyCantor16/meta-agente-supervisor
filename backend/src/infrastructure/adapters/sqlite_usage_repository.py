@@ -58,3 +58,22 @@ class SqliteUsageRepository(UsageRepositoryPort):
 
     def set_license(self, key: str) -> None:
         self._set(_LICENSE_KEY, key)
+
+    @staticmethod
+    def _clave(base: str, usuario: str) -> str:
+        """Clave por usuario; sin usuario, la global de siempre."""
+        sub = (usuario or "").strip()
+        return f"{base}:{sub}" if sub else base
+
+    def generations_used_de(self, usuario: str) -> int:
+        raw = self._get(self._clave(_GENERATIONS_KEY, usuario))
+        return int(raw) if raw and raw.isdigit() else 0
+
+    def record_generation_de(self, usuario: str) -> None:
+        self._set(self._clave(_GENERATIONS_KEY, usuario), str(self.generations_used_de(usuario) + 1))
+
+    def active_license_de(self, usuario: str) -> str | None:
+        return self._get(self._clave(_LICENSE_KEY, usuario))
+
+    def set_license_de(self, usuario: str, key: str) -> None:
+        self._set(self._clave(_LICENSE_KEY, usuario), key)

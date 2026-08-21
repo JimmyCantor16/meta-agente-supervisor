@@ -11,12 +11,13 @@ PYTHONIOENCODING=utf-8 python pruebas/agente_experto.py
 PYTHONIOENCODING=utf-8 python pruebas/datos_de_ejemplo.py
 PYTHONIOENCODING=utf-8 python pruebas/contrato_en_el_fallback.py
 PYTHONIOENCODING=utf-8 python pruebas/base_de_datos_pedida.py
+PYTHONIOENCODING=utf-8 python pruebas/licencia_por_usuario.py
 ```
 
 (En Windows, `PYTHONIOENCODING=utf-8` evita que la consola se atragante con los
 acentos y las flechas.)
 
-Esos cinco son **offline**: no tocan la red ni gastan cupo de ningún modelo.
+Esos seis son **offline**: no tocan la red ni gastan cupo de ningún modelo.
 
 | Guion | Qué demuestra |
 |---|---|
@@ -24,6 +25,7 @@ Esos cinco son **offline**: no tocan la red ni gastan cupo de ningún modelo.
 | `datos_de_ejemplo.py` | Que la app no se entregue vacía: los ejemplos mal formados se descartan sin tumbar la generación, los números se leen bien en todos los formatos, y el modo visita solo se ofrece si hay algo que ver. |
 | `agente_experto.py` | Qué plan usa experto y en qué momento; que cuando entra mejora algo comprobable; que el tope de gasto corta de verdad; y que sin clave el sistema sigue funcionando. |
 | `contrato_en_el_fallback.py` | Que un proveedor que devuelve JSON con la FORMA equivocada no tumba la petición: cuenta como fallo suyo y el siguiente lo intenta. |
+| `licencia_por_usuario.py` | Que la licencia y el cupo son de cada usuario: activarla no licencia a los demás, ni el contador de uno se le enseña a otro; y que un repositorio antiguo sigue funcionando en global. |
 | `base_de_datos_pedida.py` | Que quien pide MySQL reciba MySQL: driver declarado, compose, conexión leída del entorno, prefijo normalizado al driver, y que el verificador le preste el motor correcto. |
 
 ## La prueba end to end (sí usa red y cupo)
