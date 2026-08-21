@@ -17,6 +17,7 @@ import secrets
 
 from src.domain.dominio_tienda import DominioTienda
 from src.domain.entities import GeneratedFile, GeneratedProject
+from src.infrastructure.adapters import dixel_assets
 from src.infrastructure.adapters import skeleton_tienda as be
 from src.infrastructure.adapters import skeleton_tienda_front as fe
 from src.infrastructure.adapters import skeleton_dominio_front as fe_comun
@@ -62,11 +63,13 @@ def _index_html(d: DominioTienda) -> str:
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="static/icon.svg">
   <meta name="theme-color" content="{acento}">
+  {dixel_assets.etiquetas()}
 </head>
 <body>
   <main id="app" class="wrap"></main>
   <script type="module">
     window.__TIENDA__ = {datos};
+    {dixel_assets.arranque(acento)}
     // Las pantallas de entrar y crear cuenta se comparten con el otro
     // esqueleto y leen `window.__APP__`: se les da el mismo objeto.
     window.__APP__ = window.__TIENDA__;
@@ -353,6 +356,7 @@ def construir_desde_tienda(d: DominioTienda) -> GeneratedProject:
         "frontend/icon.svg": _icono(d.app_name, d.tono),
         MARCADOR: "esqueleto de tienda v1",
     }
+    archivos.update(dixel_assets.archivos())
     if d.motor != "sqlite":
         archivos["docker-compose.yml"] = _compose(d.motor, d.tabla)
 

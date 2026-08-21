@@ -1,0 +1,1324 @@
+{
+  "icons": [
+    {
+      "class": "Icon",
+      "file": "Icon.js",
+      "extends": "Component",
+      "description": "Sistema de iconos propio: 810 trazos SVG consistentes, tamaño y grosor configurables, hereda el color del texto.",
+      "demo": {
+        "name": "sparkles",
+        "size": 28
+      }
+    },
+    {
+      "class": "DrawIcon",
+      "file": "DrawIcon.js",
+      "extends": "Icon",
+      "description": "Icono que se dibuja trazo a trazo al entrar en pantalla y se redibuja al volver.",
+      "demo": {
+        "name": "rocket",
+        "size": 40,
+        "duration": 1.2
+      }
+    },
+    {
+      "class": "IconSet",
+      "file": "IconSet.js",
+      "extends": null,
+      "description": "Registro de 810 trazos con variantes de notificaciones, mensajes, flechas, IA, redes, cursores, teclado, formas y un set tipo emoji de caras, gestos y símbolos.",
+      "demo": null
+    },
+    {
+      "class": "IconCategories",
+      "file": "IconCategories.js",
+      "extends": null,
+      "description": "Mapa de los 810 iconos en 31 categorías en español: interfaz, flechas, archivos, media, comunicación, social, comercio, desarrollo, datosIA, seguridad, clima, transporte, lugares, salud, comida, educación, oficina, tiempo, cursores, formas, emociones, ventana, notificaciones, herramientas, electrodomésticos, música, animales, electrónica, hogar, personas y cocina. Valida en runtime que ningún icono quede sin categoría.",
+      "demo": null
+    }
+  ],
+  "components/feedback": [
+    {
+      "class": "Toast",
+      "file": "Toast.js",
+      "extends": "Component",
+      "description": "Cola de notificaciones apiladas que entran con spring, con barra de vida y pausa al pasar el cursor.",
+      "demo": {
+        "position": "bottom-right",
+        "duration": 4.5,
+        "max": 5
+      }
+    },
+    {
+      "class": "Modal",
+      "file": "Modal.js",
+      "extends": "Component",
+      "description": "Diálogo modal con escala y fade sobre overlay difuminado, focus trap y cierre con Escape.",
+      "demo": {
+        "title": "Confirmar acción",
+        "content": "<p>¿Deseas continuar?</p>",
+        "dismissible": true
+      }
+    },
+    {
+      "class": "Tooltip",
+      "file": "Tooltip.js",
+      "extends": "Component",
+      "description": "Globo de ayuda con posicionamiento inteligente que voltea según el espacio, flecha y retardo.",
+      "demo": {
+        "text": "Copiar al portapapeles",
+        "placement": "top",
+        "delay": 350
+      }
+    },
+    {
+      "class": "ProgressBar",
+      "file": "ProgressBar.js",
+      "extends": "Component",
+      "description": "Barra de progreso con relleno degradado animado solo por transform scaleX y modo indeterminado.",
+      "demo": {
+        "value": 64,
+        "label": "Subiendo archivos",
+        "showValue": true
+      }
+    },
+    {
+      "class": "ProgressRing",
+      "file": "ProgressRing.js",
+      "extends": "Component",
+      "description": "Anillo de progreso SVG con stroke degradado, dashoffset transicionado y porcentaje central.",
+      "demo": {
+        "value": 72,
+        "size": 110,
+        "stroke": 9
+      }
+    },
+    {
+      "class": "Skeleton",
+      "file": "Skeleton.js",
+      "extends": "Component",
+      "description": "Placeholder de carga con shimmer movido por transform, pausado fuera del viewport. Brillo de carga configurable: sheenAngle (grados), sheenSpeed (segundos) y sheenColor.",
+      "demo": {
+        "variant": "card",
+        "lines": 3,
+        "height": 140,
+        "sheenAngle": 115,
+        "sheenSpeed": 1.3
+      }
+    },
+    {
+      "class": "Badge",
+      "file": "Badge.js",
+      "extends": "Component",
+      "description": "Etiqueta compacta de estado con tonos de marca, variantes soft, solid y outline, y punto opcional.",
+      "demo": {
+        "label": "Nuevo",
+        "tone": "cyan",
+        "dot": true
+      }
+    },
+    {
+      "class": "Chip",
+      "file": "Chip.js",
+      "extends": "Component",
+      "description": "Ficha removible con icono opcional y animación de salida por escala y fade.",
+      "demo": {
+        "label": "Motion",
+        "tone": "primary",
+        "removable": true
+      }
+    },
+    {
+      "class": "Alert",
+      "file": "Alert.js",
+      "extends": "Component",
+      "description": "Aviso en línea que entra deslizando, con icono según severidad y cierre animado opcional.",
+      "demo": {
+        "type": "success",
+        "title": "Guardado",
+        "message": "Los cambios se aplicaron.",
+        "dismissible": true
+      }
+    },
+    {
+      "class": "Spinner",
+      "file": "Spinner.js",
+      "extends": "Component",
+      "description": "Indicador de carga en tres variantes ring, dots y pulse, pausado fuera del viewport.",
+      "demo": {
+        "variant": "dots",
+        "size": "md"
+      }
+    },
+    {
+      "class": "LoaderOverlay",
+      "file": "LoaderOverlay.js",
+      "extends": "Component",
+      "description": "Velo de carga que cubre su contenedor (o la pantalla con fullscreen) con spinner y etiqueta, controlado con show() y hide().",
+      "demo": {
+        "label": "Cargando datos",
+        "fullscreen": false,
+        "open": true
+      }
+    },
+    {
+      "class": "LoaderBar",
+      "file": "LoaderBar.js",
+      "extends": "Component",
+      "description": "Barra superior indeterminada tipo YouTube que corre con start() y se completa y desvanece con done().",
+      "demo": {
+        "fixed": false,
+        "color": "primary"
+      }
+    },
+    {
+      "class": "LoaderDots",
+      "file": "LoaderDots.js",
+      "extends": "Component",
+      "description": "Onda de puntos que sube y baja en cascada, pausada fuera del viewport.",
+      "demo": {
+        "count": 5,
+        "color": "cyan"
+      }
+    },
+    {
+      "class": "LoaderOrbit",
+      "file": "LoaderOrbit.js",
+      "extends": "Component",
+      "description": "Satélites orbitando un núcleo en tres anillos a velocidades y sentidos distintos.",
+      "demo": {
+        "size": "md",
+        "color": "primary"
+      }
+    },
+    {
+      "class": "LoaderPulse",
+      "file": "LoaderPulse.js",
+      "extends": "Component",
+      "description": "Anillos concéntricos que emanan del centro en pulsos escalonados.",
+      "demo": {
+        "size": "md",
+        "color": "magenta"
+      }
+    },
+    {
+      "class": "EmptyState",
+      "file": "EmptyState.js",
+      "extends": "Component",
+      "description": "Estado vacío con icono, mensaje y acción, revelado con stagger al entrar en pantalla.",
+      "demo": {
+        "title": "Sin proyectos aún",
+        "description": "Crea tu primer proyecto para empezar.",
+        "actionLabel": "Crear proyecto"
+      }
+    }
+  ],
+  "components/buttons": [
+    {
+      "class": "Button",
+      "file": "Button.js",
+      "extends": "Component",
+      "description": "Botón base con variantes solid, ghost y soft; modelo de referencia de la categoría.",
+      "demo": {
+        "label": "Get started",
+        "variant": "solid",
+        "size": "md"
+      }
+    },
+    {
+      "class": "MagneticButton",
+      "file": "MagneticButton.js",
+      "extends": "Button",
+      "description": "Botón que se imanta al cursor con el Pointer compartido y regresa con física elástica.",
+      "demo": {
+        "label": "Hover me",
+        "variant": "solid",
+        "strength": 0.32,
+        "liftScale": 1.04
+      }
+    },
+    {
+      "class": "GlowButton",
+      "file": "GlowButton.js",
+      "extends": "Button",
+      "description": "Botón con halo estático y brillo interior que barre el botón con transform en hover.",
+      "demo": {
+        "label": "Launch",
+        "variant": "solid",
+        "tone": "cyan"
+      }
+    },
+    {
+      "class": "RippleButton",
+      "file": "RippleButton.js",
+      "extends": "Button",
+      "description": "Botón con onda expansiva desde el punto exacto del click, animada con scale y opacity.",
+      "demo": {
+        "label": "Tap me",
+        "variant": "solid",
+        "rippleOpacity": 0.38
+      }
+    },
+    {
+      "class": "BorderSweepButton",
+      "file": "BorderSweepButton.js",
+      "extends": "Button",
+      "description": "Botón con borde degradado que gira en bucle; la rotación se pausa fuera del viewport.",
+      "demo": {
+        "label": "Premium",
+        "size": "md"
+      }
+    },
+    {
+      "class": "IconButton",
+      "file": "IconButton.js",
+      "extends": "Button",
+      "description": "Botón compacto de solo ícono, circular o cuadrado, con aria-label accesible.",
+      "demo": {
+        "label": "Add item",
+        "variant": "soft",
+        "shape": "circle"
+      }
+    },
+    {
+      "class": "PillToggle",
+      "file": "PillToggle.js",
+      "extends": "Component",
+      "description": "Control segmentado con indicador que se desliza entre opciones usando solo transform.",
+      "demo": {
+        "options": [
+          "Day",
+          "Week",
+          "Month"
+        ],
+        "value": 0
+      }
+    },
+    {
+      "class": "FabButton",
+      "file": "FabButton.js",
+      "extends": "Component",
+      "description": "Botón flotante que despliega un menú radial de acciones en una capa fija sobre toda la página, con stagger y física de rebote.",
+      "demo": {
+        "label": "Quick actions",
+        "radius": 84,
+        "items": [
+          {
+            "label": "Edit",
+            "icon": "✎"
+          },
+          {
+            "label": "Share",
+            "icon": "↗"
+          },
+          {
+            "label": "Delete",
+            "icon": "✕"
+          }
+        ]
+      }
+    },
+    {
+      "class": "HoldButton",
+      "file": "HoldButton.js",
+      "extends": "Button",
+      "description": "Botón de mantener presionado para confirmar, con progreso en anillo, relleno o barrido de borde (progressStyle: ring | fill | sweep) y pulso al completar.",
+      "demo": {
+        "label": "Hold to delete",
+        "variant": "ghost",
+        "holdDuration": 1.1,
+        "progressStyle": "ring"
+      }
+    }
+  ],
+  "components/inputs": [
+    {
+      "class": "Field",
+      "file": "Field.js",
+      "extends": "Component",
+      "description": "Base de los campos: label flotante, anillo de foco cian, mensajes y estados success/error.",
+      "demo": {
+        "label": "Field",
+        "helper": "Base class"
+      }
+    },
+    {
+      "class": "TextField",
+      "file": "TextField.js",
+      "extends": "Field",
+      "description": "Campo de texto con label flotante animado y validación visual integrada.",
+      "demo": {
+        "label": "Full name",
+        "helper": "As it appears on your ID",
+        "type": "text"
+      }
+    },
+    {
+      "class": "PasswordField",
+      "file": "PasswordField.js",
+      "extends": "TextField",
+      "description": "Campo de contraseña con ojo mostrar/ocultar y medidor de fuerza animado por transform.",
+      "demo": {
+        "label": "Password",
+        "meter": true
+      }
+    },
+    {
+      "class": "SearchField",
+      "file": "SearchField.js",
+      "extends": "TextField",
+      "description": "Buscador con ícono, botón de limpiar y atajo de teclado visible estilo kbd.",
+      "demo": {
+        "label": "Search docs",
+        "shortcut": "/"
+      }
+    },
+    {
+      "class": "TextArea",
+      "file": "TextArea.js",
+      "extends": "Field",
+      "description": "Área de texto que crece automáticamente con el contenido hasta maxRows y luego scrollea, con label flotante y modo sin ajuste de línea (wrap: false).",
+      "demo": {
+        "label": "Message",
+        "rows": 3,
+        "maxRows": 6,
+        "wrap": true
+      }
+    },
+    {
+      "class": "SelectField",
+      "file": "SelectField.js",
+      "extends": "Field",
+      "description": "Dropdown custom animado con navegación completa por teclado y roles ARIA de listbox.",
+      "demo": {
+        "label": "Country",
+        "items": [
+          "Colombia",
+          "México",
+          "Argentina",
+          "Chile"
+        ]
+      }
+    },
+    {
+      "class": "Checkbox",
+      "file": "Checkbox.js",
+      "extends": "Component",
+      "description": "Checkbox con check dibujado por stroke-dashoffset y pop elástico al marcar.",
+      "demo": {
+        "label": "Accept terms",
+        "checked": false
+      }
+    },
+    {
+      "class": "RadioGroup",
+      "file": "RadioGroup.js",
+      "extends": "Component",
+      "description": "Grupo de radios con punto interior que entra con rebote y teclado nativo.",
+      "demo": {
+        "label": "Plan",
+        "items": [
+          "Free",
+          "Pro",
+          "Team"
+        ],
+        "value": "Pro",
+        "inline": true
+      }
+    },
+    {
+      "class": "Switch",
+      "file": "Switch.js",
+      "extends": "Component",
+      "description": "Interruptor con física de resorte elástico al soltar y estiramiento al presionar.",
+      "demo": {
+        "label": "Notifications",
+        "checked": true
+      }
+    },
+    {
+      "class": "RangeSlider",
+      "file": "RangeSlider.js",
+      "extends": "Component",
+      "description": "Slider con relleno degradado por scaleX y tooltip de valor que sigue al thumb.",
+      "demo": {
+        "label": "Volume",
+        "min": 0,
+        "max": 100,
+        "value": 65,
+        "unit": "%"
+      }
+    },
+    {
+      "class": "NumberStepper",
+      "file": "NumberStepper.js",
+      "extends": "Component",
+      "description": "Selector numérico con botones más/menos y valor que entra deslizándose según la dirección.",
+      "demo": {
+        "label": "Quantity",
+        "value": 1,
+        "min": 0,
+        "max": 99,
+        "step": 1
+      }
+    },
+    {
+      "class": "PinInput",
+      "file": "PinInput.js",
+      "extends": "Component",
+      "description": "Código PIN con celdas que saltan al llenarse, pegado inteligente y onda al completar.",
+      "demo": {
+        "label": "Verification code",
+        "length": 4,
+        "numeric": true
+      }
+    },
+    {
+      "class": "TagInput",
+      "file": "TagInput.js",
+      "extends": "Component",
+      "description": "Entrada de etiquetas con chips que entran con scale elástico y se quitan con fade.",
+      "demo": {
+        "label": "Skills",
+        "tags": [
+          "design",
+          "motion"
+        ]
+      }
+    },
+    {
+      "class": "FileDrop",
+      "file": "FileDrop.js",
+      "extends": "Component",
+      "description": "Zona de arrastre de archivos que respira durante el dragover y lista lo soltado.",
+      "demo": {
+        "label": "Drop files here",
+        "hint": "or click to browse",
+        "multiple": true
+      }
+    },
+    {
+      "class": "RatingStars",
+      "file": "RatingStars.js",
+      "extends": "Component",
+      "description": "Calificación por estrellas con vista previa al pasar el cursor y cascada elástica al elegir.",
+      "demo": {
+        "label": "Rating",
+        "count": 5,
+        "value": 4
+      }
+    },
+    {
+      "class": "CheckboxGroup",
+      "file": "CheckboxGroup.js",
+      "extends": "Component",
+      "description": "Grupo de checkboxes de selección múltiple con values[], onChange con la lista seleccionada, modo inline y setValues().",
+      "demo": {
+        "label": "Intereses",
+        "items": [
+          "Diseño",
+          "Motion",
+          "Código",
+          "3D"
+        ],
+        "values": [
+          "Motion",
+          "3D"
+        ],
+        "inline": true
+      }
+    }
+  ],
+  "components/cards": [
+    {
+      "class": "Card",
+      "file": "Card.js",
+      "extends": "Component",
+      "description": "Tarjeta base con superficies en degradado, padding fluido y elevación sutil al pasar el cursor.",
+      "demo": {
+        "title": "Profundidad real",
+        "body": "Superficies que capturan la luz de la interfaz.",
+        "footer": "DIXEL · 2026"
+      }
+    },
+    {
+      "class": "TiltCard",
+      "file": "TiltCard.js",
+      "extends": "Card",
+      "description": "Tarjeta con inclinación 3D que sigue al cursor mediante Pointer y regresa suave al salir.",
+      "demo": {
+        "title": "Sigue tu mano",
+        "body": "Física amortiguada en cada eje.",
+        "maxTilt": 10,
+        "lift": 1.03
+      }
+    },
+    {
+      "class": "SpotlightCard",
+      "file": "SpotlightCard.js",
+      "extends": "Card",
+      "description": "Tarjeta con luz radial que persigue el cursor solo durante el hover, con suavizado compartido.",
+      "demo": {
+        "title": "Luz que responde",
+        "body": "Un foco recorre la superficie.",
+        "radius": 300,
+        "tone": "cyan"
+      }
+    },
+    {
+      "class": "GlassCard",
+      "file": "GlassCard.js",
+      "extends": "Card",
+      "description": "Tarjeta de vidrio esmerilado con borde luminoso en degradado y brillo interior estático.",
+      "demo": {
+        "title": "Cristal vivo",
+        "body": "Transparencia con carácter."
+      }
+    },
+    {
+      "class": "GradientBorderCard",
+      "file": "GradientBorderCard.js",
+      "extends": "Card",
+      "description": "Tarjeta con borde degradado cónico en rotación continua por transform, pausado fuera del viewport.",
+      "demo": {
+        "title": "Borde en órbita",
+        "body": "Color girando sin costo de layout.",
+        "speed": 6
+      }
+    },
+    {
+      "class": "FlipCard",
+      "file": "FlipCard.js",
+      "extends": "Card",
+      "description": "Tarjeta que voltea 180 grados con preserve-3d al hacer click, hover o con el teclado.",
+      "demo": {
+        "front": "<h3>Anverso</h3><p>Haz click para girar.</p>",
+        "back": "<h3>Reverso</h3><p>Aquí vive el detalle.</p>",
+        "trigger": "click"
+      }
+    },
+    {
+      "class": "StackCard",
+      "file": "StackCard.js",
+      "extends": "Card",
+      "description": "Pila de tarjetas con profundidad escalonada donde la superior se desliza y rota hacia el fondo.",
+      "demo": {
+        "items": [
+          "<h3>Uno</h3><p>La primera capa.</p>",
+          "<h3>Dos</h3><p>La segunda espera.</p>",
+          "<h3>Tres</h3><p>El fondo respira.</p>"
+        ],
+        "offset": 16
+      }
+    },
+    {
+      "class": "PricingCard",
+      "file": "PricingCard.js",
+      "extends": "Card",
+      "description": "Tarjeta de precios con lista de beneficios, CTA y variante destacada con halo de marca.",
+      "demo": {
+        "plan": "Pro",
+        "price": "$29",
+        "period": "/mes",
+        "features": [
+          "Proyectos ilimitados",
+          "Soporte prioritario",
+          "Analítica avanzada"
+        ],
+        "featured": true
+      }
+    },
+    {
+      "class": "ProfileCard",
+      "file": "ProfileCard.js",
+      "extends": "Card",
+      "description": "Tarjeta de perfil con portada en degradado, avatar, estadísticas y acción principal.",
+      "demo": {
+        "name": "Ana Riveros",
+        "role": "Product Designer",
+        "initials": "AR",
+        "stats": [
+          {
+            "value": "128",
+            "label": "Shots"
+          },
+          {
+            "value": "4.9",
+            "label": "Rating"
+          }
+        ],
+        "actionLabel": "Seguir"
+      }
+    }
+  ],
+  "components/layout": [
+    {
+      "class": "Accordion",
+      "file": "Accordion.js",
+      "extends": "Component",
+      "description": "Paneles plegables con altura animada vía grid-template-rows y flecha rotante.",
+      "demo": {
+        "items": [
+          {
+            "title": "¿Qué es DIXEL?",
+            "content": "Una librería gráfica vanilla con UX cinematográfico.",
+            "open": true
+          },
+          {
+            "title": "¿Tiene dependencias?",
+            "content": "Cero. Todo corre sobre el núcleo propio."
+          },
+          {
+            "title": "¿Es responsiva?",
+            "content": "De 320px a 4K con tokens fluidos."
+          }
+        ]
+      }
+    },
+    {
+      "class": "Timeline",
+      "file": "Timeline.js",
+      "extends": "Component",
+      "description": "Línea vertical que se dibuja con el scroll y nodos que se encienden al pasar.",
+      "demo": {
+        "items": [
+          {
+            "date": "2024",
+            "title": "Idea",
+            "text": "Nace el concepto de la librería."
+          },
+          {
+            "date": "2025",
+            "title": "Núcleo",
+            "text": "Ticker, Viewport y ScrollWatch compartidos."
+          },
+          {
+            "date": "2026",
+            "title": "Lanzamiento",
+            "text": "Componentes de datos, texto y media."
+          }
+        ]
+      }
+    },
+    {
+      "class": "Steps",
+      "file": "Steps.js",
+      "extends": "Component",
+      "description": "Indicador de pasos con conectores que se llenan y estados hecho/activo. Opción colors: un color por paso (token o hex) que pinta punto, número y conector.",
+      "demo": {
+        "steps": [
+          "Cuenta",
+          "Perfil",
+          "Pago",
+          "Listo"
+        ],
+        "current": 2,
+        "colors": [
+          "primary",
+          "cyan",
+          "magenta",
+          "success"
+        ]
+      }
+    },
+    {
+      "class": "MasonryGrid",
+      "file": "MasonryGrid.js",
+      "extends": "Component",
+      "description": "Grilla tipo masonry de columnas responsivas con entrada escalonada; items declarables por opciones.",
+      "demo": {
+        "minWidth": 150,
+        "stagger": 0.06,
+        "items": [
+          "<h4>Rápido</h4><p>Pieza 1 del muro.</p>",
+          "<h4>Fluido</h4><p>Pieza 2 del muro, con algo más de texto para variar la altura.</p>",
+          "<h4>Modular</h4><p>Pieza 3 del muro.</p>",
+          "<h4>Vivo</h4><p>Pieza 4 del muro, columnas que se reparten solas.</p>",
+          "<h4>Nítido</h4><p>Pieza 5 del muro.</p>"
+        ]
+      }
+    },
+    {
+      "class": "StickyStack",
+      "file": "StickyStack.js",
+      "extends": "Component",
+      "description": "Tarjetas que se apilan al scrollear y escalan levemente al quedar detrás; items declarables por opciones.",
+      "demo": {
+        "top": 32,
+        "scaleStep": 0.05,
+        "items": [
+          "<h4>Un solo reloj</h4><p>Todas las animaciones laten en el mismo Ticker.</p>",
+          "<h4>Solo pagan los visibles</h4><p>Todo se pausa fuera del viewport.</p>",
+          "<h4>Cero dependencias</h4><p>Motion, scroll y observadores propios.</p>"
+        ]
+      }
+    },
+    {
+      "class": "SplitView",
+      "file": "SplitView.js",
+      "extends": "Component",
+      "description": "Dos paneles con divisor arrastrable por puntero y teclado, en orientación horizontal (lado a lado) o vertical (apilados), con asa en estilos pill, line (línea fina que se ilumina), dots (3 puntos) o chevrons (flechas según orientación); anidable sin heredar estilos del padre.",
+      "demo": {
+        "start": 0.5,
+        "min": 0.25,
+        "max": 0.75,
+        "orientation": "horizontal",
+        "handleStyle": "pill",
+        "panes": [
+          "<h4>Editor</h4><p>Arrastra el asa central.</p>",
+          "<h4>Vista previa</h4><p>Los paneles se reparten el espacio.</p>"
+        ]
+      }
+    },
+    {
+      "class": "SectionWave",
+      "file": "SectionWave.js",
+      "extends": "Component",
+      "description": "Divisor SVG de onda, curva o diagonal entre secciones; color por token (surface, bg, primary-soft…), altura 60px por defecto ajustable con height y volteo vertical con flip.",
+      "demo": {
+        "shape": "wave",
+        "color": "primary-soft",
+        "flip": false,
+        "height": "60px"
+      }
+    }
+  ],
+  "components/data": [
+    {
+      "class": "StatCounter",
+      "file": "StatCounter.js",
+      "extends": "Component",
+      "description": "Número que cuenta hasta su valor al entrar en pantalla, con separador de miles.",
+      "demo": {
+        "value": 128450,
+        "label": "Usuarios activos",
+        "suffix": "+",
+        "duration": 1.8
+      }
+    },
+    {
+      "class": "Sparkline",
+      "file": "Sparkline.js",
+      "extends": "Component",
+      "description": "Mini gráfico de línea en canvas que se dibuja al entrar, con gradiente de relleno; lineWidth ajustable y pointMarkers para marcar cada dato.",
+      "demo": {
+        "data": [
+          4,
+          9,
+          6,
+          12,
+          10,
+          16,
+          13,
+          21,
+          18,
+          26
+        ],
+        "color": "cyan",
+        "pointMarkers": false
+      }
+    },
+    {
+      "class": "ChartTooltip",
+      "file": "ChartTooltip.js",
+      "extends": null,
+      "description": "Tooltip compartido de todos los charts: portal al body con título, filas por serie con swatch y valor formateado.",
+      "demo": null
+    },
+    {
+      "class": "LineChart",
+      "file": "LineChart.js",
+      "extends": "Component",
+      "description": "Líneas multi-serie con curvas suaves, glow, tooltip con crosshair, extremos marcados, formatos y leyenda clicable. Personalizable: showGrid (bool), gridColor (token, ej. line), labelRotation (grados para fechas largas), pointMarkers (bool, punto en cada dato), lineWidth global o por serie (serie.lineWidth), format (compact/number/currency/percent), currency y locale.",
+      "demo": {
+        "labels": [
+          "12 ene",
+          "12 feb",
+          "12 mar",
+          "12 abr",
+          "12 may",
+          "12 jun",
+          "12 jul"
+        ],
+        "series": [
+          {
+            "label": "Ventas",
+            "data": [
+              12,
+              19,
+              14,
+              26,
+              22,
+              34,
+              29
+            ]
+          },
+          {
+            "label": "Costos",
+            "data": [
+              8,
+              11,
+              10,
+              14,
+              13,
+              18,
+              15
+            ],
+            "color": "magenta"
+          }
+        ],
+        "markExtremes": true,
+        "format": "compact",
+        "labelRotation": 0,
+        "pointMarkers": true,
+        "showGrid": true
+      }
+    },
+    {
+      "class": "AreaChart",
+      "file": "AreaChart.js",
+      "extends": "LineChart",
+      "description": "Áreas multi-serie apilables con degradados superpuestos y tooltip con totales. Hereda la personalización de LineChart: showGrid, gridColor, labelRotation, pointMarkers, lineWidth por serie, format, currency y locale.",
+      "demo": {
+        "labels": [
+          "Lun",
+          "Mar",
+          "Mié",
+          "Jue",
+          "Vie",
+          "Sáb",
+          "Dom"
+        ],
+        "series": [
+          {
+            "label": "Orgánico",
+            "data": [
+              14,
+              18,
+              16,
+              22,
+              26,
+              31,
+              28
+            ]
+          },
+          {
+            "label": "Pago",
+            "data": [
+              8,
+              9,
+              11,
+              10,
+              14,
+              16,
+              13
+            ],
+            "color": "cyan"
+          },
+          {
+            "label": "Referidos",
+            "data": [
+              4,
+              5,
+              4,
+              7,
+              6,
+              9,
+              8
+            ],
+            "color": "magenta"
+          }
+        ],
+        "stacked": true
+      }
+    },
+    {
+      "class": "LiveChart",
+      "file": "LiveChart.js",
+      "extends": "Component",
+      "description": "Línea en streaming con push(valor), ventana deslizante, glow y punto final latiendo — se autoalimenta en demo solo mientras es visible.",
+      "demo": {
+        "label": "Latencia p95 · ms",
+        "demo": true,
+        "min": 0,
+        "max": 100,
+        "color": "cyan"
+      }
+    },
+    {
+      "class": "RadarChart",
+      "file": "RadarChart.js",
+      "extends": "Component",
+      "description": "Polígono multi-eje con relleno translúcido, vértices animados al entrar y tooltip por eje.",
+      "demo": {
+        "axes": [
+          "Velocidad",
+          "Diseño",
+          "Código",
+          "Motion",
+          "Accesibilidad",
+          "SEO"
+        ],
+        "series": [
+          {
+            "label": "DIXEL",
+            "data": [
+              92,
+              88,
+              90,
+              96,
+              84,
+              80
+            ]
+          },
+          {
+            "label": "Promedio",
+            "data": [
+              60,
+              55,
+              62,
+              40,
+              58,
+              66
+            ],
+            "color": "magenta"
+          }
+        ]
+      }
+    },
+    {
+      "class": "HeatmapGrid",
+      "file": "HeatmapGrid.js",
+      "extends": "Component",
+      "description": "Calendario de intensidad estilo GitHub con escala de marca, tooltip por celda (fecha y valor) y entrada escalonada.",
+      "demo": {
+        "weeks": 26,
+        "unit": "commits"
+      }
+    },
+    {
+      "class": "DonutProgress",
+      "file": "DonutProgress.js",
+      "extends": "Component",
+      "description": "Anillo multi-segmento con barrido animado, hover que engrosa el segmento, valor central contando y porcentajes en leyenda.",
+      "demo": {
+        "segments": [
+          {
+            "label": "Diseño",
+            "value": 34
+          },
+          {
+            "label": "Desarrollo",
+            "value": 46
+          },
+          {
+            "label": "QA",
+            "value": 12
+          },
+          {
+            "label": "Gestión",
+            "value": 8
+          }
+        ],
+        "centerLabel": "Horas"
+      }
+    },
+    {
+      "class": "BulletChart",
+      "file": "BulletChart.js",
+      "extends": "Component",
+      "description": "Barra de rendimiento contra objetivo con rangos de fondo y marcador de meta — compacta para filas de dashboard.",
+      "demo": {
+        "label": "Ventas Q3",
+        "value": 78,
+        "target": 85,
+        "max": 100,
+        "format": "percent"
+      }
+    },
+    {
+      "class": "BarChart",
+      "file": "BarChart.js",
+      "extends": "Component",
+      "description": "Barras que suben escalonadas con transform al entrar en pantalla. Valores con format (number/compact/currency/percent), currency y locale como LineChart.",
+      "demo": {
+        "data": [
+          {
+            "label": "Lun",
+            "value": 42
+          },
+          {
+            "label": "Mar",
+            "value": 61
+          },
+          {
+            "label": "Mié",
+            "value": 38
+          },
+          {
+            "label": "Jue",
+            "value": 74
+          },
+          {
+            "label": "Vie",
+            "value": 55
+          }
+        ],
+        "format": "number",
+        "locale": "es-CO"
+      }
+    },
+    {
+      "class": "RingChart",
+      "file": "RingChart.js",
+      "extends": "Component",
+      "description": "Donut SVG cuyos segmentos barren al entrar, con leyenda de porcentajes.",
+      "demo": {
+        "data": [
+          {
+            "label": "Web",
+            "value": 46
+          },
+          {
+            "label": "Móvil",
+            "value": 32
+          },
+          {
+            "label": "API",
+            "value": 22
+          }
+        ],
+        "centerValue": "100%",
+        "centerLabel": "Tráfico"
+      }
+    },
+    {
+      "class": "Meter",
+      "file": "Meter.js",
+      "extends": "Component",
+      "description": "Gauge semicircular que se llena hasta su valor con número animado.",
+      "demo": {
+        "value": 78,
+        "max": 100,
+        "suffix": "%",
+        "label": "Capacidad"
+      }
+    },
+    {
+      "class": "KpiTile",
+      "file": "KpiTile.js",
+      "extends": "Component",
+      "description": "Tarjeta KPI con contador, delta con flecha y sparkline integrados.",
+      "demo": {
+        "label": "Ingresos",
+        "value": 84300,
+        "prefix": "$",
+        "delta": 12.4,
+        "data": [
+          30,
+          42,
+          38,
+          55,
+          49,
+          68,
+          61,
+          84
+        ],
+        "color": "success"
+      }
+    },
+    {
+      "class": "DataTable",
+      "file": "DataTable.js",
+      "extends": "Component",
+      "description": "Tabla con encabezado sticky, orden por columna y filas que entran escalonadas — con columnLines para divisiones verticales de columna.",
+      "demo": {
+        "columns": [
+          {
+            "key": "name",
+            "label": "Proyecto"
+          },
+          {
+            "key": "owner",
+            "label": "Responsable"
+          },
+          {
+            "key": "progress",
+            "label": "Avance",
+            "align": "right"
+          }
+        ],
+        "rows": [
+          {
+            "name": "Atlas",
+            "owner": "Sofía",
+            "progress": 82
+          },
+          {
+            "name": "Nébula",
+            "owner": "Marco",
+            "progress": 47
+          },
+          {
+            "name": "Orbe",
+            "owner": "Lina",
+            "progress": 91
+          }
+        ],
+        "height": "320px",
+        "columnLines": true
+      }
+    }
+  ],
+  "components/typography": [
+    {
+      "class": "SplitText",
+      "file": "SplitText.js",
+      "extends": "Component",
+      "description": "Revela texto por caracteres, palabras o líneas con máscara y stagger, reactivable al re-entrar.",
+      "demo": {
+        "text": "El dato cobra vida",
+        "split": "chars",
+        "stagger": 0.03
+      }
+    },
+    {
+      "class": "GradientText",
+      "file": "GradientText.js",
+      "extends": "Component",
+      "description": "Texto con gradiente de marca que aparece suavemente al entrar en pantalla.",
+      "demo": {
+        "text": "Cinematográfico",
+        "gradient": "hot"
+      }
+    },
+    {
+      "class": "TypeWriter",
+      "file": "TypeWriter.js",
+      "extends": "Component",
+      "description": "Teclea frases con caret parpadeante, las borra y rota a la siguiente.",
+      "demo": {
+        "phrases": [
+          "Diseña rápido.",
+          "Anima sin lag.",
+          "Publica hoy."
+        ],
+        "typeSpeed": 16
+      }
+    },
+    {
+      "class": "ScrambleText",
+      "file": "ScrambleText.js",
+      "extends": "Component",
+      "description": "Letras aleatorias que se asientan en el texto final al entrar en pantalla.",
+      "demo": {
+        "text": "DECODIFICANDO",
+        "duration": 1.4
+      }
+    },
+    {
+      "class": "CountUp",
+      "file": "CountUp.js",
+      "extends": "Component",
+      "description": "Número inline que cuenta hasta su valor con formato local, reactivable.",
+      "demo": {
+        "value": 98750,
+        "duration": 2
+      }
+    },
+    {
+      "class": "MarqueeText",
+      "file": "MarqueeText.js",
+      "extends": "Component",
+      "description": "Cinta de texto infinita y seamless que se pausa fuera de vista.",
+      "demo": {
+        "text": "DIXEL · UX CINEMATOGRÁFICO",
+        "speed": 80,
+        "direction": "left"
+      }
+    },
+    {
+      "class": "HighlightText",
+      "file": "HighlightText.js",
+      "extends": "Component",
+      "description": "Subrayado o marcador que se dibuja al entrar en pantalla; el tipo marker es una franja baja pegada a la línea base, con leve inclinación y color con alfa detrás del texto.",
+      "demo": {
+        "text": "lo esencial",
+        "type": "marker",
+        "color": "cyan"
+      }
+    },
+    {
+      "class": "OutlineFillText",
+      "file": "OutlineFillText.js",
+      "extends": "Component",
+      "description": "Texto contorneado que se rellena con un barrido lateral al entrar.",
+      "demo": {
+        "text": "IMPACTO",
+        "gradient": true
+      }
+    }
+  ],
+  "effects/scroll": [
+    {
+      "class": "Reveal",
+      "file": "Reveal.js",
+      "extends": "Component",
+      "description": "Entrada configurable por direccion con stagger de hijos, reactivable al subir y bajar.",
+      "demo": {
+        "direction": "up",
+        "distance": 44,
+        "stagger": 0.09,
+        "once": false
+      }
+    },
+    {
+      "class": "ParallaxLayer",
+      "file": "ParallaxLayer.js",
+      "extends": "Component",
+      "description": "Capa con velocidad relativa al scroll usando el progress compartido de ScrollWatch.",
+      "demo": {
+        "speed": 0.25,
+        "axis": "y"
+      }
+    },
+    {
+      "class": "ScrollProgressBar",
+      "file": "ScrollProgressBar.js",
+      "extends": "Component",
+      "description": "Barra fija superior que refleja el avance de la pagina solo con transform scaleX.",
+      "demo": {
+        "tint": "gradient"
+      }
+    },
+    {
+      "class": "VelocityWarp",
+      "file": "VelocityWarp.js",
+      "extends": "Component",
+      "description": "Inclina y estira sutilmente el elemento segun la velocidad del scroll y se asienta al parar.",
+      "demo": {
+        "maxSkew": 4,
+        "maxStretch": 0.05
+      }
+    },
+    {
+      "class": "StickyReveal",
+      "file": "StickyReveal.js",
+      "extends": "Component",
+      "description": "Marco fijo mientras la seccion pasa; los pasos internos avanzan por progress.",
+      "demo": {
+        "pages": 3,
+        "shift": 48
+      }
+    },
+    {
+      "class": "SmoothAnchorNav",
+      "file": "SmoothAnchorNav.js",
+      "extends": "Component",
+      "description": "Nav de anclas con scroll suave que resalta la seccion visible.",
+      "demo": {
+        "offset": 80,
+        "line": 0.35
+      }
+    }
+  ]
+}

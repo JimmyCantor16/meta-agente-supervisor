@@ -22,6 +22,7 @@ import tempfile
 from pathlib import Path
 
 from src.domain.ports import ProjectVerifierPort
+from src.infrastructure.adapters import dixel_assets
 from src.infrastructure.adapters.db_verificacion import (
     motor_requerido,
     url_de_verificacion,
@@ -29,6 +30,10 @@ from src.infrastructure.adapters.db_verificacion import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: `<div data-dx="TiltCard">` y `Dixel.create("TiltCard", …)`.
+_RE_DIXEL_ATTR = re.compile(r"""data-dx\s*=\s*["']([A-Za-z0-9_]+)["']""")
+_RE_DIXEL_CREATE = re.compile(r"""Dixel\.create\(\s*["']([A-Za-z0-9_]+)["']""")
 
 # Cuántos endpoints fallidos se reportan (enteros) al agente reparador.
 _MAX_PROBLEMS = 3
@@ -292,6 +297,12 @@ class PythonProjectVerifier(ProjectVerifierPort):
         if not root.is_dir():
             return f"El directorio del proyecto no existe: {project_dir}"
 
+        # 0) DIXEL: un componente inventado no rompe nada al escribirlo, se cae
+        # en pantalla y en silencio. Es estático y cuesta milisegundos.
+        dixel_error = self._check_dixel(root)
+        if dixel_error:
+            return dixel_error
+
         py_files = [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
         if not py_files:
             # OJO: devolver None significa "verificado y correcto", y eso era una
@@ -316,6 +327,50 @@ class PythonProjectVerifier(ProjectVerifierPort):
 
         # 3) Ejecutar los endpoints de verdad (caza errores en runtime)
         return self._check_runtime(root)
+
+    # ------------------------------------------------------------------
+    def _check_dixel(self, root: Path) -> str | None:
+        """Comprueba que todo componente DIXEL citado EXISTA y que la librería viaje.
+
+        `<div data-dx="SuperCard">` con un nombre inventado no da error de
+        sintaxis ni de import: la página carga, el hueco se queda vacío y nadie
+        se entera hasta que un usuario lo mira. Igual de callado es citar la
+        librería sin entregarla.
+        """
+        conocidas = dixel_assets.clases_disponibles()
+        if not conocidas:
+            return None
+
+        citadas: dict[str, str] = {}
+        for archivo in root.rglob("*"):
+            if archivo.suffix.lower() not in (".html", ".htm", ".js") or not archivo.is_file():
+                continue
+            if archivo.name.startswith("dixel"):
+                continue
+            try:
+                texto = archivo.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for nombre in _RE_DIXEL_ATTR.findall(texto) + _RE_DIXEL_CREATE.findall(texto):
+                citadas.setdefault(nombre, str(archivo.relative_to(root)))
+        if not citadas:
+            return None
+
+        if not any(root.rglob("dixel*.js")):
+            return (
+                "Se usan componentes DIXEL (" + ", ".join(sorted(citadas)) + ") pero la "
+                "librería no está en el proyecto: falta frontend/vendor/dixel.js y su CSS. "
+                "O se entregan esos archivos, o se escribe la interfaz sin DIXEL."
+            )
+
+        desconocidas = {n: f for n, f in citadas.items() if n not in conocidas}
+        if desconocidas:
+            detalle = ", ".join(f"{n} (en {f})" for n, f in sorted(desconocidas.items()))
+            return (
+                "Estos componentes DIXEL NO existen y quedarían en blanco: " + detalle + ". "
+                "Usa solo clases del catálogo entregado o escribe ese trozo a mano."
+            )
+        return None
 
     # ------------------------------------------------------------------
     def _check_syntax(self, root: Path, py_files: list[Path]) -> str | None:

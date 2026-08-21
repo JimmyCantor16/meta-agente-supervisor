@@ -12,6 +12,7 @@ import secrets
 
 from src.domain.dominio_app import DominioApp
 from src.domain.entities import GeneratedFile, GeneratedProject
+from src.infrastructure.adapters import dixel_assets
 from src.infrastructure.adapters import skeleton_dominio as be
 from src.infrastructure.adapters.skeleton_dominio import _CLAVE_DEMO, _USUARIO_DEMO
 from src.infrastructure.adapters import skeleton_dominio_front as fe
@@ -117,11 +118,13 @@ def _index_html(d: DominioApp) -> str:
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="static/icon.svg">
   <meta name="theme-color" content="{acento}">
+  {dixel_assets.etiquetas()}
 </head>
 <body>
   <main id="app" class="wrap"></main>
   <script type="module">
     window.__APP__ = {datos};
+    {dixel_assets.arranque(acento)}
     window.__CAMPOS__ = {_campos_js(d)};
     window.__CATALOGOS__ = {_catalogos_js(d)};
     // La aplicación es instalable (PWA): en el teléfono queda con su icono,
@@ -664,6 +667,9 @@ def construir_desde_dominio(d: DominioApp) -> GeneratedProject:
         "frontend/icon.svg": _icono(d.app_name, d.tono),
         MARCADOR: "esqueleto por dominio v4",
     }
+    # La librería gráfica viaja DENTRO de la app (sin CDN): una app publicada
+    # no puede depender de que un tercero siga sirviendo un archivo.
+    archivos.update(dixel_assets.archivos())
     # El compose solo tiene sentido si hay un motor que levantar aparte.
     if d.motor != "sqlite":
         archivos["docker-compose.yml"] = _compose(d.motor, d.tabla)

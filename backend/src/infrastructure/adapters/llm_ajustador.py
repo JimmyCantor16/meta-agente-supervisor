@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 _MAX_ARCHIVOS_CONTEXTO = 14
 _MAX_CHARS_ARCHIVO = 4_000
 
+def _doctrina(files: list[GeneratedFile]) -> str:
+    """La doctrina que acompaña al prompt, según lo que el proyecto ya lleva.
+
+    Si la app trae DIXEL dentro (`frontend/vendor/dixel.js`), hay que decírselo
+    al modelo: sin eso reinventa a mano un modal o un gráfico que ya viajan
+    hechos, o —peor— los pide a un CDN, que en una app publicada es depender de
+    que un tercero siga sirviendo el archivo.
+    """
+    doctrina = skill("profesor_paciente.md")
+    if any("vendor/dixel" in f.path for f in files):
+        doctrina += "\n\n" + skill("dixel_catalogo.md")
+    return doctrina
+
+
 SYSTEM_PROMPT = """\
 Eres un desarrollador senior que además ENSEÑA. Recibes el código de un proyecto
 y un ajuste que el alumno quiere hacer en un módulo. Devuelves el cambio
@@ -70,7 +84,7 @@ class LLMAjustadorModulo(AjustadorModuloPort):
             f"=== ARCHIVOS DEL PROYECTO ===\n{contexto}"
         )
         try:
-            payload = self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + skill("profesor_paciente.md"), user, temperature=0.2)
+            payload = self._llm.chat_json(SYSTEM_PROMPT + "\n\n" + _doctrina(files), user, temperature=0.2)
         except LLMError as exc:
             raise AuditError(str(exc)) from exc
 

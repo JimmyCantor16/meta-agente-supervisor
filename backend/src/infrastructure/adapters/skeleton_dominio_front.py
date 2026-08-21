@@ -826,6 +826,9 @@ export function BoardView(onLogout) {
   function aviso(texto, malo) {
     msg.textContent = texto;
     msg.className = malo ? "msg error" : "msg ok";
+    // El mensaje de arriba se pierde de vista si estas al final de una lista
+    // larga: la notificacion flotante confirma que la accion ocurrio.
+    window.avisar?.(texto, malo ? "error" : "success");
   }
 
   async function refrescar() {

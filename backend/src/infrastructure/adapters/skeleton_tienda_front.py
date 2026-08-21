@@ -443,9 +443,11 @@ export function CarritoView(irALogin, irACatalogo) {
       const d = await r.json().catch(() => ({}));
       msg.textContent = d.detail || "No se pudo confirmar la compra.";
       msg.className = "msg error";
+      window.avisar?.(msg.textContent, "error");
     } catch (_) {
       msg.textContent = "No se pudo conectar. Revisa tu conexión.";
       msg.className = "msg error";
+      window.avisar?.(msg.textContent, "error");
     }
     botonPagar.disabled = false;
   };
