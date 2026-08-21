@@ -1,0 +1,198 @@
+[
+  {
+    "class": "Field",
+    "file": "Field.js",
+    "extends": "Component",
+    "description": "Base de los campos: label flotante, anillo de foco cian, mensajes y estados success/error.",
+    "demo": {
+      "label": "Field",
+      "helper": "Base class"
+    }
+  },
+  {
+    "class": "TextField",
+    "file": "TextField.js",
+    "extends": "Field",
+    "description": "Campo de texto con label flotante animado y validación visual integrada.",
+    "demo": {
+      "label": "Full name",
+      "helper": "As it appears on your ID",
+      "type": "text"
+    }
+  },
+  {
+    "class": "PasswordField",
+    "file": "PasswordField.js",
+    "extends": "TextField",
+    "description": "Campo de contraseña con ojo mostrar/ocultar y medidor de fuerza animado por transform.",
+    "demo": {
+      "label": "Password",
+      "meter": true
+    }
+  },
+  {
+    "class": "SearchField",
+    "file": "SearchField.js",
+    "extends": "TextField",
+    "description": "Buscador con ícono, botón de limpiar y atajo de teclado visible estilo kbd.",
+    "demo": {
+      "label": "Search docs",
+      "shortcut": "/"
+    }
+  },
+  {
+    "class": "TextArea",
+    "file": "TextArea.js",
+    "extends": "Field",
+    "description": "Área de texto que crece automáticamente con el contenido hasta maxRows y luego scrollea, con label flotante y modo sin ajuste de línea (wrap: false).",
+    "demo": {
+      "label": "Message",
+      "rows": 3,
+      "maxRows": 6,
+      "wrap": true
+    }
+  },
+  {
+    "class": "SelectField",
+    "file": "SelectField.js",
+    "extends": "Field",
+    "description": "Dropdown custom animado con navegación completa por teclado y roles ARIA de listbox.",
+    "demo": {
+      "label": "Country",
+      "items": [
+        "Colombia",
+        "México",
+        "Argentina",
+        "Chile"
+      ]
+    }
+  },
+  {
+    "class": "Checkbox",
+    "file": "Checkbox.js",
+    "extends": "Component",
+    "description": "Checkbox con check dibujado por stroke-dashoffset y pop elástico al marcar.",
+    "demo": {
+      "label": "Accept terms",
+      "checked": false
+    }
+  },
+  {
+    "class": "RadioGroup",
+    "file": "RadioGroup.js",
+    "extends": "Component",
+    "description": "Grupo de radios con punto interior que entra con rebote y teclado nativo.",
+    "demo": {
+      "label": "Plan",
+      "items": [
+        "Free",
+        "Pro",
+        "Team"
+      ],
+      "value": "Pro",
+      "inline": true
+    }
+  },
+  {
+    "class": "Switch",
+    "file": "Switch.js",
+    "extends": "Component",
+    "description": "Interruptor con física de resorte elástico al soltar y estiramiento al presionar.",
+    "demo": {
+      "label": "Notifications",
+      "checked": true
+    }
+  },
+  {
+    "class": "RangeSlider",
+    "file": "RangeSlider.js",
+    "extends": "Component",
+    "description": "Slider con relleno degradado por scaleX y tooltip de valor que sigue al thumb.",
+    "demo": {
+      "label": "Volume",
+      "min": 0,
+      "max": 100,
+      "value": 65,
+      "unit": "%"
+    }
+  },
+  {
+    "class": "NumberStepper",
+    "file": "NumberStepper.js",
+    "extends": "Component",
+    "description": "Selector numérico con botones más/menos y valor que entra deslizándose según la dirección.",
+    "demo": {
+      "label": "Quantity",
+      "value": 1,
+      "min": 0,
+      "max": 99,
+      "step": 1
+    }
+  },
+  {
+    "class": "PinInput",
+    "file": "PinInput.js",
+    "extends": "Component",
+    "description": "Código PIN con celdas que saltan al llenarse, pegado inteligente y onda al completar.",
+    "demo": {
+      "label": "Verification code",
+      "length": 4,
+      "numeric": true
+    }
+  },
+  {
+    "class": "TagInput",
+    "file": "TagInput.js",
+    "extends": "Component",
+    "description": "Entrada de etiquetas con chips que entran con scale elástico y se quitan con fade.",
+    "demo": {
+      "label": "Skills",
+      "tags": [
+        "design",
+        "motion"
+      ]
+    }
+  },
+  {
+    "class": "FileDrop",
+    "file": "FileDrop.js",
+    "extends": "Component",
+    "description": "Zona de arrastre de archivos que respira durante el dragover y lista lo soltado.",
+    "demo": {
+      "label": "Drop files here",
+      "hint": "or click to browse",
+      "multiple": true
+    }
+  },
+  {
+    "class": "RatingStars",
+    "file": "RatingStars.js",
+    "extends": "Component",
+    "description": "Calificación por estrellas con vista previa al pasar el cursor y cascada elástica al elegir.",
+    "demo": {
+      "label": "Rating",
+      "count": 5,
+      "value": 4
+    }
+  },
+  {
+    "class": "CheckboxGroup",
+    "file": "CheckboxGroup.js",
+    "extends": "Component",
+    "description": "Grupo de checkboxes de selección múltiple con values[], onChange con la lista seleccionada, modo inline y setValues().",
+    "demo": {
+      "label": "Intereses",
+      "items": [
+        "Diseño",
+        "Motion",
+        "Código",
+        "3D"
+      ],
+      "values": [
+        "Motion",
+        "3D"
+      ],
+      "inline": true
+    }
+  }
+]

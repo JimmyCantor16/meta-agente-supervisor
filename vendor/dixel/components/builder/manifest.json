@@ -1,0 +1,13 @@
+[
+  {
+    "class": "PageBuilder",
+    "file": "PageBuilder.js",
+    "extends": "Component",
+    "description": "Constructor de templates con drag and drop completo: paleta lateral de piezas DIXEL agrupadas (bottom-sheet colapsable en móvil) que se arrastran en modo clone al lienzo, donde se instancia el componente real dentro de un bloque con asa para mover, duplicar y eliminar. Reordenamiento arrastrando o con teclado, serialize()/load() del layout como JSON, exportar al portapapeles, limpiar con confirmación, callback onChange y estado vacío elegante.",
+    "demo": {
+      "paletteTitle": "Piezas",
+      "emptyTitle": "Arrastra tu primera pieza",
+      "emptyHint": "Elige un bloque de la paleta y suéltalo en el lienzo."
+    }
+  }
+]

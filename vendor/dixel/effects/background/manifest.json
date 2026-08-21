@@ -1,0 +1,51 @@
+[
+  {
+    "class": "ParticleField",
+    "file": "ParticleField.js",
+    "extends": "Component",
+    "description": "Particulas flotantes con conexiones por cercania que repelen suave al cursor.",
+    "demo": { "maxParticles": 90, "linkDistance": 110, "repelRadius": 130 }
+  },
+  {
+    "class": "StarField",
+    "file": "StarField.js",
+    "extends": "Component",
+    "description": "Estrellas con parpadeo y profundidad que hacen parallax con el cursor.",
+    "demo": { "maxStars": 220, "parallax": 26, "twinkle": 1.6 }
+  },
+  {
+    "class": "GradientMesh",
+    "file": "GradientMesh.js",
+    "extends": "Component",
+    "description": "Blobs de gradiente radial pre-difuminados moviendose lento solo con transform.",
+    "demo": { "blobs": 4, "range": 0.16 }
+  },
+  {
+    "class": "NoiseGrain",
+    "file": "NoiseGrain.js",
+    "extends": "Component",
+    "description": "Grano sutil con feTurbulence en data-uri animado por transform en steps.",
+    "demo": { "opacity": 0.08 }
+  },
+  {
+    "class": "WaveLines",
+    "file": "WaveLines.js",
+    "extends": "Component",
+    "description": "Lineas horizontales que ondulan como tela dibujadas en canvas.",
+    "demo": { "lines": 5, "amplitude": 16, "speed": 0.9 }
+  },
+  {
+    "class": "GridPulse",
+    "file": "GridPulse.js",
+    "extends": "Component",
+    "description": "Rejilla de puntos que late en ondas desde el centro o desde el cursor.",
+    "demo": { "gap": 46, "mode": "pointer", "speed": 2.4 }
+  },
+  {
+    "class": "AuroraVeil",
+    "file": "AuroraVeil.js",
+    "extends": "Component",
+    "description": "Cortinas de luz suaves con gradientes rotados moviendose muy lento por transform.",
+    "demo": { "veils": 3, "drift": 40, "speed": 0.1 }
+  }
+]

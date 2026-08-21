@@ -1,0 +1,14 @@
+[
+  {
+    "class": "Glitch",
+    "file": "Glitch.js",
+    "extends": "Component",
+    "description": "Glitch universal: se adjunta a un texto, botón, tarjeta o componente entero y lo rebana en franjas con desplazamientos estocásticos y clones cromáticos (rgbSplit). Opciones: intensity, interval, burstDuration, slices, rgbSplit, colorA/B, trigger always|hover|manual; métodos glitch()/calm(). Respeta reduced-motion.",
+    "demo": {
+      "intensity": 1,
+      "interval": 2.2,
+      "slices": 4,
+      "trigger": "always"
+    }
+  }
+]

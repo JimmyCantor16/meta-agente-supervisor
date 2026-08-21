@@ -1,0 +1,51 @@
+.dx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  vertical-align: middle;
+  color: inherit;
+}
+
+.dx-icon-svg {
+  display: block;
+}
+
+.dx-icon--spin .dx-icon-svg {
+  animation: dx-icon-spin 1.1s linear infinite;
+}
+
+@keyframes dx-icon-spin {
+  to { transform: rotate(360deg); }
+}
+
+.dx-icon--draw path,
+.dx-icon--draw circle,
+.dx-icon--draw rect,
+.dx-icon--draw ellipse,
+.dx-icon--draw line,
+.dx-icon--draw polyline {
+  transition: stroke-dashoffset var(--dx-icon-draw-duration, 1.1s) var(--dx-ease);
+}
+
+.dx-icon--drawn path,
+.dx-icon--drawn circle,
+.dx-icon--drawn rect,
+.dx-icon--drawn ellipse,
+.dx-icon--drawn line,
+.dx-icon--drawn polyline {
+  stroke-dashoffset: 0 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-icon--spin .dx-icon-svg { animation: none; }
+  .dx-icon--draw path,
+  .dx-icon--draw circle,
+  .dx-icon--draw rect,
+  .dx-icon--draw ellipse,
+  .dx-icon--draw line,
+  .dx-icon--draw polyline {
+    transition: none;
+    stroke-dashoffset: 0 !important;
+  }
+}

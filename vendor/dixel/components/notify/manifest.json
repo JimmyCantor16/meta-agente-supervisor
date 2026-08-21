@@ -1,0 +1,31 @@
+[
+  {
+    "class": "NotificationCenter",
+    "file": "NotificationCenter.js",
+    "extends": "Component",
+    "description": "Campana con badge de no-leídas y panel desplegable con posicionamiento inteligente (bottom-sheet en móvil), tiempos relativos, marcar leídas y limpiar todo con animaciones de salida.",
+    "demo": {
+      "label": "Notificaciones",
+      "notifications": [
+        { "type": "message", "title": "Nuevo comentario", "text": "Camila respondió en «Rediseño de facturación».", "minutesAgo": 4 },
+        { "type": "success", "title": "Despliegue completado", "text": "La versión 2.8.0 ya está en producción.", "minutesAgo": 25 },
+        { "type": "warning", "title": "Límite de almacenamiento", "text": "Has usado el 85% de tu espacio disponible.", "minutesAgo": 180 },
+        { "type": "info", "title": "Recordatorio", "text": "La demo con el cliente es mañana a las 10:00.", "minutesAgo": 480, "unread": false },
+        { "type": "danger", "title": "Pago rechazado", "text": "No pudimos procesar la tarjeta terminada en 4021.", "minutesAgo": 2880, "unread": false }
+      ]
+    }
+  },
+  {
+    "class": "InlineBanner",
+    "file": "InlineBanner.js",
+    "extends": "Component",
+    "description": "Banner de anuncio para el top de página en variantes info, upgrade y warning, con CTA opcional y cierre animado.",
+    "demo": {
+      "type": "upgrade",
+      "title": "Pasa a Pro",
+      "text": "Desbloquea reportes ilimitados y soporte prioritario para tu equipo.",
+      "ctaLabel": "Mejorar plan",
+      "dismissible": true
+    }
+  }
+]

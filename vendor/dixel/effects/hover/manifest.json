@@ -1,0 +1,44 @@
+[
+  {
+    "class": "Magnetic",
+    "file": "Magnetic.js",
+    "extends": "Component",
+    "description": "El elemento se imanta al cursor y regresa intacto con fisica de resorte.",
+    "demo": { "strength": 0.35, "scale": 1.04 }
+  },
+  {
+    "class": "Tilt",
+    "file": "Tilt.js",
+    "extends": "Component",
+    "description": "Inclinacion 3D segun la posicion del cursor con brillo especular desplazado por transform.",
+    "demo": { "max": 10, "perspective": 900, "shine": true }
+  },
+  {
+    "class": "Spotlight",
+    "file": "Spotlight.js",
+    "extends": "Component",
+    "description": "Foco de luz que sigue al cursor dentro del elemento y se apaga al salir.",
+    "demo": { "size": 240, "opacity": 0.4 }
+  },
+  {
+    "class": "WarpHover",
+    "file": "WarpHover.js",
+    "extends": "Component",
+    "description": "Deformacion elastica sutil segun la velocidad del cursor que vuelve con spring.",
+    "demo": { "maxStretch": 0.1, "maxSkew": 6 }
+  },
+  {
+    "class": "LiftHover",
+    "file": "LiftHover.js",
+    "extends": "Component",
+    "description": "Elevacion en hover con sombra estatica por capas revelada por opacidad.",
+    "demo": { "lift": 8, "scale": 1.02 }
+  },
+  {
+    "class": "TextWave",
+    "file": "TextWave.js",
+    "extends": "Component",
+    "description": "Las letras ondulan alejandose del cursor y regresan, con posiciones cacheadas.",
+    "demo": { "amplitude": 14, "radius": 90 }
+  }
+]

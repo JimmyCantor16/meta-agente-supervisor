@@ -1,0 +1,203 @@
+.dx-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.dx-shimmer-band {
+  position: absolute;
+  top: -35%;
+  bottom: -35%;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgb(var(--dx-sheen-rgb) / 0.9) 50%, transparent);
+  transform: translate3d(-220%, 0, 0);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.dx-pulsehost {
+  position: relative;
+}
+
+.dx-pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.dx-pulse-ring--primary {
+  border-color: var(--dx-primary);
+}
+
+.dx-pulse-ring--cyan {
+  border-color: var(--dx-cyan);
+}
+
+.dx-pulse-ring--magenta {
+  border-color: var(--dx-magenta);
+}
+
+.dx-float {
+  will-change: transform;
+}
+
+.dx-attention {
+  will-change: transform, opacity;
+}
+
+.dx-beamhost {
+  position: relative;
+}
+
+.dx-beamwrap {
+  display: inline-block;
+  position: relative;
+}
+
+.dx-beamlayer {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dx-beam-trail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--dx-radius-full);
+  transform-origin: 100% 50%;
+  opacity: 0.9;
+  will-change: transform;
+}
+
+.dx-beam-trail--cyan {
+  background: linear-gradient(90deg, transparent, var(--dx-cyan) 70%, rgb(var(--dx-sheen-rgb) / 0.95));
+}
+
+.dx-beam-trail--primary {
+  background: linear-gradient(90deg, transparent, var(--dx-primary) 70%, rgb(var(--dx-sheen-rgb) / 0.95));
+}
+
+.dx-beam-trail--magenta {
+  background: linear-gradient(90deg, transparent, var(--dx-magenta) 70%, rgb(var(--dx-sheen-rgb) / 0.95));
+}
+
+.dx-beam-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--dx-radius-full);
+  background: rgb(var(--dx-sheen-rgb) / 0.98);
+  will-change: transform;
+}
+
+.dx-beam-head--cyan {
+  box-shadow: 0 0 8px 2px rgb(var(--dx-cyan-rgb) / 0.9), 0 0 22px 7px rgb(var(--dx-cyan-rgb) / 0.4);
+}
+
+.dx-beam-head--primary {
+  box-shadow: 0 0 8px 2px rgb(var(--dx-primary-rgb) / 0.9), 0 0 22px 7px rgb(var(--dx-primary-rgb) / 0.45);
+}
+
+.dx-beam-head--magenta {
+  box-shadow: 0 0 8px 2px rgb(var(--dx-magenta-rgb) / 0.9), 0 0 22px 7px rgb(var(--dx-magenta-rgb) / 0.4);
+}
+
+.dx-confetti-anchor {
+  display: inline-block;
+  width: 0;
+  height: 0;
+}
+
+.dx-confetti-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: var(--dx-z-cursor);
+  pointer-events: none;
+}
+
+.dx-confetti-piece {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border-radius: 1px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.dx-confetti-piece--1 {
+  background: var(--dx-primary);
+}
+
+.dx-confetti-piece--2 {
+  background: var(--dx-cyan);
+  border-radius: var(--dx-radius-full);
+}
+
+.dx-confetti-piece--3 {
+  background: var(--dx-magenta);
+}
+
+.dx-confetti-piece--4 {
+  background: var(--dx-success);
+  border-radius: var(--dx-radius-full);
+}
+
+.dx-confetti-piece--5 {
+  background: var(--dx-warning);
+}
+
+.dx-ticknumber {
+  display: inline-flex;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dx-tick-col {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+}
+
+.dx-tick-strip {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+  transition: transform var(--dx-tick-duration, 0.6s) var(--dx-ease);
+}
+
+.dx-tick-cell {
+  display: block;
+  height: 1em;
+  text-align: center;
+}
+
+.dx-tick-char {
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-shimmer-band,
+  .dx-pulse-ring,
+  .dx-beam-trail,
+  .dx-beam-head {
+    display: none;
+  }
+
+  .dx-tick-strip {
+    transition-duration: 0.001s;
+  }
+}

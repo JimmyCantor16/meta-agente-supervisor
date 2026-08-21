@@ -1,0 +1,12 @@
+# Basura de sistema y editores
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+.vscode/
+.idea/
+node_modules/
+*.tmp
+
+# Nota: dist/ SÍ se versiona a propósito — DIXEL se usa por consumo directo
+# (script + link al dist), sin paso de build para el consumidor.

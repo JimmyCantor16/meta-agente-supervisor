@@ -1,0 +1,176 @@
+[
+  {
+    "class": "Toast",
+    "file": "Toast.js",
+    "extends": "Component",
+    "description": "Cola de notificaciones apiladas que entran con spring, con barra de vida y pausa al pasar el cursor.",
+    "demo": {
+      "position": "bottom-right",
+      "duration": 4.5,
+      "max": 5
+    }
+  },
+  {
+    "class": "Modal",
+    "file": "Modal.js",
+    "extends": "Component",
+    "description": "Diálogo modal con escala y fade sobre overlay difuminado, focus trap y cierre con Escape.",
+    "demo": {
+      "title": "Confirmar acción",
+      "content": "<p>¿Deseas continuar?</p>",
+      "dismissible": true
+    }
+  },
+  {
+    "class": "Tooltip",
+    "file": "Tooltip.js",
+    "extends": "Component",
+    "description": "Globo de ayuda con posicionamiento inteligente que voltea según el espacio, flecha y retardo.",
+    "demo": {
+      "text": "Copiar al portapapeles",
+      "placement": "top",
+      "delay": 350
+    }
+  },
+  {
+    "class": "ProgressBar",
+    "file": "ProgressBar.js",
+    "extends": "Component",
+    "description": "Barra de progreso con relleno degradado animado solo por transform scaleX y modo indeterminado.",
+    "demo": {
+      "value": 64,
+      "label": "Subiendo archivos",
+      "showValue": true
+    }
+  },
+  {
+    "class": "ProgressRing",
+    "file": "ProgressRing.js",
+    "extends": "Component",
+    "description": "Anillo de progreso SVG con stroke degradado, dashoffset transicionado y porcentaje central.",
+    "demo": {
+      "value": 72,
+      "size": 110,
+      "stroke": 9
+    }
+  },
+  {
+    "class": "Skeleton",
+    "file": "Skeleton.js",
+    "extends": "Component",
+    "description": "Placeholder de carga con shimmer movido por transform, pausado fuera del viewport. Brillo de carga configurable: sheenAngle (grados), sheenSpeed (segundos) y sheenColor.",
+    "demo": {
+      "variant": "card",
+      "lines": 3,
+      "height": 140,
+      "sheenAngle": 115,
+      "sheenSpeed": 1.3
+    }
+  },
+  {
+    "class": "Badge",
+    "file": "Badge.js",
+    "extends": "Component",
+    "description": "Etiqueta compacta de estado con tonos de marca, variantes soft, solid y outline, y punto opcional.",
+    "demo": {
+      "label": "Nuevo",
+      "tone": "cyan",
+      "dot": true
+    }
+  },
+  {
+    "class": "Chip",
+    "file": "Chip.js",
+    "extends": "Component",
+    "description": "Ficha removible con icono opcional y animación de salida por escala y fade.",
+    "demo": {
+      "label": "Motion",
+      "tone": "primary",
+      "removable": true
+    }
+  },
+  {
+    "class": "Alert",
+    "file": "Alert.js",
+    "extends": "Component",
+    "description": "Aviso en línea que entra deslizando, con icono según severidad y cierre animado opcional.",
+    "demo": {
+      "type": "success",
+      "title": "Guardado",
+      "message": "Los cambios se aplicaron.",
+      "dismissible": true
+    }
+  },
+  {
+    "class": "Spinner",
+    "file": "Spinner.js",
+    "extends": "Component",
+    "description": "Indicador de carga en tres variantes ring, dots y pulse, pausado fuera del viewport.",
+    "demo": {
+      "variant": "dots",
+      "size": "md"
+    }
+  },
+  {
+    "class": "LoaderOverlay",
+    "file": "LoaderOverlay.js",
+    "extends": "Component",
+    "description": "Velo de carga que cubre su contenedor (o la pantalla con fullscreen) con spinner y etiqueta, controlado con show() y hide().",
+    "demo": {
+      "label": "Cargando datos",
+      "fullscreen": false,
+      "open": true
+    }
+  },
+  {
+    "class": "LoaderBar",
+    "file": "LoaderBar.js",
+    "extends": "Component",
+    "description": "Barra superior indeterminada tipo YouTube que corre con start() y se completa y desvanece con done().",
+    "demo": {
+      "fixed": false,
+      "color": "primary"
+    }
+  },
+  {
+    "class": "LoaderDots",
+    "file": "LoaderDots.js",
+    "extends": "Component",
+    "description": "Onda de puntos que sube y baja en cascada, pausada fuera del viewport.",
+    "demo": {
+      "count": 5,
+      "color": "cyan"
+    }
+  },
+  {
+    "class": "LoaderOrbit",
+    "file": "LoaderOrbit.js",
+    "extends": "Component",
+    "description": "Satélites orbitando un núcleo en tres anillos a velocidades y sentidos distintos.",
+    "demo": {
+      "size": "md",
+      "color": "primary"
+    }
+  },
+  {
+    "class": "LoaderPulse",
+    "file": "LoaderPulse.js",
+    "extends": "Component",
+    "description": "Anillos concéntricos que emanan del centro en pulsos escalonados.",
+    "demo": {
+      "size": "md",
+      "color": "magenta"
+    }
+  },
+  {
+    "class": "EmptyState",
+    "file": "EmptyState.js",
+    "extends": "Component",
+    "description": "Estado vacío con icono, mensaje y acción, revelado con stagger al entrar en pantalla.",
+    "demo": {
+      "title": "Sin proyectos aún",
+      "description": "Crea tu primer proyecto para empezar.",
+      "actionLabel": "Crear proyecto"
+    }
+  }
+]

@@ -1,0 +1,51 @@
+[
+  {
+    "class": "Shimmer",
+    "file": "Shimmer.js",
+    "extends": "Component",
+    "description": "Barrido de brillo periodico sobre el elemento: franja degradada estatica movida solo por transform, intervalo configurable y pausado fuera de vista. Para CTAs y badges.",
+    "demo": { "interval": 3.2, "duration": 1.1, "strength": 0.35 }
+  },
+  {
+    "class": "PulseRing",
+    "file": "PulseRing.js",
+    "extends": "Component",
+    "description": "Dos anillos circulares perfectos (borde 2px del color token) centrados en el elemento que emanan escalonados con scale y fade desde un pool fijo. Para senalar novedades.",
+    "demo": { "interval": 2.2, "duration": 1.4, "spread": 1.9, "tint": "primary" }
+  },
+  {
+    "class": "Float",
+    "file": "Float.js",
+    "extends": "Component",
+    "description": "Levitacion suave perpetua con translateY senoidal y rotacion minima opcional; fase aleatoria para que varios elementos no vayan sincronizados, pausada fuera de vista.",
+    "demo": { "amplitude": 8, "speed": 1.2, "rotate": 1.5 }
+  },
+  {
+    "class": "Attention",
+    "file": "Attention.js",
+    "extends": "Component",
+    "description": "Efectos de atencion bajo demanda y encadenables via Motion: shake() para errores, wiggle(), tada(), pop() y flash(); opcion trigger hover o click.",
+    "demo": { "trigger": "click", "effect": "tada" }
+  },
+  {
+    "class": "BorderBeam",
+    "file": "BorderBeam.js",
+    "extends": "Component",
+    "description": "Cometa con halo luminoso (glow: true) y estela degradada que recorre el perimetro de cualquier elemento en bucle; los objetivos inline se envuelven solos en un wrapper inline-block. Opciones color, size, speed y thickness; pausado fuera de vista.",
+    "demo": { "color": "cyan", "size": 56, "speed": 4, "thickness": 2, "glow": true }
+  },
+  {
+    "class": "Confetti",
+    "file": "Confetti.js",
+    "extends": "Component",
+    "description": "Celebracion manual: burst() lanza rectangulitos de colores de marca con rotacion 3D falsa y fisica de caida desde un pool fijo, desde el elemento o coordenadas. Para onComplete de formularios.",
+    "demo": { "count": 40, "power": 520, "duration": 1.6 }
+  },
+  {
+    "class": "TickNumber",
+    "file": "TickNumber.js",
+    "extends": "Component",
+    "description": "Numero que al cambiar con set(valor) rueda digito a digito verticalmente: columnas de digitos con translateY y transicion CSS, sin layout por frame. Para contadores en vivo.",
+    "demo": { "duration": 0.6, "stagger": 0.04, "value": 1024 }
+  }
+]

@@ -1,0 +1,40 @@
+[
+  {
+    "class": "KanbanBoard",
+    "file": "KanbanBoard.js",
+    "extends": "Component",
+    "description": "Tablero kanban con arrastre real entre columnas: fantasma que sigue el cursor, hueco que se abre con transición, reordenamiento interno, soporte táctil con pulsación larga, teclado accesible y contadores por columna.",
+    "demo": {
+      "columns": [
+        {
+          "title": "Por hacer",
+          "cards": [
+            { "title": "Definir flujo de registro con verificación por correo", "tag": "Producto", "tone": "primary" },
+            { "title": "Investigar pasarela de pagos para Latinoamérica", "tag": "Pagos", "tone": "warning" },
+            { "title": "Preparar guía de marca para el equipo externo", "tag": "Diseño", "tone": "magenta" }
+          ]
+        },
+        {
+          "title": "En progreso",
+          "cards": [
+            { "title": "Migrar el panel de métricas a la nueva API", "tag": "Backend", "tone": "cyan" },
+            { "title": "Rediseñar la pantalla de facturación", "tag": "Diseño", "tone": "magenta" }
+          ]
+        },
+        {
+          "title": "En revisión",
+          "cards": [
+            { "title": "Pruebas de carga del buscador global", "tag": "QA", "tone": "danger" }
+          ]
+        },
+        {
+          "title": "Hecho",
+          "cards": [
+            { "title": "Exportación de reportes en PDF", "tag": "Feature", "tone": "success" },
+            { "title": "Modo oscuro en la app móvil", "tag": "Feature", "tone": "success" }
+          ]
+        }
+      ]
+    }
+  }
+]

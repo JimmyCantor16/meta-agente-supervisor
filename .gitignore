@@ -49,3 +49,6 @@ scratch_mvp/*.log
 # Copias del .env: NUNCA se versionan (llevan claves dentro).
 .env.*
 !.env.example
+
+# DIXEL se consume por script+link: su dist/ SI se versiona (ver vendor/dixel/.gitignore).
+!vendor/dixel/dist/

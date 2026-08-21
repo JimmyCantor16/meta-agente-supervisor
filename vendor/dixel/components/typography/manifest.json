@@ -1,0 +1,58 @@
+[
+  {
+    "class": "SplitText",
+    "file": "SplitText.js",
+    "extends": "Component",
+    "description": "Revela texto por caracteres, palabras o líneas con máscara y stagger, reactivable al re-entrar.",
+    "demo": { "text": "El dato cobra vida", "split": "chars", "stagger": 0.03 }
+  },
+  {
+    "class": "GradientText",
+    "file": "GradientText.js",
+    "extends": "Component",
+    "description": "Texto con gradiente de marca que aparece suavemente al entrar en pantalla.",
+    "demo": { "text": "Cinematográfico", "gradient": "hot" }
+  },
+  {
+    "class": "TypeWriter",
+    "file": "TypeWriter.js",
+    "extends": "Component",
+    "description": "Teclea frases con caret parpadeante, las borra y rota a la siguiente.",
+    "demo": { "phrases": ["Diseña rápido.", "Anima sin lag.", "Publica hoy."], "typeSpeed": 16 }
+  },
+  {
+    "class": "ScrambleText",
+    "file": "ScrambleText.js",
+    "extends": "Component",
+    "description": "Letras aleatorias que se asientan en el texto final al entrar en pantalla.",
+    "demo": { "text": "DECODIFICANDO", "duration": 1.4 }
+  },
+  {
+    "class": "CountUp",
+    "file": "CountUp.js",
+    "extends": "Component",
+    "description": "Número inline que cuenta hasta su valor con formato local, reactivable.",
+    "demo": { "value": 98750, "duration": 2 }
+  },
+  {
+    "class": "MarqueeText",
+    "file": "MarqueeText.js",
+    "extends": "Component",
+    "description": "Cinta de texto infinita y seamless que se pausa fuera de vista.",
+    "demo": { "text": "DIXEL · UX CINEMATOGRÁFICO", "speed": 80, "direction": "left" }
+  },
+  {
+    "class": "HighlightText",
+    "file": "HighlightText.js",
+    "extends": "Component",
+    "description": "Subrayado o marcador que se dibuja al entrar en pantalla; el tipo marker es una franja baja pegada a la línea base, con leve inclinación y color con alfa detrás del texto.",
+    "demo": { "text": "lo esencial", "type": "marker", "color": "cyan" }
+  },
+  {
+    "class": "OutlineFillText",
+    "file": "OutlineFillText.js",
+    "extends": "Component",
+    "description": "Texto contorneado que se rellena con un barrido lateral al entrar.",
+    "demo": { "text": "IMPACTO", "gradient": true }
+  }
+]

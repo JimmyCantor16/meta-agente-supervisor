@@ -1,0 +1,227 @@
+.dx-split {
+  display: inline-block;
+}
+
+.dx-split-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.dx-split-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+
+.dx-split-mask--line {
+  display: block;
+}
+
+.dx-split-unit {
+  display: inline-block;
+  transform: translateY(115%);
+  transition-property: transform;
+  transition-timing-function: var(--dx-ease);
+  will-change: transform;
+}
+
+.dx-split--in .dx-split-unit {
+  transform: translateY(0);
+}
+
+.dx-gtext {
+  display: inline-block;
+  background: var(--dx-gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0;
+  transform: translateY(0.5em);
+  transition-property: opacity, transform;
+  transition-timing-function: var(--dx-ease);
+}
+
+.dx-gtext--hot {
+  background: var(--dx-gradient-hot);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.dx-gtext--main {
+  background: var(--dx-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.dx-gtext--in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dx-type {
+  display: inline-flex;
+  align-items: baseline;
+  font-variant-ligatures: none;
+}
+
+.dx-type-text {
+  white-space: pre-wrap;
+}
+
+.dx-type-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  background: var(--dx-primary);
+  align-self: center;
+  animation: dx-caret-blink 1.05s steps(2, start) infinite;
+}
+
+.dx-type--paused .dx-type-caret {
+  animation-play-state: paused;
+}
+
+@keyframes dx-caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.dx-scramble {
+  display: inline-block;
+  font-variant-ligatures: none;
+}
+
+.dx-countup {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.dx-marquee {
+  overflow: hidden;
+  width: 100%;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.dx-marquee-track {
+  display: inline-flex;
+  align-items: baseline;
+  will-change: transform;
+}
+
+.dx-marquee-group {
+  display: inline-flex;
+  align-items: baseline;
+  flex: none;
+}
+
+.dx-marquee-item {
+  padding: 0 clamp(14px, 3vw, 36px);
+}
+
+.dx-marquee-sep {
+  color: var(--dx-ink-dim);
+}
+
+.dx-hl {
+  position: relative;
+  display: inline-block;
+}
+
+.dx-hl-text {
+  position: relative;
+  z-index: 1;
+}
+
+.dx-hl-ink {
+  position: absolute;
+  left: -0.08em;
+  right: -0.08em;
+  bottom: 0;
+  border-radius: 0.12em;
+  transform: scaleX(0) rotate(var(--dx-hl-tilt, 0deg));
+  transform-origin: left center;
+  transition-property: transform;
+  transition-timing-function: var(--dx-ease);
+  will-change: transform;
+}
+
+.dx-hl--in .dx-hl-ink {
+  transform: scaleX(1) rotate(var(--dx-hl-tilt, 0deg));
+}
+
+.dx-hl--underline .dx-hl-ink {
+  height: 0.12em;
+  bottom: -0.05em;
+  border-radius: 0.06em;
+  opacity: 0.9;
+}
+
+.dx-hl--marker { z-index: 0; }
+
+.dx-hl--marker .dx-hl-ink {
+  --dx-hl-tilt: 0deg;
+  height: 0.5em;
+  top: 0.55em;
+  bottom: auto;
+  border-radius: 0.25em;
+  opacity: 0.3;
+  z-index: -1;
+}
+
+.dx-hl--primary .dx-hl-ink { background: var(--dx-primary); }
+.dx-hl--cyan .dx-hl-ink { background: var(--dx-cyan); }
+.dx-hl--magenta .dx-hl-ink { background: var(--dx-magenta); }
+.dx-hl--warning .dx-hl-ink { background: var(--dx-warning); }
+.dx-hl--success .dx-hl-ink { background: var(--dx-success); }
+
+.dx-outline {
+  position: relative;
+  display: inline-block;
+}
+
+.dx-outline-stroke {
+  -webkit-text-stroke: 1px var(--dx-ink-soft);
+  color: transparent;
+}
+
+.dx-outline-fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform: translateX(-101%);
+  transition-property: transform;
+  transition-timing-function: var(--dx-ease);
+  will-change: transform;
+}
+
+.dx-outline-fill-text {
+  display: inline-block;
+  color: var(--dx-ink);
+  transform: translateX(101%);
+  transition-property: transform;
+  transition-timing-function: var(--dx-ease);
+  will-change: transform;
+}
+
+.dx-outline--in .dx-outline-fill,
+.dx-outline--in .dx-outline-fill-text {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-split-unit,
+  .dx-gtext,
+  .dx-hl-ink,
+  .dx-outline-fill,
+  .dx-outline-fill-text {
+    transition: none !important;
+  }
+
+  .dx-type-caret {
+    animation: none;
+  }
+}
+

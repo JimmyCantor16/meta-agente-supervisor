@@ -1,0 +1,30 @@
+[
+  {
+    "class": "ColorFlow",
+    "file": "ColorFlow.js",
+    "extends": "Component",
+    "description": "Interpola el color de fondo de la pagina entre secciones segun el scroll: cada seccion declara data-flow-color y el componente escribe una sola variable --dx-flow-bg en el html, viaje de color continuo sin cortes.",
+    "demo": { "selector": "[data-flow-color]" }
+  },
+  {
+    "class": "SectionFade",
+    "file": "SectionFade.js",
+    "extends": "Component",
+    "description": "Funde los bordes de una seccion con gradientes automaticos arriba y abajo hacia el color de fondo vivo, para que cada seccion disuelva en la siguiente.",
+    "demo": { "edges": "both" }
+  },
+  {
+    "class": "WipeReveal",
+    "file": "WipeReveal.js",
+    "extends": "Component",
+    "description": "Cortina del color de fondo que se desliza fuera con transform al entrar la seccion en viewport y vuelve al salir; variantes de direccion up, down, left y right.",
+    "demo": { "direction": "up", "duration": 0.9 }
+  },
+  {
+    "class": "ZoomFlow",
+    "file": "ZoomFlow.js",
+    "extends": "Component",
+    "description": "La seccion entra con leve profundidad: scale 0.96 a 1 mas fade ligados al progreso de scroll, scrub reversible como camara acercandose.",
+    "demo": { "from": 0.96, "range": 0.32 }
+  }
+]

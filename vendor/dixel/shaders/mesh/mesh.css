@@ -1,0 +1,68 @@
+.dx-mesh {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dx-mesh--drag {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .dx-mesh--drag { touch-action: pan-y; }
+}
+
+.dx-mesh--dragging {
+  cursor: grabbing;
+}
+
+.dx-mesh-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.dx-mesh-fallback {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--dx-bg);
+}
+
+.dx-mesh-fallback::before {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background:
+    radial-gradient(60% 60% at 32% 30%, var(--dx-mesh-b, var(--dx-cyan)) 0%, transparent 55%),
+    radial-gradient(70% 70% at 68% 72%, var(--dx-mesh-c, var(--dx-magenta)) 0%, transparent 60%),
+    radial-gradient(90% 90% at 50% 50%, var(--dx-mesh-a, var(--dx-primary)) 0%, transparent 70%);
+  opacity: 0.5;
+  will-change: transform;
+  animation: dx-mesh-spin 26s linear infinite;
+}
+
+@keyframes dx-mesh-spin {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.08);
+  }
+  to {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-mesh-fallback::before {
+    animation: none;
+  }
+}

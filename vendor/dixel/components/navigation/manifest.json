@@ -1,0 +1,231 @@
+[
+  {
+    "class": "Navbar",
+    "file": "Navbar.js",
+    "extends": "Component",
+    "description": "Barra superior sticky que se vuelve vidrio al scrollear, se oculta bajando y reaparece subiendo.",
+    "demo": {
+      "brand": "DIXEL",
+      "links": [
+        {
+          "label": "Inicio",
+          "href": "#inicio"
+        },
+        {
+          "label": "Trabajo",
+          "href": "#trabajo"
+        },
+        {
+          "label": "Contacto",
+          "href": "#contacto"
+        }
+      ],
+      "hideOnScroll": true
+    }
+  },
+  {
+    "class": "Tabs",
+    "file": "Tabs.js",
+    "extends": "Component",
+    "description": "Pestañas con indicador que se desliza y estira entre ellas, navegables con flechas del teclado.",
+    "demo": {
+      "items": [
+        {
+          "label": "Diseño",
+          "content": "Sistemas visuales."
+        },
+        {
+          "label": "Motion",
+          "content": "Física en pantalla."
+        },
+        {
+          "label": "Código",
+          "content": "Vanilla puro."
+        }
+      ],
+      "active": 0
+    }
+  },
+  {
+    "class": "Dock",
+    "file": "Dock.js",
+    "extends": "Component",
+    "description": "Dock estilo macOS con iconos que crecen hacia arriba sobre el riel sin recortarse; formatos wave (onda por cercanía), scale (solo el apuntado), lift (suben sin escalar) y bounce (rebote elástico). Los items aceptan nombres del IconSet propio (icon: 'home') o markup crudo.",
+    "demo": {
+      "items": [
+        {
+          "icon": "home",
+          "label": "Inicio"
+        },
+        {
+          "icon": "sparkles",
+          "label": "Proyectos"
+        },
+        {
+          "icon": "mail",
+          "label": "Mensajes"
+        },
+        {
+          "icon": "settings",
+          "label": "Ajustes"
+        }
+      ],
+      "magnify": 1.6,
+      "range": 120,
+      "animation": "wave"
+    }
+  },
+  {
+    "class": "DropdownMenu",
+    "file": "DropdownMenu.js",
+    "extends": "Component",
+    "description": "Menú desplegable con submenús en cascada a cualquier profundidad vía children, flyout lateral con retardo de cierre, flip si falta espacio y teclado (derecha entra, izquierda regresa).",
+    "demo": {
+      "label": "Acciones",
+      "items": [
+        {
+          "label": "Editar"
+        },
+        {
+          "label": "Compartir",
+          "children": [
+            {
+              "label": "Enlace"
+            },
+            {
+              "label": "Exportar",
+              "children": [
+                {
+                  "label": "PDF"
+                },
+                {
+                  "label": "CSV"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "divider": true
+        },
+        {
+          "label": "Eliminar",
+          "danger": true
+        }
+      ]
+    }
+  },
+  {
+    "class": "Drawer",
+    "file": "Drawer.js",
+    "extends": "Component",
+    "description": "Panel lateral deslizante con overlay difuminado estático, cierre con Escape y bloqueo de scroll.",
+    "demo": {
+      "side": "right",
+      "title": "Detalles",
+      "content": "<p>Contenido del panel.</p>"
+    }
+  },
+  {
+    "class": "Breadcrumb",
+    "file": "Breadcrumb.js",
+    "extends": "Component",
+    "description": "Ruta de navegación con separadores y subrayado animado por transform en los enlaces.",
+    "demo": {
+      "items": [
+        {
+          "label": "Inicio",
+          "href": "#"
+        },
+        {
+          "label": "Proyectos",
+          "href": "#proyectos"
+        },
+        {
+          "label": "DIXEL"
+        }
+      ]
+    }
+  },
+  {
+    "class": "Pagination",
+    "file": "Pagination.js",
+    "extends": "Component",
+    "description": "Paginación con ventana de números, elipsis y pop elástico del número activo al cambiar.",
+    "demo": {
+      "total": 12,
+      "page": 3,
+      "siblings": 1
+    }
+  },
+  {
+    "class": "ScrollSpyDots",
+    "file": "ScrollSpyDots.js",
+    "extends": "Component",
+    "description": "Puntos laterales fijos que marcan la sección visible y permiten saltar a ella con scroll suave.",
+    "demo": {
+      "sections": "section[id]",
+      "offset": 0.35
+    }
+  },
+  {
+    "class": "CommandBar",
+    "file": "CommandBar.js",
+    "extends": "Component",
+    "description": "Paleta de comandos tipo Ctrl K con búsqueda filtrante, navegación por teclado y entrada animada.",
+    "demo": {
+      "commands": [
+        {
+          "label": "Ir a inicio",
+          "hint": "G I"
+        },
+        {
+          "label": "Cambiar tema",
+          "hint": "T"
+        },
+        {
+          "label": "Buscar proyecto",
+          "keywords": "portfolio"
+        }
+      ],
+      "hotkey": true
+    }
+  },
+  {
+    "class": "ContextMenu",
+    "file": "ContextMenu.js",
+    "extends": "Component",
+    "description": "Menú de click derecho personalizable en cualquier elemento: iconos propios, separadores, submenús anidados, atajos, items danger/disabled, long-press en táctil, Escape y click fuera.",
+    "demo": {
+      "items": [
+        {
+          "label": "Abrir",
+          "icon": "folderOpen",
+          "hint": "Ctrl+O"
+        },
+        {
+          "label": "Compartir",
+          "icon": "share",
+          "children": [
+            {
+              "label": "Copiar enlace",
+              "icon": "link"
+            },
+            {
+              "label": "Enviar por correo",
+              "icon": "mail"
+            }
+          ]
+        },
+        {
+          "divider": true
+        },
+        {
+          "label": "Eliminar",
+          "icon": "trash",
+          "danger": true
+        }
+      ]
+    }
+  }
+]

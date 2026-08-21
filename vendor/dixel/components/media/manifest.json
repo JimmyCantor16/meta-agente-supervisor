@@ -1,0 +1,85 @@
+[
+  {
+    "class": "Carousel",
+    "file": "Carousel.js",
+    "extends": "Component",
+    "description": "Carrusel con efectos: slide (fila clásica con drag inercial, dots y flechas), coverflow (3D con laterales rotados en Y y hundidos en Z), fade (fundido) y ring (cartas 2.5D: cada carta entra girada como naipe, rota mientras avanza y asienta plana de frente; ringInterval en segundos entre avances, ringSettle para la suavidad del asentamiento, pauseOnHover opcional y drag con inercia que hace snap a la carta más cercana).",
+    "demo": {
+      "dots": true,
+      "arrows": true,
+      "loop": true,
+      "startIndex": 0,
+      "effect": "ring",
+      "ringInterval": 2.6,
+      "pauseOnHover": true,
+      "slides": [
+        "<div class=\"dx-carousel-card\"><h3>Uno</h3><p>Arrastra o usa las flechas.</p></div>",
+        "<div class=\"dx-carousel-card\"><h3>Dos</h3><p>Snap con inercia real.</p></div>",
+        "<div class=\"dx-carousel-card\"><h3>Tres</h3><p>Loop infinito opcional.</p></div>"
+      ]
+    }
+  },
+  {
+    "class": "CompareSlider",
+    "file": "CompareSlider.js",
+    "extends": "Component",
+    "description": "Comparador antes/después con asa arrastrable por puntero y teclado; capas declarables por opciones.",
+    "demo": {
+      "start": 0.5,
+      "labelBefore": "Antes",
+      "labelAfter": "Después",
+      "before": "<span>Antes</span>",
+      "after": "<span>Después</span>"
+    }
+  },
+  {
+    "class": "Lightbox",
+    "file": "Lightbox.js",
+    "extends": "Component",
+    "description": "Zoom FLIP desde el thumbnail hasta pantalla completa con fondo oscuro; miniaturas declarables por opciones.",
+    "demo": {
+      "duration": 0.45,
+      "images": [
+        { "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='200'><rect width='320' height='200' fill='%236d5cff'/><circle cx='250' cy='50' r='60' fill='%232ee6d6' opacity='0.55'/></svg>", "alt": "Aurora" },
+        { "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='200'><rect width='320' height='200' fill='%23ff4ecd'/><circle cx='80' cy='140' r='70' fill='%236d5cff' opacity='0.6'/></svg>", "alt": "Neón" },
+        { "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='200'><rect width='320' height='200' fill='%232ee6d6'/><circle cx='160' cy='60' r='55' fill='%230e9f8f' opacity='0.7'/></svg>", "alt": "Isla" }
+      ]
+    }
+  },
+  {
+    "class": "LogoMarquee",
+    "file": "LogoMarquee.js",
+    "extends": "Component",
+    "description": "Fila de logos infinita y seamless que se pausa fuera del viewport; logos de texto o imagen por opciones.",
+    "demo": {
+      "speed": 55,
+      "direction": "left",
+      "pauseOnHover": true,
+      "logos": ["NOVA", "ORBIT", "PULSE", "VERTEX", "PRISMA", "ECO"]
+    }
+  },
+  {
+    "class": "ImageReveal",
+    "file": "ImageReveal.js",
+    "extends": "Component",
+    "description": "Imagen cubierta por un panel que se desliza al entrar en pantalla; acepta src por opciones.",
+    "demo": {
+      "direction": "left",
+      "duration": 1,
+      "zoom": true,
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='450'><rect width='800' height='450' fill='%236d5cff'/><circle cx='620' cy='120' r='150' fill='%23ff4ecd' opacity='0.5'/><circle cx='180' cy='360' r='110' fill='%232ee6d6' opacity='0.45'/></svg>",
+      "alt": "Revelada"
+    }
+  },
+  {
+    "class": "ParallaxImage",
+    "file": "ParallaxImage.js",
+    "extends": "Component",
+    "description": "La imagen interior se desplaza sutil con el progreso del scroll; acepta src por opciones.",
+    "demo": {
+      "range": 40,
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600'><rect width='800' height='600' fill='%230e9f8f'/><circle cx='620' cy='150' r='170' fill='%236d5cff' opacity='0.55'/><circle cx='190' cy='470' r='130' fill='%232ee6d6' opacity='0.4'/></svg>",
+      "alt": "Profundidad"
+    }
+  }
+]

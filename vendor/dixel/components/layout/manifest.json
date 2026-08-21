@@ -1,0 +1,132 @@
+[
+  {
+    "class": "Accordion",
+    "file": "Accordion.js",
+    "extends": "Component",
+    "description": "Paneles plegables con altura animada vía grid-template-rows y flecha rotante.",
+    "demo": {
+      "items": [
+        {
+          "title": "¿Qué es DIXEL?",
+          "content": "Una librería gráfica vanilla con UX cinematográfico.",
+          "open": true
+        },
+        {
+          "title": "¿Tiene dependencias?",
+          "content": "Cero. Todo corre sobre el núcleo propio."
+        },
+        {
+          "title": "¿Es responsiva?",
+          "content": "De 320px a 4K con tokens fluidos."
+        }
+      ]
+    }
+  },
+  {
+    "class": "Timeline",
+    "file": "Timeline.js",
+    "extends": "Component",
+    "description": "Línea vertical que se dibuja con el scroll y nodos que se encienden al pasar.",
+    "demo": {
+      "items": [
+        {
+          "date": "2024",
+          "title": "Idea",
+          "text": "Nace el concepto de la librería."
+        },
+        {
+          "date": "2025",
+          "title": "Núcleo",
+          "text": "Ticker, Viewport y ScrollWatch compartidos."
+        },
+        {
+          "date": "2026",
+          "title": "Lanzamiento",
+          "text": "Componentes de datos, texto y media."
+        }
+      ]
+    }
+  },
+  {
+    "class": "Steps",
+    "file": "Steps.js",
+    "extends": "Component",
+    "description": "Indicador de pasos con conectores que se llenan y estados hecho/activo. Opción colors: un color por paso (token o hex) que pinta punto, número y conector.",
+    "demo": {
+      "steps": [
+        "Cuenta",
+        "Perfil",
+        "Pago",
+        "Listo"
+      ],
+      "current": 2,
+      "colors": [
+        "primary",
+        "cyan",
+        "magenta",
+        "success"
+      ]
+    }
+  },
+  {
+    "class": "MasonryGrid",
+    "file": "MasonryGrid.js",
+    "extends": "Component",
+    "description": "Grilla tipo masonry de columnas responsivas con entrada escalonada; items declarables por opciones.",
+    "demo": {
+      "minWidth": 150,
+      "stagger": 0.06,
+      "items": [
+        "<h4>Rápido</h4><p>Pieza 1 del muro.</p>",
+        "<h4>Fluido</h4><p>Pieza 2 del muro, con algo más de texto para variar la altura.</p>",
+        "<h4>Modular</h4><p>Pieza 3 del muro.</p>",
+        "<h4>Vivo</h4><p>Pieza 4 del muro, columnas que se reparten solas.</p>",
+        "<h4>Nítido</h4><p>Pieza 5 del muro.</p>"
+      ]
+    }
+  },
+  {
+    "class": "StickyStack",
+    "file": "StickyStack.js",
+    "extends": "Component",
+    "description": "Tarjetas que se apilan al scrollear y escalan levemente al quedar detrás; items declarables por opciones.",
+    "demo": {
+      "top": 32,
+      "scaleStep": 0.05,
+      "items": [
+        "<h4>Un solo reloj</h4><p>Todas las animaciones laten en el mismo Ticker.</p>",
+        "<h4>Solo pagan los visibles</h4><p>Todo se pausa fuera del viewport.</p>",
+        "<h4>Cero dependencias</h4><p>Motion, scroll y observadores propios.</p>"
+      ]
+    }
+  },
+  {
+    "class": "SplitView",
+    "file": "SplitView.js",
+    "extends": "Component",
+    "description": "Dos paneles con divisor arrastrable por puntero y teclado, en orientación horizontal (lado a lado) o vertical (apilados), con asa en estilos pill, line (línea fina que se ilumina), dots (3 puntos) o chevrons (flechas según orientación); anidable sin heredar estilos del padre.",
+    "demo": {
+      "start": 0.5,
+      "min": 0.25,
+      "max": 0.75,
+      "orientation": "horizontal",
+      "handleStyle": "pill",
+      "panes": [
+        "<h4>Editor</h4><p>Arrastra el asa central.</p>",
+        "<h4>Vista previa</h4><p>Los paneles se reparten el espacio.</p>"
+      ]
+    }
+  },
+  {
+    "class": "SectionWave",
+    "file": "SectionWave.js",
+    "extends": "Component",
+    "description": "Divisor SVG de onda, curva o diagonal entre secciones; color por token (surface, bg, primary-soft…), altura 60px por defecto ajustable con height y volteo vertical con flip.",
+    "demo": {
+      "shape": "wave",
+      "color": "primary-soft",
+      "flip": false,
+      "height": "60px"
+    }
+  }
+]

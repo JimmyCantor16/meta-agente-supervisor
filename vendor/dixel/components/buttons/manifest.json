@@ -1,0 +1,73 @@
+[
+  {
+    "class": "Button",
+    "file": "Button.js",
+    "extends": "Component",
+    "description": "Botón base con variantes solid, ghost y soft; modelo de referencia de la categoría.",
+    "demo": { "label": "Get started", "variant": "solid", "size": "md" }
+  },
+  {
+    "class": "MagneticButton",
+    "file": "MagneticButton.js",
+    "extends": "Button",
+    "description": "Botón que se imanta al cursor con el Pointer compartido y regresa con física elástica.",
+    "demo": { "label": "Hover me", "variant": "solid", "strength": 0.32, "liftScale": 1.04 }
+  },
+  {
+    "class": "GlowButton",
+    "file": "GlowButton.js",
+    "extends": "Button",
+    "description": "Botón con halo estático y brillo interior que barre el botón con transform en hover.",
+    "demo": { "label": "Launch", "variant": "solid", "tone": "cyan" }
+  },
+  {
+    "class": "RippleButton",
+    "file": "RippleButton.js",
+    "extends": "Button",
+    "description": "Botón con onda expansiva desde el punto exacto del click, animada con scale y opacity.",
+    "demo": { "label": "Tap me", "variant": "solid", "rippleOpacity": 0.38 }
+  },
+  {
+    "class": "BorderSweepButton",
+    "file": "BorderSweepButton.js",
+    "extends": "Button",
+    "description": "Botón con borde degradado que gira en bucle; la rotación se pausa fuera del viewport.",
+    "demo": { "label": "Premium", "size": "md" }
+  },
+  {
+    "class": "IconButton",
+    "file": "IconButton.js",
+    "extends": "Button",
+    "description": "Botón compacto de solo ícono, circular o cuadrado, con aria-label accesible.",
+    "demo": { "label": "Add item", "variant": "soft", "shape": "circle" }
+  },
+  {
+    "class": "PillToggle",
+    "file": "PillToggle.js",
+    "extends": "Component",
+    "description": "Control segmentado con indicador que se desliza entre opciones usando solo transform.",
+    "demo": { "options": ["Day", "Week", "Month"], "value": 0 }
+  },
+  {
+    "class": "FabButton",
+    "file": "FabButton.js",
+    "extends": "Component",
+    "description": "Botón flotante que despliega un menú radial de acciones en una capa fija sobre toda la página, con stagger y física de rebote.",
+    "demo": {
+      "label": "Quick actions",
+      "radius": 84,
+      "items": [
+        { "label": "Edit", "icon": "✎" },
+        { "label": "Share", "icon": "↗" },
+        { "label": "Delete", "icon": "✕" }
+      ]
+    }
+  },
+  {
+    "class": "HoldButton",
+    "file": "HoldButton.js",
+    "extends": "Button",
+    "description": "Botón de mantener presionado para confirmar, con progreso en anillo, relleno o barrido de borde (progressStyle: ring | fill | sweep) y pulso al completar.",
+    "demo": { "label": "Hold to delete", "variant": "ghost", "holdDuration": 1.1, "progressStyle": "ring" }
+  }
+]

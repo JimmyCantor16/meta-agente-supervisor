@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIXEL · catálogo vivo</title>
+<link rel="stylesheet" href="/vendor/dixel/dist/dixel.css">
+<style>
+  body { margin: 0; background: var(--dx-bg, #07070d); color: var(--dx-ink, #f2f2fa); font-family: var(--dx-font-sans, system-ui); }
+  .wrap { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  aside { border-right: 1px solid var(--dx-line); padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+  aside h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  aside p { color: var(--dx-ink-dim); font-size: 12px; margin: 0 0 16px; }
+  .cat { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: 0; color: var(--dx-ink-soft); padding: 7px 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
+  .cat:hover { background: var(--dx-surface-2); color: var(--dx-ink); }
+  .cat[aria-current="true"] { background: var(--dx-primary-soft); color: var(--dx-ink); }
+  .cat span { color: var(--dx-ink-dim); font-variant-numeric: tabular-nums; }
+  main { padding: 24px 28px 80px; }
+  .head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  .head h2 { margin: 0; font-size: 24px; letter-spacing: -0.02em; }
+  input[type="search"] { background: var(--dx-surface); border: 1px solid var(--dx-line); color: var(--dx-ink); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; min-width: 200px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+  .item { border: 1px solid var(--dx-line); border-radius: 14px; background: var(--dx-surface); overflow: hidden; display: flex; flex-direction: column; }
+  .item header { padding: 12px 14px 8px; }
+  .item h3 { margin: 0; font-size: 14px; font-family: var(--dx-font-mono, monospace); }
+  .item p { margin: 4px 0 0; font-size: 12px; color: var(--dx-ink-dim); line-height: 1.45; }
+  .stage { position: relative; min-height: 190px; padding: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; border-top: 1px solid var(--dx-line); }
+  .stage > * { max-width: 100%; }
+  .target { width: 100%; max-width: 240px; min-height: 120px; border-radius: 14px; border: 1px solid var(--dx-line-strong); background: var(--dx-surface-2); display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--dx-ink-soft); }
+  .snippet { font-family: var(--dx-font-mono, monospace); font-size: 11px; color: var(--dx-ink-dim); padding: 8px 14px 12px; border-top: 1px solid var(--dx-line); white-space: pre-wrap; word-break: break-word; }
+  .fail { color: var(--dx-danger); font-size: 12px; font-family: var(--dx-font-mono, monospace); }
+  .nota { color: var(--dx-ink-dim); font-size: 12px; text-align: center; max-width: 220px; }
+  .ctl { display: inline-flex; align-items: center; gap: 6px; background: var(--dx-surface); border: 1px solid var(--dx-line); color: var(--dx-ink-soft); border-radius: 8px; padding: 5px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+  .ctl input[type="color"] { width: 26px; height: 20px; border: 0; background: none; padding: 0; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside>
+    <h1>DIXEL</h1>
+    <p id="resumen">cargando…</p>
+    <nav id="cats"></nav>
+  </aside>
+  <main>
+    <div class="head">
+      <h2 id="titulo">—</h2>
+      <input type="search" id="buscar" placeholder="filtrar por nombre…">
+      <label class="ctl">marca <input type="color" id="cPrimary" value="#6d5cff"></label>
+      <label class="ctl">acento <input type="color" id="cCyan" value="#2ee6d6"></label>
+      <label class="ctl">fondo <input type="color" id="cBg" value="#07070d"></label>
+      <select id="modo" class="ctl">
+        <option value="dark">oscuro</option>
+        <option value="light">claro</option>
+        <option value="auto">según el sistema</option>
+      </select>
+      <button id="preset" class="ctl">paleta Jamz</button>
+      <button id="reset" class="ctl">original</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </main>
+</div>
+<script src="/vendor/dixel/dist/dixel.js"></script>
+<script src="/vendor/dixel/dist/catalog.js"></script>
+<script>
+(function () {
+  'use strict';
+  Dixel.init({ smoothScroll: false, scan: false });
+
+  var catalogo = window.DixelCatalog || {};
+  var categorias = Object.keys(catalogo).sort();
+  var total = categorias.reduce(function (n, c) { return n + catalogo[c].length; }, 0);
+  document.getElementById('resumen').textContent = total + ' clases en ' + categorias.length + ' categorías';
+
+  var vivos = [];
+  var observador = new IntersectionObserver(function (entradas) {
+    entradas.forEach(function (entrada) {
+      if (entrada.isIntersecting) montar(entrada.target);
+      else desmontar(entrada.target);
+    });
+  }, { rootMargin: '200px' });
+
+  function montar(stage) {
+    if (stage.__inst) return;
+    var nombre = stage.dataset.clase;
+    var demo = JSON.parse(stage.dataset.demo || '{}');
+    try {
+      var Clase = Dixel.classes[nombre];
+      if (!Clase) throw new Error('clase no registrada');
+      if (typeof Clase !== 'function') {
+        stage.innerHTML = '<span class="nota">singleton de apoyo · se usa desde otros componentes, no se monta</span>';
+        stage.__inst = true;
+        return;
+      }
+      var Base = Dixel.classes.Component;
+      var propia = Clase.prototype.build !== Base.prototype.build;
+      var inst;
+      if (propia) {
+        inst = Dixel.create(nombre, demo).mount(stage);
+      } else {
+        var target = document.createElement('div');
+        target.className = 'target';
+        target.textContent = nombre;
+        stage.appendChild(target);
+        inst = Dixel.create(nombre, demo).attach(target);
+      }
+      stage.__inst = inst;
+      vivos.push(stage);
+    } catch (error) {
+      stage.innerHTML = '<span class="fail">' + nombre + ': ' + error.message + '</span>';
+      stage.__inst = true;
+    }
+  }
+
+  function desmontar(stage) {
+    if (!stage.__inst) return;
+    if (stage.__inst.destroy) { try { stage.__inst.destroy(); } catch (e) {} }
+    stage.__inst = null;
+    stage.innerHTML = '';
+  }
+
+  function pintar(categoria, filtro) {
+    vivos.forEach(desmontar);
+    vivos = [];
+    observador.disconnect();
+    var grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    document.getElementById('titulo').textContent = categoria;
+    var items = catalogo[categoria].filter(function (item) {
+      return !filtro || item.class.toLowerCase().indexOf(filtro.toLowerCase()) >= 0;
+    });
+    items.forEach(function (item) {
+      var card = document.createElement('article');
+      card.className = 'item';
+      var head = document.createElement('header');
+      var h3 = document.createElement('h3');
+      h3.textContent = item.class;
+      var p = document.createElement('p');
+      p.textContent = item.description || '';
+      head.appendChild(h3);
+      head.appendChild(p);
+      var stage = document.createElement('div');
+      stage.className = 'stage';
+      stage.dataset.clase = item.class;
+      stage.dataset.demo = JSON.stringify(item.demo || {});
+      var snippet = document.createElement('pre');
+      snippet.className = 'snippet';
+      snippet.textContent = "Dixel.create('" + item.class + "', " + JSON.stringify(item.demo || {}) + ").mount(host)";
+      card.appendChild(head);
+      card.appendChild(stage);
+      card.appendChild(snippet);
+      grid.appendChild(card);
+      observador.observe(stage);
+    });
+  }
+
+  var nav = document.getElementById('cats');
+  categorias.forEach(function (categoria) {
+    var boton = document.createElement('button');
+    boton.className = 'cat';
+    boton.appendChild(document.createTextNode(categoria));
+    var conteo = document.createElement('span');
+    conteo.textContent = catalogo[categoria].length;
+    boton.appendChild(conteo);
+    boton.addEventListener('click', function () {
+      nav.querySelectorAll('.cat').forEach(function (b) { b.setAttribute('aria-current', 'false'); });
+      boton.setAttribute('aria-current', 'true');
+      pintar(categoria, document.getElementById('buscar').value);
+    });
+    nav.appendChild(boton);
+  });
+
+  function categoriaActual() {
+    var actual = nav.querySelector('.cat[aria-current="true"]');
+    return actual ? actual.firstChild.textContent : categorias[0];
+  }
+
+  function aplicarTema(cambios) {
+    Dixel.theme(cambios);
+    pintar(categoriaActual(), document.getElementById('buscar').value);
+  }
+
+  document.getElementById('cPrimary').addEventListener('input', function (e) { aplicarTema({ primary: e.target.value }); });
+  document.getElementById('cCyan').addEventListener('input', function (e) { aplicarTema({ cyan: e.target.value }); });
+  document.getElementById('cBg').addEventListener('input', function (e) { aplicarTema({ bg: e.target.value }); });
+  document.getElementById('modo').addEventListener('change', function (e) { aplicarTema({ mode: e.target.value }); });
+  document.getElementById('preset').addEventListener('click', function () {
+    document.getElementById('cPrimary').value = '#027e6f';
+    document.getElementById('cCyan').value = '#00e0ac';
+    document.getElementById('cBg').value = '#f7f8fa';
+    document.getElementById('modo').value = 'light';
+    aplicarTema({ primary: '#027E6F', cyan: '#00E0AC', mode: 'light' });
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    document.documentElement.removeAttribute('style');
+    document.getElementById('cPrimary').value = '#6d5cff';
+    document.getElementById('cCyan').value = '#2ee6d6';
+    document.getElementById('cBg').value = '#07070d';
+    document.getElementById('modo').value = 'dark';
+    aplicarTema({ mode: 'dark' });
+  });
+
+  document.getElementById('buscar').addEventListener('input', function (evento) {
+    var actual = nav.querySelector('.cat[aria-current="true"]');
+    if (actual) pintar(actual.firstChild.textContent, evento.target.value);
+  });
+
+  nav.querySelector('.cat').click();
+})();
+</script>
+</body>
+</html>

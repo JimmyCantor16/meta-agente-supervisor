@@ -1,0 +1,30 @@
+[
+  {
+    "class": "PickerBase",
+    "file": "PickerBase.js",
+    "extends": "Component",
+    "description": "Base de popover anclado al disparador con posicionamiento arriba/abajo, bottom-sheet en móvil y cierre con Escape o click fuera.",
+    "demo": { "label": "Selector", "placeholder": "Seleccionar" }
+  },
+  {
+    "class": "DatePicker",
+    "file": "DatePicker.js",
+    "extends": "PickerBase",
+    "description": "Calendario desplegable con vistas de días, meses y años navegables desde el título, transición deslizante, soporte de rango, hoy marcado, localización y navegación completa por teclado.",
+    "demo": { "label": "Fecha de entrega", "range": false, "firstDay": 1 }
+  },
+  {
+    "class": "TimePicker",
+    "file": "TimePicker.js",
+    "extends": "PickerBase",
+    "description": "Selector de hora con steppers de hora y minuto (click, flechas y rueda del mouse), segmento AM/PM en formato 12, toggle 12/24 horas opcional (formatToggle) y grilla de minutos rápidos configurable (quickMinutes).",
+    "demo": { "label": "Hora de inicio", "format": 12, "stepMinutes": 5, "formatToggle": true, "quickMinutes": [0, 15, 30, 45] }
+  },
+  {
+    "class": "ColorPicker",
+    "file": "ColorPicker.js",
+    "extends": "PickerBase",
+    "description": "Selector de color con área saturación/brillo arrastrable, barras de matiz y alfa, selector de formato HEX/RGB/RGBA, botón de copiar al portapapeles, campo hex editable y paleta de swatches.",
+    "demo": { "label": "Color de marca", "value": "#6d5cff", "alpha": true, "swatches": ["#6d5cff", "#2ee6d6", "#ff4ecd", "#3ddc97"] }
+  }
+]

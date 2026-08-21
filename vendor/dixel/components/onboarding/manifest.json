@@ -1,0 +1,29 @@
+[
+  {
+    "class": "OnboardingTour",
+    "file": "OnboardingTour.js",
+    "extends": "Component",
+    "description": "Recorrido guiado por la página con velo en cuatro piezas que recorta un foco animado alrededor de cada elemento, tarjeta flotante con contador y navegación por teclado.",
+    "demo": {
+      "launcherLabel": "Iniciar recorrido",
+      "steps": [
+        { "target": ".dx-tour-launcher", "title": "Bienvenido a tu panel", "text": "Desde aquí lanzas el recorrido cada vez que un usuario nuevo llega a tu producto.", "placement": "bottom" },
+        { "title": "Todo bajo control", "text": "Cada paso enfoca un elemento real de tu interfaz y oscurece el resto para guiar la mirada.", "placement": "bottom" },
+        { "title": "¡Listo para empezar!", "text": "Usa las flechas del teclado para navegar y Escape para salir cuando quieras." }
+      ]
+    }
+  },
+  {
+    "class": "Hotspot",
+    "file": "Hotspot.js",
+    "extends": "Component",
+    "description": "Punto pulsante anclado a un elemento que al hacer clic abre un mini popover explicativo, con cierre por Escape o clic fuera.",
+    "demo": {
+      "title": "Exportación nueva",
+      "text": "Ahora puedes descargar tus reportes en PDF y CSV directamente desde esta vista.",
+      "placement": "top",
+      "tone": "cyan",
+      "label": "Ver novedad de exportación"
+    }
+  }
+]

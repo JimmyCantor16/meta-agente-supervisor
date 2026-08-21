@@ -1,0 +1,44 @@
+[
+  {
+    "class": "Reveal",
+    "file": "Reveal.js",
+    "extends": "Component",
+    "description": "Entrada configurable por direccion con stagger de hijos, reactivable al subir y bajar.",
+    "demo": { "direction": "up", "distance": 44, "stagger": 0.09, "once": false }
+  },
+  {
+    "class": "ParallaxLayer",
+    "file": "ParallaxLayer.js",
+    "extends": "Component",
+    "description": "Capa con velocidad relativa al scroll usando el progress compartido de ScrollWatch.",
+    "demo": { "speed": 0.25, "axis": "y" }
+  },
+  {
+    "class": "ScrollProgressBar",
+    "file": "ScrollProgressBar.js",
+    "extends": "Component",
+    "description": "Barra fija superior que refleja el avance de la pagina solo con transform scaleX.",
+    "demo": { "tint": "gradient" }
+  },
+  {
+    "class": "VelocityWarp",
+    "file": "VelocityWarp.js",
+    "extends": "Component",
+    "description": "Inclina y estira sutilmente el elemento segun la velocidad del scroll y se asienta al parar.",
+    "demo": { "maxSkew": 4, "maxStretch": 0.05 }
+  },
+  {
+    "class": "StickyReveal",
+    "file": "StickyReveal.js",
+    "extends": "Component",
+    "description": "Marco fijo mientras la seccion pasa; los pasos internos avanzan por progress.",
+    "demo": { "pages": 3, "shift": 48 }
+  },
+  {
+    "class": "SmoothAnchorNav",
+    "file": "SmoothAnchorNav.js",
+    "extends": "Component",
+    "description": "Nav de anclas con scroll suave que resalta la seccion visible.",
+    "demo": { "offset": 80, "line": 0.35 }
+  }
+]

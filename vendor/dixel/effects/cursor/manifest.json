@@ -1,0 +1,44 @@
+[
+  {
+    "class": "CursorDot",
+    "file": "CursorDot.js",
+    "extends": "Component",
+    "description": "Punto pegado 1:1 al cursor y anillo con retardo corto que crece sobre elementos [data-cursor=\"hover\"].",
+    "demo": { "size": 8, "ringSize": 38, "lag": 15, "hoverScale": 1.8, "blend": true }
+  },
+  {
+    "class": "CursorTrail",
+    "file": "CursorTrail.js",
+    "extends": "Component",
+    "description": "Estela de puntos reciclados que siguen al cursor con retardo en cascada.",
+    "demo": { "count": 12, "size": 9, "lag": 17 }
+  },
+  {
+    "class": "CursorRibbon",
+    "file": "CursorRibbon.js",
+    "extends": "Component",
+    "description": "Cinta fluida con degradado y grosor decreciente dibujada en un canvas fijo tras el cursor.",
+    "demo": { "points": 26, "width": 9, "lag": 22 }
+  },
+  {
+    "class": "CursorGlow",
+    "file": "CursorGlow.js",
+    "extends": "Component",
+    "description": "Luz radial grande que sigue al cursor iluminando la pagina, movida solo por transform.",
+    "demo": { "size": 520, "lag": 10, "opacity": 0.6, "tint": "primary" }
+  },
+  {
+    "class": "ClickBurst",
+    "file": "ClickBurst.js",
+    "extends": "Component",
+    "description": "Click elegante: onda anular fina degradada mas chispas lineales que se disparan y encogen, todo desde un pool reciclado.",
+    "demo": { "sparks": 5, "ringSize": 90, "spread": 130, "duration": 0.6 }
+  },
+  {
+    "class": "CursorStyle",
+    "file": "CursorStyle.js",
+    "extends": "Component",
+    "description": "Reemplaza el cursor nativo (cursor none en el scope) por un icono del IconSet que sigue el puntero 1:1, con rotacion opcional por velocidad y estados via data-cursor pointer|grab|text|zoom. En touch no hace nada y destroy() restaura el cursor.",
+    "demo": { "icon": "navigation", "size": 22, "tint": "primary", "rotate": true }
+  }
+]

@@ -1,0 +1,91 @@
+.dx-scrollprogress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  z-index: var(--dx-z-nav);
+  will-change: transform;
+}
+
+.dx-scrollprogress--gradient {
+  background: var(--dx-gradient);
+}
+
+.dx-scrollprogress--primary {
+  background: var(--dx-primary);
+}
+
+.dx-scrollprogress--cyan {
+  background: var(--dx-cyan);
+}
+
+.dx-parallax {
+  will-change: transform;
+}
+
+.dx-velocity-warp {
+  will-change: transform;
+}
+
+.dx-sticky {
+  height: calc(var(--dx-sticky-pages, 2) * 100vh);
+}
+
+.dx-sticky-frame {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.dx-sticky-frame > [data-sticky-step] {
+  grid-area: 1 / 1;
+  will-change: transform, opacity;
+}
+
+.dx-anchor-nav a {
+  position: relative;
+  color: var(--dx-ink-dim);
+  text-decoration: none;
+  font-size: var(--dx-text-sm);
+  transition: color var(--dx-speed) var(--dx-ease);
+}
+
+.dx-anchor-nav a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 2px;
+  background: var(--dx-gradient);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform var(--dx-speed) var(--dx-ease);
+}
+
+.dx-anchor-nav a.is-active {
+  color: var(--dx-ink);
+}
+
+.dx-anchor-nav a.is-active::after {
+  transform: scaleX(1);
+}
+
+@media (hover: hover) {
+  .dx-anchor-nav a:hover {
+    color: var(--dx-ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-anchor-nav a,
+  .dx-anchor-nav a::after {
+    transition-duration: 0.001s;
+  }
+}

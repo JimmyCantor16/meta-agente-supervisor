@@ -1,0 +1,79 @@
+html.dx-colorflow {
+  background-color: var(--dx-flow-bg, var(--dx-bg));
+  transition: background-color 0.1s linear;
+}
+
+html.dx-colorflow body {
+  background-color: transparent;
+}
+
+.dx-sectionfade {
+  position: relative;
+}
+
+.dx-sectionfade::before,
+.dx-sectionfade::after {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--dx-fade-size, clamp(48px, 12vh, 160px));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dx-sectionfade--top::before {
+  content: '';
+  top: 0;
+  background: linear-gradient(180deg, var(--dx-flow-bg, var(--dx-bg)), transparent);
+}
+
+.dx-sectionfade--bottom::after {
+  content: '';
+  bottom: 0;
+  background: linear-gradient(0deg, var(--dx-flow-bg, var(--dx-bg)), transparent);
+}
+
+.dx-wipe {
+  position: relative;
+  overflow: hidden;
+}
+
+.dx-wipe-panel {
+  position: absolute;
+  inset: 0;
+  background: var(--dx-flow-bg, var(--dx-bg));
+  pointer-events: none;
+  z-index: 2;
+  will-change: transform;
+}
+
+.dx-wipe-panel.is-open {
+  transition: transform var(--dx-wipe-duration, 0.9s) var(--dx-ease);
+}
+
+.dx-wipe-panel--up.is-open {
+  transform: translate3d(0, -101%, 0);
+}
+
+.dx-wipe-panel--down.is-open {
+  transform: translate3d(0, 101%, 0);
+}
+
+.dx-wipe-panel--left.is-open {
+  transform: translate3d(-101%, 0, 0);
+}
+
+.dx-wipe-panel--right.is-open {
+  transform: translate3d(101%, 0, 0);
+}
+
+.dx-zoomflow {
+  transform-origin: 50% 60%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.dx-colorflow,
+  .dx-wipe-panel.is-open {
+    transition-duration: 0.001s;
+  }
+}

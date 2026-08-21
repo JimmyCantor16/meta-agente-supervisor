@@ -1,0 +1,9 @@
+[
+  {
+    "class": "FancyScrollbar",
+    "file": "FancyScrollbar.js",
+    "extends": "Component",
+    "description": "Scrollbar overlay con riel fino y thumb de gradiente arrastrable que se auto-oculta; sirve para la pagina y para contenedores.",
+    "demo": { "autoHide": true, "hideDelay": 1.4, "minThumb": 40 }
+  }
+]

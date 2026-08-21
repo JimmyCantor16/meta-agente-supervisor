@@ -1,0 +1,38 @@
+[
+  {
+    "class": "WizardForm",
+    "file": "WizardForm.js",
+    "extends": "Component",
+    "description": "Formulario multipaso con barra de progreso animada, indicador de pasos, transición deslizante, validación por paso con shake, resumen final y estado de éxito.",
+    "demo": {
+      "steps": [
+        {
+          "title": "Tu cuenta",
+          "description": "Cuéntanos quién eres para crear tu espacio de trabajo.",
+          "fields": [
+            { "type": "text", "name": "nombre", "label": "Nombre completo", "placeholder": "Ana María Torres", "required": true, "minLength": 3 },
+            { "type": "email", "name": "correo", "label": "Correo de trabajo", "placeholder": "ana@empresa.com", "required": true }
+          ]
+        },
+        {
+          "title": "Tu empresa",
+          "description": "Esto nos ayuda a configurar el plan ideal para tu equipo.",
+          "fields": [
+            { "type": "text", "name": "empresa", "label": "Nombre de la empresa", "placeholder": "Estudio Nébula", "required": true },
+            { "type": "select", "name": "tamano", "label": "Tamaño del equipo", "placeholder": "Selecciona una opción", "required": true, "options": ["1 a 5 personas", "6 a 20 personas", "21 a 100 personas", "Más de 100 personas"] }
+          ]
+        },
+        {
+          "title": "Preferencias",
+          "fields": [
+            { "type": "select", "name": "plan", "label": "Plan inicial", "placeholder": "Elige un plan", "required": true, "options": [ { "value": "free", "label": "Gratis — para probar" }, { "value": "pro", "label": "Pro — equipos en crecimiento" }, { "value": "business", "label": "Business — sin límites" } ] },
+            { "type": "text", "name": "referencia", "label": "¿Cómo nos conociste?", "placeholder": "Un amigo, redes, búsqueda…" }
+          ]
+        }
+      ],
+      "summaryTitle": "Revisa tu información",
+      "successTitle": "¡Cuenta creada!",
+      "successText": "Te enviamos un correo para verificar tu cuenta y empezar."
+    }
+  }
+]

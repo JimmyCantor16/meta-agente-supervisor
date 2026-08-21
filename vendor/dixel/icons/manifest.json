@@ -1,0 +1,30 @@
+[
+  {
+    "class": "Icon",
+    "file": "Icon.js",
+    "extends": "Component",
+    "description": "Sistema de iconos propio: 810 trazos SVG consistentes, tamaño y grosor configurables, hereda el color del texto.",
+    "demo": { "name": "sparkles", "size": 28 }
+  },
+  {
+    "class": "DrawIcon",
+    "file": "DrawIcon.js",
+    "extends": "Icon",
+    "description": "Icono que se dibuja trazo a trazo al entrar en pantalla y se redibuja al volver.",
+    "demo": { "name": "rocket", "size": 40, "duration": 1.2 }
+  },
+  {
+    "class": "IconSet",
+    "file": "IconSet.js",
+    "extends": null,
+    "description": "Registro de 810 trazos con variantes de notificaciones, mensajes, flechas, IA, redes, cursores, teclado, formas y un set tipo emoji de caras, gestos y símbolos.",
+    "demo": null
+  },
+  {
+    "class": "IconCategories",
+    "file": "IconCategories.js",
+    "extends": null,
+    "description": "Mapa de los 810 iconos en 31 categorías en español: interfaz, flechas, archivos, media, comunicación, social, comercio, desarrollo, datosIA, seguridad, clima, transporte, lugares, salud, comida, educación, oficina, tiempo, cursores, formas, emociones, ventana, notificaciones, herramientas, electrodomésticos, música, animales, electrónica, hogar, personas y cocina. Valida en runtime que ningún icono quede sin categoría.",
+    "demo": null
+  }
+]

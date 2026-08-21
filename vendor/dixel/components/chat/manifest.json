@@ -1,0 +1,32 @@
+[
+  {
+    "class": "ChatThread",
+    "file": "ChatThread.js",
+    "extends": "Component",
+    "description": "Hilo de conversación con burbujas propias y ajenas, avatares con iniciales, agrupación de mensajes consecutivos, estados de lectura, entrada animada y auto-scroll inteligente.",
+    "demo": {
+      "label": "Conversación con soporte",
+      "messages": [
+        { "author": "Valentina Ríos", "text": "¡Hola! Vi que activaste el plan Pro, ¿te ayudo con la migración?", "time": "09:14" },
+        { "author": "Valentina Ríos", "text": "El proceso tarda unos 10 minutos y no pierdes ningún dato.", "time": "09:14" },
+        { "author": "Tú", "own": true, "text": "Hola Valentina, sí por favor. ¿Puedo seguir trabajando mientras tanto?", "time": "09:16", "status": "read" },
+        { "author": "Valentina Ríos", "text": "Claro, la migración corre en segundo plano. Te aviso apenas termine.", "time": "09:17" },
+        { "author": "Tú", "own": true, "text": "Perfecto, gracias 🙌", "time": "09:18", "status": "sent" }
+      ]
+    }
+  },
+  {
+    "class": "TypingDots",
+    "file": "TypingDots.js",
+    "extends": "Component",
+    "description": "Indicador de escritura con tres puntos ondulantes animados solo por transform, pausado fuera del viewport.",
+    "demo": { "author": "Valentina Ríos" }
+  },
+  {
+    "class": "ChatInput",
+    "file": "ChatInput.js",
+    "extends": "Component",
+    "description": "Barra de entrada de mensajes con textarea que crece automáticamente, envío con Enter y botón con estado activo animado.",
+    "demo": { "placeholder": "Escribe una respuesta…", "sendLabel": "Enviar mensaje" }
+  }
+]

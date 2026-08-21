@@ -1,0 +1,54 @@
+.dx-shader {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dx-shader--interactive {
+  pointer-events: auto;
+}
+
+.dx-shader-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.dx-shader-fallback {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--dx-bg);
+}
+
+.dx-shader-fallback::before {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background:
+    radial-gradient(55% 70% at 24% 32%, var(--dx-shader-a, var(--dx-primary)) 0%, transparent 62%),
+    radial-gradient(65% 65% at 78% 68%, var(--dx-shader-b, var(--dx-cyan)) 0%, transparent 64%),
+    radial-gradient(45% 55% at 62% 18%, var(--dx-shader-c, var(--dx-magenta)) 0%, transparent 58%);
+  opacity: 0.45;
+  will-change: transform;
+  animation: dx-shader-drift 22s var(--dx-ease) infinite alternate;
+}
+
+@keyframes dx-shader-drift {
+  from {
+    transform: translate3d(-5%, -4%, 0) rotate(-4deg) scale(1);
+  }
+  to {
+    transform: translate3d(5%, 4%, 0) rotate(5deg) scale(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-shader-fallback::before {
+    animation: none;
+  }
+}

@@ -1,0 +1,141 @@
+.dx-scrollbar {
+  position: fixed;
+  top: 4px;
+  right: 3px;
+  bottom: 4px;
+  width: 12px;
+  z-index: var(--dx-z-toast);
+  transition: opacity var(--dx-speed) var(--dx-ease);
+}
+
+.dx-scrollbar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 4px;
+  width: 3px;
+  border-radius: var(--dx-radius-full);
+  background: var(--dx-line);
+}
+
+.dx-scrollbar--inset {
+  position: absolute;
+  left: auto;
+}
+
+.dx-scrollbar.is-idle {
+  opacity: 0;
+}
+
+.dx-scrollbar.is-off {
+  display: none;
+}
+
+.dx-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  width: 7px;
+  border-radius: var(--dx-radius-full);
+  background: var(--dx-gradient);
+  opacity: 0.65;
+  cursor: grab;
+  transition: opacity var(--dx-speed-fast) var(--dx-ease);
+  will-change: transform;
+  touch-action: none;
+}
+
+.dx-scrollbar-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--dx-glow-primary), var(--dx-glow-cyan);
+  opacity: 0;
+  transition: opacity var(--dx-speed-fast) var(--dx-ease);
+}
+
+.dx-scrollbar.is-drag .dx-scrollbar-thumb {
+  opacity: 1;
+  cursor: grabbing;
+}
+
+.dx-scrollbar.is-drag .dx-scrollbar-thumb::after {
+  opacity: 1;
+}
+
+.dx-scrollhost {
+  position: relative;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dx-scrollhost::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.dx-scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dx-primary) transparent;
+}
+
+.dx-scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dx-scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dx-scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--dx-primary);
+  border-radius: var(--dx-radius-full);
+}
+
+.dx-scroll-neon {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dx-cyan) transparent;
+}
+
+.dx-scroll-neon::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.dx-scroll-neon::-webkit-scrollbar-track {
+  background: var(--dx-surface);
+  border-radius: var(--dx-radius-full);
+}
+
+.dx-scroll-neon::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--dx-primary), var(--dx-cyan));
+  border-radius: var(--dx-radius-full);
+  border: 2px solid var(--dx-surface);
+}
+
+.dx-scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dx-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+@media (hover: hover) {
+  .dx-scrollbar:hover .dx-scrollbar-thumb {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-scrollbar,
+  .dx-scrollbar-thumb,
+  .dx-scrollbar-thumb::after {
+    transition-duration: 0.001s;
+  }
+}

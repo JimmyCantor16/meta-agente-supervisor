@@ -1,0 +1,65 @@
+[
+  {
+    "class": "Card",
+    "file": "Card.js",
+    "extends": "Component",
+    "description": "Tarjeta base con superficies en degradado, padding fluido y elevación sutil al pasar el cursor.",
+    "demo": { "title": "Profundidad real", "body": "Superficies que capturan la luz de la interfaz.", "footer": "DIXEL · 2026" }
+  },
+  {
+    "class": "TiltCard",
+    "file": "TiltCard.js",
+    "extends": "Card",
+    "description": "Tarjeta con inclinación 3D que sigue al cursor mediante Pointer y regresa suave al salir.",
+    "demo": { "title": "Sigue tu mano", "body": "Física amortiguada en cada eje.", "maxTilt": 10, "lift": 1.03 }
+  },
+  {
+    "class": "SpotlightCard",
+    "file": "SpotlightCard.js",
+    "extends": "Card",
+    "description": "Tarjeta con luz radial que persigue el cursor solo durante el hover, con suavizado compartido.",
+    "demo": { "title": "Luz que responde", "body": "Un foco recorre la superficie.", "radius": 300, "tone": "cyan" }
+  },
+  {
+    "class": "GlassCard",
+    "file": "GlassCard.js",
+    "extends": "Card",
+    "description": "Tarjeta de vidrio esmerilado con borde luminoso en degradado y brillo interior estático.",
+    "demo": { "title": "Cristal vivo", "body": "Transparencia con carácter." }
+  },
+  {
+    "class": "GradientBorderCard",
+    "file": "GradientBorderCard.js",
+    "extends": "Card",
+    "description": "Tarjeta con borde degradado cónico en rotación continua por transform, pausado fuera del viewport.",
+    "demo": { "title": "Borde en órbita", "body": "Color girando sin costo de layout.", "speed": 6 }
+  },
+  {
+    "class": "FlipCard",
+    "file": "FlipCard.js",
+    "extends": "Card",
+    "description": "Tarjeta que voltea 180 grados con preserve-3d al hacer click, hover o con el teclado.",
+    "demo": { "front": "<h3>Anverso</h3><p>Haz click para girar.</p>", "back": "<h3>Reverso</h3><p>Aquí vive el detalle.</p>", "trigger": "click" }
+  },
+  {
+    "class": "StackCard",
+    "file": "StackCard.js",
+    "extends": "Card",
+    "description": "Pila de tarjetas con profundidad escalonada donde la superior se desliza y rota hacia el fondo.",
+    "demo": { "items": ["<h3>Uno</h3><p>La primera capa.</p>", "<h3>Dos</h3><p>La segunda espera.</p>", "<h3>Tres</h3><p>El fondo respira.</p>"], "offset": 16 }
+  },
+  {
+    "class": "PricingCard",
+    "file": "PricingCard.js",
+    "extends": "Card",
+    "description": "Tarjeta de precios con lista de beneficios, CTA y variante destacada con halo de marca.",
+    "demo": { "plan": "Pro", "price": "$29", "period": "/mes", "features": ["Proyectos ilimitados", "Soporte prioritario", "Analítica avanzada"], "featured": true }
+  },
+  {
+    "class": "ProfileCard",
+    "file": "ProfileCard.js",
+    "extends": "Card",
+    "description": "Tarjeta de perfil con portada en degradado, avatar, estadísticas y acción principal.",
+    "demo": { "name": "Ana Riveros", "role": "Product Designer", "initials": "AR", "stats": [{ "value": "128", "label": "Shots" }, { "value": "4.9", "label": "Rating" }], "actionLabel": "Seguir" }
+  }
+]

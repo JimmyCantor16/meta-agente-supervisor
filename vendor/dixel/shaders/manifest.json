@@ -1,0 +1,440 @@
+[
+  {
+    "class": "ShaderCanvas",
+    "file": "ShaderCanvas.js",
+    "extends": "Component",
+    "description": "Base WebGL1 de todos los shaders: quad fullscreen, uniforms estándar, pausa fuera de viewport y fallback CSS.",
+    "demo": {
+      "colorA": "#6d5cff",
+      "colorB": "#2ee6d6",
+      "colorC": "#ff4ecd",
+      "resolutionScale": 0.75
+    }
+  },
+  {
+    "class": "AuroraShader",
+    "file": "AuroraShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Cortinas de aurora boreal fluidas con movimiento lento y majestuoso en colores de marca.",
+    "demo": {
+      "speed": 0.6,
+      "intensity": 1.1,
+      "scale": 1.1
+    }
+  },
+  {
+    "class": "LiquidShader",
+    "file": "LiquidShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Líquido tricolor de metaballs con brillo especular en los bordes; el cursor lo empuja y siempre regresa a su flujo. La opción hero lo agranda para héroes.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1,
+      "scale": 1,
+      "hero": true
+    }
+  },
+  {
+    "class": "OceanShader",
+    "file": "OceanShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Fotografía submarina procedural: cuerpo de agua volumétrico con doble capa de olas, god-rays que atraviesan la masa, cáusticas cerca de la superficie y burbujas esféricas creíbles —borde luminoso, glint especular descentrado, interior casi transparente que refracta el fondo, wobble y estela al subir—; el cursor genera una corriente que las desvía.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.15,
+      "scale": 1
+    }
+  },
+  {
+    "class": "StudioShader",
+    "file": "StudioShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Backdrop de estudio fotográfico estilo render: ciclorama con luz principal cálida que sigue al cursor, luces de borde de marca y viñeta suave. El fondo perfecto para héroes de producto.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.2,
+      "warmth": 1
+    }
+  },
+  {
+    "class": "VolumetricShader",
+    "file": "VolumetricShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Haces de luz volumétricos desde una esquina configurable atravesando polvo fino flotante, con respiración lenta e intensidad y ángulo por opciones.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.2,
+      "corner": "top-left",
+      "angle": 0
+    }
+  },
+  {
+    "class": "GlassShader",
+    "file": "GlassShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Vidrio esmerilado con refracción falsa: blobs de marca distorsionados por un normal-map procedural, brillos especulares y borde luminoso; el cursor desplaza la refracción.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1,
+      "refraction": 1.1,
+      "frost": 1
+    }
+  },
+  {
+    "class": "ChromeShader",
+    "file": "ChromeShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Metal líquido cromado con matcap procedural: superficie ondulante que refleja un entorno de estudio en colores de marca, fresnel fuerte y ondas al paso del cursor.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.1,
+      "scale": 1
+    }
+  },
+  {
+    "class": "SilkShader",
+    "file": "SilkShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Seda ondulante 2.5D con iluminación especular cinematográfica y pliegues que siguen al cursor.",
+    "demo": {
+      "speed": 0.7,
+      "intensity": 1,
+      "scale": 1.1
+    }
+  },
+  {
+    "class": "HaloShader",
+    "file": "HaloShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Orbe de luz volumétrica que respira en el centro con rayos radiales suaves, ideal para héroes.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.2,
+      "scale": 1,
+      "resolutionScale": 1
+    }
+  },
+  {
+    "class": "WaveGridShader",
+    "file": "WaveGridShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Rejilla 3D en perspectiva con ondas viajeras y niebla hacia el horizonte, estilo synthwave elegante.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1,
+      "scale": 1
+    }
+  },
+  {
+    "class": "NebulaShader",
+    "file": "NebulaShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Nebulosa espacial profunda con estrellas titilantes, polvo de color y parallax sutil con el cursor.",
+    "demo": {
+      "speed": 0.8,
+      "intensity": 1,
+      "scale": 1.2
+    }
+  },
+  {
+    "class": "FlowFieldShader",
+    "file": "FlowFieldShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Campo de flujo de filamentos de luz advectados por noise, como viento luminoso.",
+    "demo": {
+      "speed": 0.9,
+      "intensity": 1,
+      "scale": 1.3
+    }
+  },
+  {
+    "class": "RippleClickShader",
+    "file": "RippleClickShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Superficie de agua calma donde cada click lanza una onda circular que se expande y desvanece.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1,
+      "interactive": true
+    }
+  },
+  {
+    "class": "WaterDropShader",
+    "file": "WaterDropShader.js",
+    "extends": "ShaderCanvas",
+    "description": "El emblema del catálogo líquido: una gota cae y se une a la superficie con blending polimórfico de metaballs; el impacto abre un cráter con corona de salpicadura, lanza anillos concéntricos y un chorro central que rebota expulsando una gota secundaria que vuelve a fundirse con el agua mientras todo se calma en loop. El cursor estira el líquido a su paso y con interactive cada click deja caer otra gota.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1,
+      "interactive": true
+    }
+  },
+  {
+    "class": "FireShader",
+    "file": "FireShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Fuego procedural realista: llamas fbm ascendentes con lenguas definidas, núcleo blanco, distorsión de calor y chispas que suben y se apagan; viento configurable y tintable para fuego de marca.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.1,
+      "height": 1,
+      "wind": 0.2,
+      "sparks": true
+    }
+  },
+  {
+    "class": "SmokeShader",
+    "file": "SmokeShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Humo volumétrico como tinta en agua: volutas fbm con domain warping y rizado fino en los bordes, luz direccional sutil que da volumen, ascenso lento y disipación; densidad y deriva configurables.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1,
+      "density": 1.1,
+      "drift": 0.2
+    }
+  },
+  {
+    "class": "PlasmaShader",
+    "file": "PlasmaShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Energía eléctrica viva: núcleo de plasma pulsante y arcos de rayo que crepitan con timing irregular; el cursor atrae levemente los arcos. Cantidad de rayos y caos configurables.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.1,
+      "bolts": 6,
+      "chaos": 1,
+      "core": true
+    }
+  },
+  {
+    "class": "BlackHoleShader",
+    "file": "BlackHoleShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Agujero negro astronómico: disco de acreción con brillo Doppler y precesión 3D animada —la inclinación y orientación del disco derivan lentamente como si la cámara lo orbitara—, anillo de fotones estable, lente gravitacional real sobre el campo de estrellas y materia en espiral que acelera y desaparece en el horizonte; con pull el cursor emite un hilo de materia que el agujero absorbe. Opciones tilt y tiltSpeed.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.1,
+      "scale": 1,
+      "pull": true,
+      "tilt": 0.35,
+      "tiltSpeed": 0.12
+    }
+  },
+  {
+    "class": "VortexShader",
+    "file": "VortexShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Remolino de succión como embudo 3D: estrías espirales que aceleran angularmente hacia el centro, vistas con una inclinación que precesa lentamente y oscurecimiento hacia el fondo del embudo; dirección, tilt y tiltSpeed configurables.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1.1,
+      "direction": 1,
+      "tilt": 0.4,
+      "tiltSpeed": 0.08
+    }
+  },
+  {
+    "class": "ShapeMorph",
+    "file": "ShapeMorph.js",
+    "extends": "Component",
+    "description": "Constelación de partículas brillantes que se ordena en figuras dibujadas —estrella de cinco puntas, corazón, círculo, triángulo, hexágono, diamante, luna, infinito, rayo— y muta de una a otra con easing suave, jitter orgánico y líneas tenues entre puntos; morphTo acepta nombre o contorno custom [[x,y]...], el cursor repele levemente los puntos y trail deja estela sutil. Canvas 2D con pool fijo.",
+    "demo": {
+      "points": 90,
+      "shapes": [
+        "constellation",
+        "star",
+        "heart",
+        "circle",
+        "hexagon"
+      ],
+      "hold": 2.4,
+      "morph": 1.6,
+      "trail": 0.35
+    }
+  },
+  {
+    "class": "Mesh3D",
+    "file": "mesh/Mesh3D.js",
+    "extends": "Component",
+    "description": "Motor 3D propio en WebGL1: matemáticas de matrices, wireframe real de solo aristas únicas (gl.LINES) con fade por profundidad e interior vacío, sólido lambert + fresnel y cromo matcap; rotación automática, arrastre con inercia y parallax con el cursor.",
+    "demo": {
+      "mode": "wireframe",
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "TorusMesh",
+    "file": "mesh/TorusMesh.js",
+    "extends": "Mesh3D",
+    "description": "Toro 3D procedural girando en el espacio; en cromo parece un render de estudio y en wireframe una joya de neón.",
+    "demo": {
+      "mode": "chrome",
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "KnotMesh",
+    "file": "mesh/KnotMesh.js",
+    "extends": "Mesh3D",
+    "description": "Nudo toroidal (p,q) con tubo procedural; hipnótico en wireframe con glow y escultural en modo sólido.",
+    "demo": {
+      "mode": "wireframe",
+      "speed": 1,
+      "intensity": 1.1
+    }
+  },
+  {
+    "class": "IcosaMesh",
+    "file": "mesh/IcosaMesh.js",
+    "extends": "Mesh3D",
+    "description": "Icosaedro subdivisible hasta esfera geodésica; la retícula triangular en wireframe se ve premium con defaults.",
+    "demo": {
+      "mode": "wireframe",
+      "detail": 1,
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "WavePlaneMesh",
+    "file": "mesh/WavePlaneMesh.js",
+    "extends": "Mesh3D",
+    "description": "Plano ondulando en 3D real con normales analíticas: océano de malla en wireframe o seda metálica en sólido.",
+    "demo": {
+      "mode": "wireframe",
+      "speed": 1,
+      "amplitude": 0.22,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "SphereMesh",
+    "file": "mesh/SphereMesh.js",
+    "extends": "Mesh3D",
+    "description": "Esfera UV con normales suaves; en wireframe muestra la retícula clásica de meridianos y paralelos y en cromo es una bola de espejo de estudio.",
+    "demo": {
+      "mode": "wireframe",
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "BoxMesh",
+    "file": "mesh/BoxMesh.js",
+    "extends": "Mesh3D",
+    "description": "Cubo con bisel opcional: chaflán real en aristas y esquinas que atrapa la luz en sólido y cromo; con bevel 0 es un cubo puro de 12 aristas.",
+    "demo": {
+      "mode": "chrome",
+      "bevel": 0.14,
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "CylinderMesh",
+    "file": "mesh/CylinderMesh.js",
+    "extends": "Mesh3D",
+    "description": "Cilindro con lados suaves y tapas planas; en wireframe dibuja sus dos aros y las generatrices, en sólido parece una pieza torneada.",
+    "demo": {
+      "mode": "solid",
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "ConeMesh",
+    "file": "mesh/ConeMesh.js",
+    "extends": "Mesh3D",
+    "description": "Cono con iluminación suave en la falda y base plana; en wireframe traza el aro base y las líneas hacia el vértice como una carpa de luz.",
+    "demo": {
+      "mode": "solid",
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "OctahedronMesh",
+    "file": "mesh/OctahedronMesh.js",
+    "extends": "Mesh3D",
+    "description": "Octaedro de caras planas: mínimo y escultural, 12 aristas limpias en wireframe y facetas nítidas que giran la luz en sólido.",
+    "demo": {
+      "mode": "wireframe",
+      "speed": 1,
+      "intensity": 1.1
+    }
+  },
+  {
+    "class": "GemMesh",
+    "file": "mesh/GemMesh.js",
+    "extends": "Mesh3D",
+    "description": "Diamante facetado: bipirámide con corona, mesa y pabellón de facetas planas que destellan al rotar; espectacular en cromo y joya de neón en wireframe.",
+    "demo": {
+      "mode": "chrome",
+      "facets": 8,
+      "speed": 1,
+      "intensity": 1.1
+    }
+  },
+  {
+    "class": "IsoField",
+    "file": "mesh/IsoField.js",
+    "extends": "Component",
+    "description": "Campo de cubos isométricos 2.5D que ondulan como ola con tres tonos de marca; el cursor levanta los cubos cercanos.",
+    "demo": {
+      "columns": 15,
+      "rows": 15,
+      "speed": 1,
+      "lift": 1.6
+    }
+  },
+  {
+    "class": "OrbitRings",
+    "file": "mesh/OrbitRings.js",
+    "extends": "Component",
+    "description": "Anillos orbitales en pseudo-3D con puntos brillantes que ganan tamaño y luz al pasar al frente, más parallax sutil con el cursor.",
+    "demo": {
+      "rings": 5,
+      "dotsPerRing": 3,
+      "speed": 1
+    }
+  },
+  {
+    "class": "TextMesh",
+    "file": "mesh/TextMesh.js",
+    "extends": "Mesh3D",
+    "description": "Texto 3D real extruido de cualquier tipograf—a: s—lido, wireframe o cromo con glow, ondulaci—n GPU opcional y arrastre con inercia.",
+    "demo": {
+      "text": "DIXEL",
+      "mode": "wireframe",
+      "wave": 0.18,
+      "weight": 800
+    }
+  },
+  {
+    "class": "GlitchShader",
+    "file": "GlitchShader.js",
+    "extends": "ShaderCanvas",
+    "description": "Interferencia digital: bandas que se desplazan, aberracion RGB, filas rotas y ruido de senal en rafagas estocasticas.",
+    "demo": {
+      "speed": 1,
+      "intensity": 1
+    }
+  },
+  {
+    "class": "ShaderLayer",
+    "file": "ShaderLayer.js",
+    "extends": "Component",
+    "description": "Adaptador universal: monta cualquier shader como capa de un elemento en modo background (fondo vivo), text (el shader rellena los glifos del texto real, que sigue seleccionable) o border (anillo vivo del grosor elegido). Opciones: shader, mode, thickness, opacity, blend, resolutionScale, shaderOptions.",
+    "demo": null
+  },
+  {
+    "class": "ShapeMask",
+    "file": "ShapeMask.js",
+    "extends": null,
+    "description": "Capturador de forma: rasteriza el texto de un host o un anillo con su radio real a un canvas-mascara; samplePoints extrae puntos de la silueta para efectos de particulas.",
+    "demo": null
+  }
+]

@@ -1,0 +1,54 @@
+[
+  {
+    "class": "DragManager",
+    "file": "DragManager.js",
+    "extends": null,
+    "description": "Coordinador singleton del drag and drop universal: registra las zonas activas, cachea su geometría al iniciar cada drag (con re-cache por evento de scroll) y resuelve la zona e índice bajo el puntero sin lecturas de layout por frame. Sus listeners globales solo viven mientras hay un drag en curso.",
+    "demo": null
+  },
+  {
+    "class": "Draggable",
+    "file": "Draggable.js",
+    "extends": "Component",
+    "description": "Hace arrastrable cualquier elemento o componente DIXEL: fantasma que sigue al cursor con escala 1.03, sombra estática e inclinación sutil según la velocidad, long-press táctil de 260ms con bloqueo de scroll solo durante el drag, modo move o clone (ideal para paletas) y regreso volando al origen con outBack si se suelta fuera de una zona válida.",
+    "demo": {
+      "mode": "move",
+      "handle": null,
+      "longPress": 260,
+      "tilt": true,
+      "payload": {
+        "type": "task",
+        "id": "demo-1",
+        "title": "Diseñar el hero"
+      }
+    }
+  },
+  {
+    "class": "DropZone",
+    "file": "DropZone.js",
+    "extends": "Component",
+    "description": "Convierte cualquier contenedor en zona de soltado: acepta por tipo o función, se resalta con is-over al tener un drag encima, calcula el índice de inserción en eje vertical u horizontal abriendo hueco con un placeholder animado (hermanos trasladados con transform, nunca height) y expone onEnter, onLeave y onDrop. Con sortable:true sus hijos se reordenan entre sí automáticamente, incluso con teclado.",
+    "demo": {
+      "axis": "vertical",
+      "sortable": true,
+      "accepts": "task",
+      "gap": 10,
+      "highlight": true
+    }
+  },
+  {
+    "class": "Resizable",
+    "file": "Resizable.js",
+    "extends": "Component",
+    "description": "Hace redimensionable cualquier elemento o componente: asas en bordes y esquinas, min/max, aspecto opcional, enable()/disable() para alternar junto al drag-and-drop, y callbacks onResize/onResizeEnd.",
+    "demo": {
+      "handles": [
+        "e",
+        "s",
+        "se"
+      ],
+      "minWidth": 120,
+      "minHeight": 80
+    }
+  }
+]

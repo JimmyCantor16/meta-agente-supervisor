@@ -1,0 +1,107 @@
+.dx-stage-safe {
+  overflow: visible !important;
+}
+
+.dx-magnetic {
+  will-change: transform;
+}
+
+.dx-tilt {
+  position: relative;
+  will-change: transform;
+}
+
+.dx-tilt--shine {
+  overflow: hidden;
+}
+
+.dx-tilt--shine::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.14), transparent 55%);
+  transform: translate3d(var(--dx-shine-x, 0px), var(--dx-shine-y, 0px), 0);
+  opacity: 0;
+  transition: opacity var(--dx-speed) var(--dx-ease);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.dx-spotlight-host {
+  position: relative;
+  overflow: hidden;
+}
+
+.dx-spotlight-light {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--dx-radius-full);
+  background: radial-gradient(circle, rgb(var(--dx-primary-rgb) / 0.32), rgb(var(--dx-cyan-rgb) / 0.08) 55%, transparent 70%);
+  opacity: 0;
+  transition: opacity var(--dx-speed) var(--dx-ease);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.dx-spotlight-light.is-on {
+  opacity: var(--dx-spotlight-opacity, 0.4);
+}
+
+.dx-warp {
+  will-change: transform;
+}
+
+.dx-lift {
+  position: relative;
+  transition: transform var(--dx-speed) var(--dx-ease);
+  will-change: transform;
+}
+
+.dx-lift::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--dx-shadow-md), var(--dx-shadow-lg);
+  opacity: 0;
+  transition: opacity var(--dx-speed) var(--dx-ease);
+  pointer-events: none;
+}
+
+.dx-textwave {
+  display: inline-block;
+}
+
+.dx-textwave-char {
+  display: inline-block;
+  white-space: pre;
+  will-change: transform;
+}
+
+@media (hover: hover) {
+  .dx-tilt--shine:hover::after {
+    opacity: 1;
+  }
+
+  .dx-lift:hover {
+    transform: translate3d(0, var(--dx-lift-y, -8px), 0) scale(var(--dx-lift-scale, 1.02));
+  }
+
+  .dx-lift:hover::after {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-lift,
+  .dx-lift::after,
+  .dx-tilt--shine::after,
+  .dx-spotlight-light {
+    transition-duration: 0.001s;
+  }
+
+  .dx-lift:hover {
+    transform: none;
+  }
+}

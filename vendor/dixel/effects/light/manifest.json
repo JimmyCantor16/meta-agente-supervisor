@@ -1,0 +1,37 @@
+[
+  {
+    "class": "LightSweep",
+    "file": "LightSweep.js",
+    "extends": "Component",
+    "description": "Barrido de luz diagonal que cruza el elemento al entrar en viewport: franja degradada estatica movida solo por transform, reactivable al reentrar.",
+    "demo": { "duration": 1.1, "angle": -18, "strength": 0.22 }
+  },
+  {
+    "class": "GlowOrbs",
+    "file": "GlowOrbs.js",
+    "extends": "Component",
+    "description": "Orbes de luz flotantes con profundidad: 2 a 4 gradientes radiales pre-difuminados con drift lento y parallax sutil del cursor, pausados fuera de vista.",
+    "demo": { "orbs": 3, "drift": 34, "parallax": 22 }
+  },
+  {
+    "class": "SpotStage",
+    "file": "SpotStage.js",
+    "extends": "Component",
+    "description": "Escenario con foco: vineta estatica que oscurece el contenedor y una luz radial que sigue al cursor; en touch el foco orbita solo.",
+    "demo": { "size": 420, "opacity": 0.5, "dim": 0.55 }
+  },
+  {
+    "class": "RimLight",
+    "file": "RimLight.js",
+    "extends": "Component",
+    "description": "Luz de borde para tarjetas e imagenes: filo superior iluminado con gradiente y reflejo suave que se desplaza con el cursor via transform del pseudo-elemento.",
+    "demo": { "shift": 0.3 }
+  },
+  {
+    "class": "AmbientPulse",
+    "file": "AmbientPulse.js",
+    "extends": "Component",
+    "description": "Respiracion de luz de una seccion: capa de gradiente estatico cuya opacidad late en ciclo lento, pausada fuera del viewport.",
+    "demo": { "period": 6, "min": 0.15, "max": 0.45, "tint": "primary" }
+  }
+]

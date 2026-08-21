@@ -1,0 +1,16 @@
+.dx-fx-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.dx-fx-layer--background {
+  z-index: -1;
+}
+
+.dx-fx-layer--text,
+.dx-fx-layer--border {
+  z-index: 2;
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "class": "FlowGraph",
+    "file": "FlowGraph.js",
+    "extends": "Component",
+    "description": "Editor de grafos con nodos arrastrables y cables conectables de puerto a puerto: estilos straight/step/bezier/wavy, flujo animado por el cable, pan y zoom, doble click desconecta, y modelo funcional con serialize/load/onConnect/validación por tipos.",
+    "demo": {
+      "wireStyle": "bezier",
+      "flow": true,
+      "nodes": [
+        { "id": "src", "title": "Fuente", "icon": "database", "x": 20, "y": 40, "outputs": ["datos"] },
+        { "id": "ai", "title": "Modelo IA", "icon": "brain", "x": 280, "y": 10, "inputs": ["entrada"], "outputs": ["predicción", "alertas"] },
+        { "id": "chart", "title": "Dashboard", "icon": "chartLine", "x": 560, "y": 30, "inputs": ["serie"] },
+        { "id": "notify", "title": "Notificar", "icon": "bellRing", "x": 560, "y": 150, "inputs": ["evento"] }
+      ],
+      "edges": [
+        { "from": { "node": "src", "port": 0 }, "to": { "node": "ai", "port": 0 } },
+        { "from": { "node": "ai", "port": 0 }, "to": { "node": "chart", "port": 0 } },
+        { "from": { "node": "ai", "port": 1 }, "to": { "node": "notify", "port": 0 } }
+      ]
+    }
+  }
+]

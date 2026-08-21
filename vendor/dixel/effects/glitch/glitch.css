@@ -1,0 +1,26 @@
+.dx-glitch {
+  display: inline-block;
+}
+
+.dx-glitch-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.dx-glitch-layer--tint {
+  mix-blend-mode: screen;
+}
+
+.dx-glitch.is-glitching > :not(.dx-glitch-layer) {
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-glitch-layer {
+    display: none;
+  }
+}
