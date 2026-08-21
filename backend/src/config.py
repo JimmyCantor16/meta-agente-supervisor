@@ -122,6 +122,15 @@ class Settings(BaseSettings):
         default="",
         description="URL de PostgreSQL. Vacío = usar SQLite local (`db_path`).",
     )
+    # Cada cuántas horas se copia el SQLite (0 = nunca). Mientras esa base sea
+    # TODA la memoria del sistema, una copia diaria es la diferencia entre un
+    # susto y volver a empezar: el disco sobrevive a un deploy, pero no a un
+    # borrado, a una migración a medias ni a que haya que recrear el servicio.
+    respaldo_db_horas: float = Field(
+        default=24.0,
+        ge=0.0,
+        description="Cada cuántas horas respaldar el SQLite. 0 = desactivado.",
+    )
     # URL interna de Redis (caché/estado compartido entre instancias). Opcional.
     redis_url: str = Field(
         default="",

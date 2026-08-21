@@ -76,6 +76,13 @@ services:
       # aparecería como si fuera un proyecto más del usuario.
       - key: DB_PATH
         value: /app/generated/metaagente.db
+      # Cada cuántas horas se copia el SQLite (0 = nunca). Mientras esa base
+      # sea toda la memoria del sistema, la copia diaria es la red de seguridad
+      # que el disco no da: sobrevive a un deploy, pero no a un borrado ni a una
+      # migración a medias. Las copias quedan junto a la base, como archivos
+      # sueltos (una subcarpeta aparecería como un proyecto en la galería).
+      - key: RESPALDO_DB_HORAS
+        value: "24"
       # Redis interno ya existente (caché / estado compartido).
       # Valor: redis://red-d9e08hjtqb8s739ifllg:6379
       - key: REDIS_URL

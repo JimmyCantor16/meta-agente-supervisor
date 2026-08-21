@@ -178,6 +178,61 @@ descubierto media hora después en la lista de despliegues.
 - El aula (`AulaEnVivo` + `EditorCodigo`) trae **CodeMirror**: el alumno edita,
   compila y el commit queda — que es justo la evidencia que pide la clase.
 
+## DIXEL: la librería gráfica vendorizada
+
+`vendor/dixel/` es una copia de https://github.com/ldikay99/dixel (MIT, Jonathan
+Contreras · lDikay): 200 clases —componentes, efectos, shaders— **sin una sola
+dependencia** y sin build para el consumidor (`<link>` + `<script>`). Nuestros
+cambios sobre upstream están listados en `vendor/dixel/TEMA.md`; si algún día se
+actualiza desde el original, hay que rehacerlos.
+
+- **La paleta se cambia con una llamada**: `Dixel.theme({primary, cyan, bg,
+  mode, fonts, tokens})`. Los tokens derivan de canales RGB
+  (`--dx-primary-rgb: 109 92 255` → `--dx-primary`, `-soft`, `-deep`, glows y
+  gradientes), así que un solo valor retinta la librería entera. Antes era
+  imposible: 110 literales de color vivían a mano en el CSS de categorías y en
+  los `static defaults` de los shaders.
+- Los componentes que pintan en canvas leen el color por token
+  (`Utils.token('primary')`) y se resuscriben con `Utils.onTheme(...)`: un
+  cambio de tema también retinta shaders, partículas y estelas de cursor.
+- **Catálogo vivo**: `docs/dixel/index.html` (servir el repo y abrirlo) monta
+  cada clase con su demo, con selector de paleta y modo claro/oscuro.
+- Perfiles: `node build.mjs --only=components/inputs,... --out=dist/perfil-x`.
+  El dist completo son 166 kB gzip; un perfil de app, 78 kB.
+
+### Lo que viaja en cada app generada
+
+`adapters/dixel_assets.py` es el ÚNICO sitio que sabe dónde están los archivos
+y cómo se encienden. Los assets viven en `backend/bases/dixel/` (la imagen solo
+copia `backend/`) y se regeneran con `python backend/tools/actualizar_dixel.py`,
+que además deja al día `skills/dixel_catalogo.md`.
+
+- Van **dentro del proyecto**, nunca por CDN: una app publicada no puede
+  depender de que un tercero siga sirviendo un archivo.
+- Se encienden con el **acento de la app**, no con el morado de fábrica.
+- Dejan `window.avisar(texto, tipo)` (un `Toast`), que usan el board y el
+  checkout. Si la librería no viajara, la función no existe y quien la llama usa
+  `?.`: la app se comporta igual que antes.
+- **El verificador lo comprueba** (paso 0, estático): un `data-dx="SuperCard"`
+  inventado no da error de sintaxis ni de import —la página carga y el hueco
+  queda vacío—, así que se rechaza contra el catálogo entregado; citar la
+  librería sin entregarla, también.
+- El ajustador recibe `skills/dixel_catalogo.md` **solo** si el proyecto la
+  lleva, para no prometer componentes que no llegaron.
+
+### Enseñar con ella: el contrato se corrige solo
+
+`domain/contrato_dixel.py` (dominio puro: texto entra, infracciones salen)
+comprueba las reglas OBJETIVAS de `vendor/dixel/CONTRACT.md`: cero comentarios y
+cero `console`, nada de `import/export`, un solo reloj, animar solo `transform` y
+`opacity`, no medir layout dentro del bucle de cuadro, `static defaults`, un
+componente por archivo con su nombre, texto escapado, color por token y prefijo
+`dx-`. El veredicto **cita la regla**: eso es lo que enseña.
+
+Se aplica en la clase de tipo `cambio`, después de comprobar el commit real, y
+**solo si el proyecto ES la librería** (tiene `CONTRACT.md` y `core/dixel.js`).
+Fuera de eso no se juzga nada: el CSS de una app normal no sigue ese contrato.
+
 ## Privacidad entre usuarios — REGLA
 
 **Todo listado o difusión que pueda cruzar usuarios filtra por dueño.** El
@@ -366,9 +421,15 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
   en `/app/generated`, de modo que **`DB_PATH=/app/generated/metaagente.db`** es
   lo único que evita que se borre entero en CADA deploy y en cada reinicio (el
   valor por defecto cae en `/app/evaluations.db`, fuera del disco, y el usuario
-  se encontraba sin cuenta ni licencia). Va como archivo suelto en la raíz del
-  disco a propósito: la galería y la bandeja enumeran `generated/` filtrando por
-  `is_dir()`, así que un archivo (y sus `-wal`/`-shm`) es invisible para ellas.
+  se encontraba sin cuenta ni licencia). Ahora eso **se dice en voz alta**: al
+  arrancar se registra dónde vive la base y, si está fuera del disco estando en
+  el PaaS, sale un ERROR; `/health` lo publica en `persistencia`. Y hay copia:
+  `RESPALDO_DB_HORAS` (24 por defecto) y `python -m tools.respaldo_db`
+  (`--listar`, `--restaurar`), con rotación. Tanto la base como sus copias van
+  como archivos SUELTOS en la raíz del disco a propósito: la galería y la
+  bandeja enumeran `generated/` filtrando por `is_dir()`, así que un archivo (y
+  sus `-wal`/`-shm`) es invisible para ellas, mientras que una subcarpeta
+  `respaldos/` aparecería como un proyecto más del usuario.
 - **El servicio vivo NO está gestionado por blueprint.** Editar `render.yaml` no
   cambia nada en producción: las variables se ponen **por el panel de Render o
   por su API**. El blueprint sirve de documentación y para recrear la infra
@@ -381,8 +442,10 @@ se pueden comprobar, en los verificadores. Si tocas una, tócala en ambos sitios
   `github-gpt4o-mini`, que devuelven **410 Gone** desde que GitHub retiró sus
   Models: gastaban un viaje cada uno y dejaban a `mistral-small` de primero real.
   Si depuras algo del LLM, mira ANTES la cadena que corre de verdad (panel de
-  Render o su API), no la local. Y quita de la lista lo que esté muerto: el
-  fallback lo sortea, pero pagando latencia en cada petición.
+  Render o su API), no la local. Ya no se paga ese peaje en cada petición: un
+  401/403/404/410 marca al proveedor como MUERTO para toda la ejecución
+  (`MultiModelLLM._muertos`) y no se le vuelve a llamar — pero quítalo igual de
+  `LLM_PROVIDERS`, porque el primer viaje de cada arranque sí se paga.
 - **Chromium es obligatorio en la imagen**: el `backend/Dockerfile` instala
   Playwright + Chromium y **falla el build** si al final no está. Es
   deliberado: el gate anti-página-en-blanco no puede faltar en silencio (si no,
@@ -411,6 +474,18 @@ trabajos de fondo y bandeja de entregas** (fase 2), **profesor adaptativo con
 nivel por usuario, evidencia en git y camino/racha** (fase 3), PWA instalable,
 móvil Flutter que aprueba entregas y **escritorio Tauri** (`build-desktop.ps1`,
 modo nube) con aviso de versión nueva.
-Pendiente: recrear la PostgreSQL (hoy toda la persistencia es SQLite sobre el
-disco), poner el servicio bajo blueprint para que `render.yaml` mande de verdad,
-y escopar la licencia por usuario.
+También: **DIXEL vendorizada y temable**, dentro de las apps generadas y como
+material de curso con corrector de contrato; **licencia y cupo por usuario**
+(activar una clave ya no licencia a toda la instancia); persistencia con aviso
+al arrancar y copia automática.
+
+Pendiente, y **solo se puede hacer desde la cuenta de Render** (hace falta la
+credencial):
+1. Recrear la PostgreSQL y poner `DATABASE_URL` en el servicio. **Ojo**: hoy
+   solo tienen gemelo Postgres los repositorios de evaluaciones, usuarios y
+   uso; cursos, trabajos, actividad, despliegues, metas y casos siguen siendo
+   SQLite. Encender la base sin escribir esos adaptadores partiría el estado en
+   dos sitios — o se escriben, o se sigue en SQLite (que hoy está a salvo).
+2. Adoptar el blueprint (`render.yaml`) para que el archivo mande de verdad, y
+   poner ahí `RESPALDO_DB_HORAS`.
+3. Podar de `LLM_PROVIDERS` los modelos retirados de GitHub.

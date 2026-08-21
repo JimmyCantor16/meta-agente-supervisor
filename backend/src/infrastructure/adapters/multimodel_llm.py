@@ -20,6 +20,7 @@ from typing import Callable
 from openai import (
     APIConnectionError,
     APIError,
+    APIStatusError,
     APITimeoutError,
     OpenAI,
     RateLimitError,
@@ -46,6 +47,17 @@ class MultiModelLLM:
     # throttling no veía el gasto de las demás y se reventaba la cuota gratis.
     _usage: dict[str, list[tuple[float, int]]] = {}
     _usage_lock = threading.Lock()
+
+    # Proveedores que NO van a responder nunca en esta ejecución: modelo
+    # retirado (410/404) o credencial rechazada (401/403). Es de CLASE porque el
+    # proveedor está muerto para todos los adaptadores, no solo para uno.
+    #
+    # Nace de un caso real: en producción los dos primeros del rol "prompt" eran
+    # modelos de GitHub retirados que devolvían 410 Gone. El fallback los
+    # sorteaba, sí, pero pagando dos viajes de ida y vuelta en CADA petición.
+    _muertos: dict[str, str] = {}
+    #: Códigos que significan "este proveedor no vuelve": no es un mal momento.
+    ESTADOS_DEFINITIVOS = (401, 403, 404, 410)
 
     def __init__(
         self,
@@ -145,6 +157,12 @@ class MultiModelLLM:
         throttled: list[tuple[float, LLMProvider, OpenAI]] = []
 
         for provider, client in self._clients:
+            # 0) ¿Ya sabemos que está muerto? Ni se le llama.
+            muerte = self._muertos.get(provider.name)
+            if muerte:
+                errors.append(f"{provider.name}: {muerte}")
+                continue
+
             # 1) ¿Cabe la petición? Si sabemos que no, ni la mandamos: sería un
             #    413 seguro y un viaje de ida y vuelta desperdiciado.
             if provider.max_context is not None and estimated > provider.max_context:
@@ -212,8 +230,19 @@ class MultiModelLLM:
                 response_format=response_format,  # type: ignore[arg-type]
             )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as exc:
-            # Este proveedor no pudo: registramos y probamos el siguiente.
-            logger.warning("Proveedor '%s' falló (%s). Probando el siguiente...", provider.name, exc)
+            # Un 410/404/401 no es un mal momento: es que ese proveedor ya no
+            # existe o no nos acepta. Se apunta y no se le vuelve a llamar en
+            # toda la ejecución — si no, cuesta un viaje en cada petición.
+            estado = getattr(exc, "status_code", None) if isinstance(exc, APIStatusError) else None
+            if estado in self.ESTADOS_DEFINITIVOS:
+                self._muertos[provider.name] = f"descartado (HTTP {estado})"
+                logger.warning(
+                    "Proveedor '%s' devolvió HTTP %s: queda DESCARTADO en esta ejecución. "
+                    "Quítalo de LLM_PROVIDERS para no arrastrarlo.",
+                    provider.name, estado,
+                )
+            else:
+                logger.warning("Proveedor '%s' falló (%s). Probando el siguiente...", provider.name, exc)
             errors.append(f"{provider.name}: {exc}")
             return None
 

@@ -10,6 +10,8 @@ QUÉ DEMUESTRA
 2. Cuando ninguno cumple el contrato, el error dice de quién fue la culpa.
 3. Sin `validar`, el comportamiento de siempre no cambia (compatibilidad).
 4. Un validador que revienta de forma inesperada tampoco tumba la tarea.
+5. Un proveedor RETIRADO (410 Gone) queda descartado y no se le vuelve a
+   llamar: sortearlo en cada petición cuesta un viaje de ida y vuelta.
 
 POR QUÉ EXISTE
 --------------
@@ -34,6 +36,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pydantic import BaseModel  # noqa: E402
 
+import httpx  # noqa: E402
+from openai import APIStatusError  # noqa: E402
+
 from src.config import LLMProvider  # noqa: E402
 from src.infrastructure.adapters.multimodel_llm import LLMError, MultiModelLLM  # noqa: E402
 
@@ -42,6 +47,23 @@ class Contrato(BaseModel):
     """La forma que el llamador exige: `titulo` es TEXTO, no un objeto."""
 
     titulo: str
+
+
+class ClienteMuerto:
+    """Imita un proveedor retirado: siempre HTTP 410, como los Models de GitHub."""
+
+    def __init__(self, estado: int = 410) -> None:
+        self.estado = estado
+        self.llamadas = 0
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **_kwargs):
+        self.llamadas += 1
+        raise APIStatusError(
+            "Gone",
+            response=httpx.Response(self.estado, request=httpx.Request("POST", "http://x/v1")),
+            body=None,
+        )
 
 
 class ClienteFalso:
@@ -126,6 +148,18 @@ def main() -> int:
     except LLMError as exc:
         assert "me rompí por otra razón" in str(exc)
         print("4. un validador que revienta se trata como fallo del proveedor ✓")
+
+    # 5) Un proveedor retirado se descarta para el resto de la ejecución.
+    MultiModelLLM._muertos.clear()  # noqa: SLF001 - es el punto de la prueba
+    llm, clientes = montar(forma_buena, forma_buena)
+    muerto = ClienteMuerto()
+    llm._clients[0] = (llm._clients[0][0], muerto)  # noqa: SLF001
+    llm.chat_json("s", "u")
+    llm.chat_json("s", "u")
+    assert muerto.llamadas == 1, f"al retirado se le llamó {muerto.llamadas} veces"
+    assert clientes[1].llamadas == 2, "el proveedor sano debió atender las dos"
+    print("5. un proveedor retirado (410) se descarta y no se reintenta ✓")
+    MultiModelLLM._muertos.clear()  # noqa: SLF001
 
     print("\nTODO CORRECTO: el contrato se comprueba DENTRO del bucle, así que")
     print("un modelo que inventa la forma ya no tumba la petición entera.")

@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import os
 from pathlib import Path
 
 from src.infrastructure.entrypoints.limite_ritmo import limitar_por_ip
@@ -2966,6 +2967,54 @@ def admin_approve(
 _AUDITORIA_CADA_S = 30 * 60
 
 
+async def _bucle_respaldo(cada_horas: float) -> None:
+    """Copia el SQLite cada tantas horas. Un fallo aquí jamás tumba el proceso."""
+    from tools.respaldo_db import respaldar
+
+    while True:
+        try:
+            destino = await asyncio.to_thread(respaldar)
+            if destino:
+                logger.info("Respaldo de la base hecho: %s", destino.name)
+        except Exception as exc:  # noqa: BLE001 - respaldar es best-effort
+            logger.warning("No se pudo respaldar la base: %s", exc)
+        await asyncio.sleep(cada_horas * 3600)
+
+
+def _estado_persistencia(settings: Settings) -> dict:
+    """Dónde vive la memoria del sistema y si ese sitio sobrevive a un deploy.
+
+    El fallo más caro que ha tenido este proyecto fue silencioso: el SQLite con
+    usuarios, licencias, cursos y despliegues quedaba en `/app/evaluations.db`
+    —fuera del único disco montado— y se borraba entero en cada deploy. Nadie lo
+    veía hasta que un usuario volvía y no tenía cuenta.
+
+    Por eso ahora se dice en voz alta al arrancar y se publica en `/health`:
+    para enterarse en el minuto uno, no una semana después.
+    """
+    if settings.uses_postgres:
+        return {"riesgo": False, "resumen": "PostgreSQL (DATABASE_URL)"}
+
+    ruta = Path(settings.db_path).resolve()
+    disco = Path(settings.generated_dir).resolve()
+    dentro = ruta == disco or disco in ruta.parents
+    # En Render el único punto persistente es el disco montado en `generated`.
+    # En local no hay disco efímero, así que no hay nada que avisar.
+    en_paas = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+    riesgo = en_paas and not dentro
+    resumen = f"SQLite en {ruta}"
+    if riesgo:
+        resumen += (
+            f" — FUERA del disco persistente ({disco}): se borrará en el próximo "
+            "deploy. Pon DB_PATH dentro del disco."
+        )
+    elif not en_paas:
+        resumen += " (local)"
+    else:
+        resumen += " (dentro del disco persistente)"
+    return {"riesgo": riesgo, "resumen": resumen}
+
+
 @lru_cache
 def _estado_navegador() -> str:
     """Sonda (una sola vez por proceso) del navegador del gate de render.
@@ -3063,6 +3112,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             asyncio.create_task(_bucle_auditoria_despliegues()),
         ]
 
+        # 3) Persistencia: decirlo AL ARRANCAR, no descubrirlo cuando el usuario
+        #    vuelve y no tiene cuenta. El fallo más caro de este sistema fue un
+        #    SQLite fuera del disco persistente, que se borraba en cada deploy.
+        estado = _estado_persistencia(settings)
+        if estado["riesgo"]:
+            logger.error("PERSISTENCIA EN RIESGO: %s", estado["resumen"])
+        else:
+            logger.info("Persistencia: %s", estado["resumen"])
+
+        # 4) Copia periódica de esa misma base. El disco aguanta un deploy; no
+        #    aguanta un borrado ni una migración a medias.
+        if not settings.uses_postgres and settings.respaldo_db_horas > 0:
+            app.state.tareas_fondo.append(
+                asyncio.create_task(_bucle_respaldo(settings.respaldo_db_horas))
+            )
+
         yield
 
     app = FastAPI(
@@ -3115,6 +3180,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "ok" si el gate de render puede correr, o la descripción del fallo de
         configuración (falta Playwright / falta su Chromium) si no.
         """
-        return {"status": "ok", "navegador": _estado_navegador()}
+        return {
+            "status": "ok",
+            "navegador": _estado_navegador(),
+            "persistencia": _estado_persistencia(settings)["resumen"],
+        }
 
     return app
