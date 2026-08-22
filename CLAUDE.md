@@ -200,12 +200,20 @@ actualiza desde el original, hay que rehacerlos.
 - Perfiles: `node build.mjs --only=components/inputs,... --out=dist/perfil-x`.
   El dist completo son 166 kB gzip; un perfil de app, 78 kB.
 
-### Lo que viaja en cada app generada
+### Lo que viaja en cada proyecto generado
 
 `adapters/dixel_assets.py` es el ÚNICO sitio que sabe dónde están los archivos
-y cómo se encienden. Los assets viven en `backend/bases/dixel/` (la imagen solo
-copia `backend/`) y se regeneran con `python backend/tools/actualizar_dixel.py`,
-que además deja al día `skills/dixel_catalogo.md`.
+y cómo se encienden. Los assets viven en `backend/bases/dixel/<perfil>/` (la
+imagen solo copia `backend/`) y se regeneran con
+`python backend/tools/actualizar_dixel.py`, que además deja al día
+`skills/dixel_catalogo.md`.
+
+**Dos perfiles, no una librería para todo**: `app` (90 clases: feedback,
+campos, datos… para gestión, tienda, reservas, educativo y panel) y `sitio`
+(69 clases: tipografía, medios, hover, fondos… para landing y contenido). Una
+landing no necesita 16 campos de formulario, y cargar de más se paga en cada
+visita. Va enganchado en los DOS esqueletos deterministas y en las tres bases
+doradas (`instanciador_bases`: núcleo, dashboard y landing).
 
 - Van **dentro del proyecto**, nunca por CDN: una app publicada no puede
   depender de que un tercero siga sirviendo un archivo.
@@ -215,8 +223,10 @@ que además deja al día `skills/dixel_catalogo.md`.
   `?.`: la app se comporta igual que antes.
 - **El verificador lo comprueba** (paso 0, estático): un `data-dx="SuperCard"`
   inventado no da error de sintaxis ni de import —la página carga y el hueco
-  queda vacío—, así que se rechaza contra el catálogo entregado; citar la
-  librería sin entregarla, también.
+  queda vacío—, así que se rechaza; citar la librería sin entregarla, también.
+  La lista contra la que juzga sale del **paquete que el proyecto lleva dentro**
+  (busca los `Dixel.define` del `dixel.js` entregado), no del perfil que este
+  backend tenga a mano: si no, un `DataTable` colado en una landing pasaría.
 - El ajustador recibe `skills/dixel_catalogo.md` **solo** si el proyecto la
   lleva, para no prometer componentes que no llegaron.
 

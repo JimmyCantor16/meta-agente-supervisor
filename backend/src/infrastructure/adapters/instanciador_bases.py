@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.domain.entities import GeneratedFile, GeneratedProject, slugify
+from src.infrastructure.adapters import dixel_assets
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +345,8 @@ def _instanciar_dashboard(m: dict) -> list[GeneratedFile]:
         "da la URL) y cambia entre tema claro y oscuro con el botón de arriba a la "
         "derecha. Los datos de ejemplo están en `datos.js`: edítalos para poner los "
         "tuyos, o el profesor te enseña a conectarlo a una fuente real de datos.\n")
+    archivos.update(dixel_assets.archivos(dixel_assets.PERFIL_APP, "vendor"))
+    archivos["index.html"] = _con_dixel(archivos["index.html"], c1, dixel_assets.PERFIL_APP)
     return [GeneratedFile(path=rel, content=cont) for rel, cont in archivos.items()]
 
 
@@ -401,7 +404,32 @@ def _instanciar_nucleo(m: dict) -> list[GeneratedFile]:
         "El servidor sirve también el frontend en el mismo puerto.\n"
     )
     archivos[".env.example"] = "PORT=3000\nJWT_SECRET=cambia_esto_en_produccion\n"
+    # La librería gráfica viaja DENTRO (sin CDN) y se enciende con el acento del
+    # proyecto: un sistema en verde no puede tener botones lilas.
+    archivos.update(dixel_assets.archivos(dixel_assets.PERFIL_APP, "frontend/vendor"))
+    archivos["frontend/index.html"] = _con_dixel(
+        archivos["frontend/index.html"], c1, dixel_assets.PERFIL_APP
+    )
     return [GeneratedFile(path=p, content=c) for p, c in sorted(archivos.items())]
+
+
+def _con_dixel(html: str, acento: str, perfil: str, base: str = "vendor",
+               modo: str = "light") -> str:
+    """Mete DIXEL en un HTML ya escrito: etiquetas en el `<head>` y encendido.
+
+    Se hace por sustitución sobre el cierre de `<head>` y `<body>` porque estas
+    bases son archivos completos y verificados: duplicarlos aquí para pegarles
+    dos líneas abriría la puerta a que la plantilla y el generador se
+    desincronicen sin que nadie lo note.
+    """
+    etiquetas = dixel_assets.etiquetas(base, perfil)
+    if not etiquetas or "</head>" not in html:
+        return html
+    html = html.replace("</head>", f"  {etiquetas}\n</head>", 1)
+    arranque = dixel_assets.arranque(acento, modo, perfil, sangria="  ")
+    if arranque and "</body>" in html:
+        html = html.replace("</body>", f"  <script>\n  {arranque}\n  </script>\n</body>", 1)
+    return html
 
 
 def _manual(m: dict) -> str:
@@ -573,7 +601,8 @@ footer {{ text-align: center; color: var(--suave); padding: 2rem 1.5rem;
 """
 
     return [
-        GeneratedFile(path="index.html", content=html),
+        GeneratedFile(path="index.html", content=_con_dixel(html, c1, dixel_assets.PERFIL_SITIO,
+                                                            modo="dark" if oscuro else "light")),
         GeneratedFile(path="styles.css", content=css),
         GeneratedFile(path="script.js", content=js),
         GeneratedFile(path="logo.svg", content=_LOGO.format(c1=c1, c2=c2, inicial=inicial)),
@@ -581,6 +610,10 @@ footer {{ text-align: center; color: var(--suave); padding: 2rem 1.5rem;
                       .replace("## Usuarios de prueba\n\n| Rol | Correo | Contraseña |\n|---|---|---|\n", "")),
         GeneratedFile(path="README.md", content=f"# {m['nombre']}\n\nLanding instanciada por "
                       "Meta-Agente. Ábrela con cualquier servidor estático.\n"),
+        # La librería viaja dentro: una landing publicada no puede depender de
+        # que un tercero siga sirviendo un archivo.
+        *[GeneratedFile(path=ruta, content=contenido)
+          for ruta, contenido in dixel_assets.archivos(dixel_assets.PERFIL_SITIO, "vendor").items()],
     ]
 
 

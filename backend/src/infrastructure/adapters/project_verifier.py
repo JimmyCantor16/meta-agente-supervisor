@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 #: `<div data-dx="TiltCard">` y `Dixel.create("TiltCard", …)`.
 _RE_DIXEL_ATTR = re.compile(r"""data-dx\s*=\s*["']([A-Za-z0-9_]+)["']""")
 _RE_DIXEL_CREATE = re.compile(r"""Dixel\.create\(\s*["']([A-Za-z0-9_]+)["']""")
+#: Lo que la librería entregada registra de verdad.
+_RE_DIXEL_DEFINE = re.compile(r"""Dixel\.define\(\s*["']([A-Za-z0-9_]+)["']""")
 
 # Cuántos endpoints fallidos se reportan (enteros) al agente reparador.
 _MAX_PROBLEMS = 3
@@ -337,7 +339,11 @@ class PythonProjectVerifier(ProjectVerifierPort):
         se entera hasta que un usuario lo mira. Igual de callado es citar la
         librería sin entregarla.
         """
-        conocidas = dixel_assets.clases_disponibles()
+        # La verdad de qué componentes hay es la librería que el proyecto LLEVA
+        # DENTRO, no el perfil que este backend tenga a mano: cada forma de
+        # proyecto viaja con un perfil distinto (una landing no lleva DataTable).
+        paquetes = sorted(root.rglob("dixel*.js"))
+        conocidas = self._clases_del_paquete(paquetes) or dixel_assets.clases_de_cualquier_perfil()
         if not conocidas:
             return None
 
@@ -356,7 +362,7 @@ class PythonProjectVerifier(ProjectVerifierPort):
         if not citadas:
             return None
 
-        if not any(root.rglob("dixel*.js")):
+        if not paquetes:
             return (
                 "Se usan componentes DIXEL (" + ", ".join(sorted(citadas)) + ") pero la "
                 "librería no está en el proyecto: falta frontend/vendor/dixel.js y su CSS. "
@@ -371,6 +377,18 @@ class PythonProjectVerifier(ProjectVerifierPort):
                 "Usa solo clases del catálogo entregado o escribe ese trozo a mano."
             )
         return None
+
+    @staticmethod
+    def _clases_del_paquete(paquetes: list[Path]) -> set[str]:
+        """Los componentes que ese `dixel.js` registra de verdad."""
+        nombres: set[str] = set()
+        for paquete in paquetes:
+            try:
+                texto = paquete.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            nombres |= set(_RE_DIXEL_DEFINE.findall(texto))
+        return nombres
 
     # ------------------------------------------------------------------
     def _check_syntax(self, root: Path, py_files: list[Path]) -> str | None:

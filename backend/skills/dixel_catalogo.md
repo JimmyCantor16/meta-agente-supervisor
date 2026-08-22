@@ -46,6 +46,9 @@ Lo que viaja en la app es un perfil de la librería, no la librería entera. Est
 son las clases disponibles:
 
 <!-- CATALOGO:INICIO -->
+
+**Perfil `app`** (90 clases):
+
 - **buttons**: Button, MagneticButton, GlowButton, RippleButton, BorderSweepButton, IconButton, PillToggle, FabButton, HoldButton
 - **cards**: Card, TiltCard, SpotlightCard, GlassCard, GradientBorderCard, FlipCard, StackCard, PricingCard, ProfileCard
 - **data**: StatCounter, Sparkline, ChartTooltip, LineChart, AreaChart, LiveChart, RadarChart, HeatmapGrid, DonutProgress, BulletChart, BarChart, RingChart, Meter, KpiTile, DataTable
@@ -53,6 +56,19 @@ son las clases disponibles:
 - **inputs**: Field, TextField, PasswordField, SearchField, TextArea, SelectField, Checkbox, RadioGroup, Switch, RangeSlider, NumberStepper, PinInput, TagInput, FileDrop, RatingStars, CheckboxGroup
 - **layout**: Accordion, Timeline, Steps, MasonryGrid, StickyStack, SplitView, SectionWave
 - **typography**: SplitText, GradientText, TypeWriter, ScrambleText, CountUp, MarqueeText, HighlightText, OutlineFillText
+- **scroll**: Reveal, ParallaxLayer, ScrollProgressBar, VelocityWarp, StickyReveal, SmoothAnchorNav
+- **icons**: Icon, DrawIcon, IconSet, IconCategories
+
+**Perfil `sitio`** (69 clases):
+
+- **buttons**: Button, MagneticButton, GlowButton, RippleButton, BorderSweepButton, IconButton, PillToggle, FabButton, HoldButton
+- **cards**: Card, TiltCard, SpotlightCard, GlassCard, GradientBorderCard, FlipCard, StackCard, PricingCard, ProfileCard
+- **layout**: Accordion, Timeline, Steps, MasonryGrid, StickyStack, SplitView, SectionWave
+- **media**: Carousel, CompareSlider, Lightbox, LogoMarquee, ImageReveal, ParallaxImage
+- **typography**: SplitText, GradientText, TypeWriter, ScrambleText, CountUp, MarqueeText, HighlightText, OutlineFillText
+- **background**: ParticleField, StarField, GradientMesh, NoiseGrain, WaveLines, GridPulse, AuroraVeil
+- **hover**: Magnetic, Tilt, Spotlight, WarpHover, LiftHover, TextWave
+- **micro**: Shimmer, PulseRing, Float, Attention, BorderBeam, Confetti, TickNumber
 - **scroll**: Reveal, ParallaxLayer, ScrollProgressBar, VelocityWarp, StickyReveal, SmoothAnchorNav
 - **icons**: Icon, DrawIcon, IconSet, IconCategories
 <!-- CATALOGO:FIN -->
