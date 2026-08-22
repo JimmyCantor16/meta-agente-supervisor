@@ -196,8 +196,11 @@ def main() -> int:
     with connect(dsn) as conn:
         conn.execute(f"DROP SCHEMA IF EXISTS {ESQUEMA} CASCADE")
         conn.execute(f"CREATE SCHEMA {ESQUEMA}")
+    # El esquema viaja en NUESTRO parámetro `esquema=`, no en `options=` de
+    # libpq: un endpoint agrupado (el `-pooler` de Neon es PgBouncer) rechaza
+    # los parámetros de arranque y la conexión ni se abre.
     separador = "&" if "?" in normalize_dsn(dsn) else "?"
-    dsn_aislado = f"{normalize_dsn(dsn)}{separador}options=-csearch_path%3D{ESQUEMA}"
+    dsn_aislado = f"{normalize_dsn(dsn)}{separador}esquema={ESQUEMA}"
 
     try:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as carpeta:

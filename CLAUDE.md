@@ -498,13 +498,14 @@ material de curso con corrector de contrato; **licencia y cupo por usuario**
 al arrancar y copia automática.
 
 Pendiente:
-1. **Una PostgreSQL de verdad donde apuntar.** El código ya está listo (los
-   nueve gemelos y la migración), pero la cuenta de Render **no admite otra base
-   free** («cannot have more than one active free tier database»: la única la
-   ocupa `bitacora-linkysign-db`, que además caduca el 14-sep-2026). Hace falta
-   decidir dónde vive: una Postgres externa gratuita sin caducidad (Neon,
-   Supabase), un esquema aparte dentro de la base free existente, o pagar una en
-   Render. Luego, `DATABASE_URL` en el servicio y `migrar_a_postgres`.
+1. **Poner `DATABASE_URL` en el servicio de Render.** La base ya existe: Neon
+   (`metaagente`, PostgreSQL 18, AWS us-east-2), con las once tablas creadas y
+   los nueve gemelos verificados contra ella. Se usa el endpoint **agrupado**
+   (`-pooler`), y eso impone dos cosas que ya están resueltas en
+   `postgres_support`: nada de `options=` en la cadena (el esquema va por
+   nuestro parámetro `esquema=` y un `SET search_path`) y sentencias preparadas
+   desactivadas. Render **no** admitía otra base free («cannot have more than one
+   active free tier database»), por eso la base vive fuera.
 2. **Los MVP entregados siguen siendo efímeros**: sin disco, `generated/` se
    borra en cada deploy. Postgres salva el estado, no las carpetas; para los
    proyectos hace falta disco (plan de pago) o subirlos a GitHub.
