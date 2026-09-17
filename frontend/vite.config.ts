@@ -15,8 +15,13 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // El service worker se actualiza solo al publicar una versión nueva;
-      // el registro lo inyecta el propio plugin en el index del build.
+      // El service worker se actualiza solo al publicar una versión nueva, y
+      // la página se RECARGA cuando el nuevo toma el control. El registro lo
+      // hace `main.tsx` con `virtual:pwa-register`, no el `registerSW.js` que
+      // inyecta el plugin: ese solo registraba, así que tras cada deploy el
+      // usuario seguía viendo la versión vieja desde la caché hasta la
+      // SIGUIENTE visita (así «no aparecían» en producción los canales nuevos
+      // de la tele, ya publicados).
       registerType: "autoUpdate",
       manifest: {
         name: "Meta-Agente — Jamz Software",
