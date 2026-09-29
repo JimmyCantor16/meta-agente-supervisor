@@ -41,9 +41,9 @@ export function YoutubeView() {
         ref={m.registerYtSlot}
         className="aspect-video w-full overflow-hidden rounded-lg bg-slate-900"
       >
-        {!m.ytCurrentId && (
+        {(!m.ytCurrentId || m.onStage) && (
           <div className="flex h-full items-center justify-center px-4 text-center text-xs text-ink-faint">
-            {g.ytEmptyPlayer}
+            {m.ytCurrentId && m.onStage ? g.onStage : g.ytEmptyPlayer}
           </div>
         )}
       </div>

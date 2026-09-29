@@ -13,13 +13,15 @@ const PANEL_W = 300;
  * las pestañas TV y Radio, calcado del panel lateral de música de DKEditor pero
  * en la web. El vídeo/audio viven en el Provider (persisten aunque se cierre).
  */
-export function MultimediaDock() {
+export function MultimediaDock({ ocultarPestana = false }: { ocultarPestana?: boolean }) {
   const { t } = useLanguage();
   const m = useMultimedia();
 
   return (
     <>
-      {/* Pestaña vertical del borde IZQUIERDO */}
+      {/* Pestaña vertical del borde IZQUIERDO. En La Sala sobra: allí la tele
+          es la página entera, y el panel se abre desde «Tus canales». */}
+      {!ocultarPestana && (
       <button
         type="button"
         onClick={m.togglePanel}
@@ -32,6 +34,7 @@ export function MultimediaDock() {
         </span>
         <span className="text-xs font-bold tracking-wide">{t.multimedia.title}</span>
       </button>
+      )}
 
       {/* Panel deslizable desde la IZQUIERDA (overlay: no empuja el contenido) */}
       <aside

@@ -280,6 +280,53 @@ WebSocket, el filtro por dueño es parte de la ruta, no un extra.
   `package.json` y `VERSION_ESCRITORIO` del backend, o el aviso sale para un
   instalador que todavía no existe.
 
+## La Sala: la página de inicio (entretenimiento)
+
+Desde sep-2026 la app arranca en **La Sala** (`features/sala/`, vista `sala`),
+no en el chat: una tele "estilo Simpsons" grande con control remoto, para
+entrar a divertirse, informarse y aprender. El agente vive en el módulo
+**Taller IA** (vista `taller`, el antiguo `home`) junto a Proyectos, Monitor y
+Publicar. Diseño de referencia: `docs/mockups/la-sala.html` (local).
+
+- **Un solo reproductor**: `MultimediaProvider` envuelve TODO `App` (antes era
+  un hermano al final y La Sala no podía ver su contexto). La Sala no reproduce
+  nada por su cuenta: registra su pantalla con `registerStage` y el Provider
+  **muda el mismo `<video>`** dentro (placement `stage`, igual que ya hacía con
+  la ventana PiP). Así los rótulos, el teletexto y la cápsula se dibujan encima
+  por orden de DOM, y al salir de La Sala el vídeo pasa a la mini tele sin
+  cortarse. OJO: el efecto que lo muda lee `videoRef`; si la limpieza del
+  `<video>` no soltara la referencia, StrictMode reinsertaría el nodo desechado
+  (pasó: quedaban dos `<video>` en el hueco).
+- **YouTube no se puede mudar** (un iframe se recarga al moverlo): se posiciona
+  fijo sobre la pantalla con z-index 15 (por debajo de la TopBar y el panel).
+  Con el teletexto o la cápsula abiertos, `setStageCover(true)` lo aparta y
+  sigue sonando.
+- **Teletexto con titulares reales, leídos DESDE EL NAVEGADOR**
+  (`sala/lib/fuentes.ts`): solo DW y los feeds de EL PAÍS dan CORS abierto (BBC
+  Mundo, France 24, Google News, El Tiempo, Infobae NO). No pasa por el backend
+  a propósito: mientras no haya `DATABASE_URL` en producción, cada deploy del
+  backend borra usuarios y cursos, y una sección de noticias no vale ese
+  precio. Una fuente nueva sin comprobar su CORS = una página que siempre dice
+  "no disponible".
+- **Canales de noticias** (categoría `Noticias` de `defaultChannels.ts`,
+  `CHANNELS_VER` = 4): verificados en Chrome con hls.js Y con CORS contra el
+  origen de producción (France 24 no responde `*`, devuelve el origen).
+- **Facebook y WhatsApp Web** (`lib/abrirExterno.ts`, `components/AppsExternas.tsx`):
+  NO se pueden incrustar (`X-Frame-Options`, y dentro de un iframe no llegarían
+  sus cookies). Se abren en el navegador, donde el usuario ya tiene su sesión;
+  en Tauri, con el plugin opener (un `window.open` abriría el webview, sin sesión).
+- **Tema oscuro SOLO en La Sala**: tokens `sala.*`, `tele.*` y `tecla.*` en
+  `tailwind.config.js`; el Sidebar y la TopBar reciben `oscuro`. Las piezas
+  ilustradas y las animaciones viven en `sala/sala.css` (con `theme()`), y las
+  consultas son de **contenedor** (`@container sala`), no de pantalla: La Sala
+  vive junto al menú y lo que cuenta es su ancho. Por debajo de 760 px el
+  teletexto y la cápsula salen de la tele y van debajo.
+- La luz ambiente copia la imagen con `drawImage` a un canvas de 64×36 **sin
+  leer nunca sus píxeles**: por eso funciona con streams y miniaturas de otros
+  dominios. No añadas `getImageData` ahí: con CORS cerrado lanzaría.
+- El ecualizador de la radio es decorativo a propósito: pasar una emisora sin
+  CORS por Web Audio no solo da ceros, **la silencia**.
+
 ## Sistema de diseño (tema claro) — REGLA VISUAL
 
 Los tokens viven en `frontend/tailwind.config.js`. **No inventes valores sueltos**:
@@ -492,7 +539,9 @@ trabajos de fondo y bandeja de entregas** (fase 2), **profesor adaptativo con
 nivel por usuario, evidencia en git y camino/racha** (fase 3), PWA instalable,
 móvil Flutter que aprueba entregas y **escritorio Tauri** (`build-desktop.ps1`,
 modo nube) con aviso de versión nueva.
-También: **DIXEL vendorizada y temable**, dentro de las apps generadas y como
+También: **La Sala como página de inicio** (tele con control remoto, teletexto
+con titulares reales, cápsulas, canales de noticias, accesos a Facebook y
+WhatsApp, y el puente «del sofá al taller»), **DIXEL vendorizada y temable**, dentro de las apps generadas y como
 material de curso con corrector de contrato; **licencia y cupo por usuario**
 (activar una clave ya no licencia a toda la instancia); persistencia con aviso
 al arrancar y copia automática.

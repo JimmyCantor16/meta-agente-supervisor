@@ -51,10 +51,46 @@ export default {
           sunken: "#FAFAFA",
           muted: "#F5F5F5", // fondo de sección
         },
+        // LA SALA: el único tema OSCURO del sistema, y solo para la página de
+        // entretenimiento (el Taller y el resto siguen en claro). Mismo tinte
+        // azulado que `ink`, llevado a la noche; el verde de marca sigue siendo
+        // el único color de acción.
+        sala: {
+          bg: "#090B15",
+          raise: "#0E1122", // sidebar / bloques elevados
+          panel: "#13162B", // tarjetas
+          line: "rgba(150,160,210,.12)",
+          "line-2": "rgba(150,160,210,.22)",
+          ink: "#EEF0F8",
+          body: "#C4C8DC",
+          muted: "#8C92AE",
+          faint: "#5F6585",
+          remote: "#1A1D35", // cuerpo del control remoto
+          key: "#262A48", // teclas del control
+          "key-edge": "#0C0E1D",
+        },
+        // La tele estilo Simpsons (la misma del modo flotante y del Document PiP).
+        tele: {
+          out: "#20233B", // contorno cómic
+          bezel: "#6EC7D6",
+          led: "#FF4D4D",
+          osd: "#00E0AC", // letras de la pantalla (canal, volumen)
+        },
+        // Las cuatro teclas de color del control = los pilares de La Sala:
+        // rojo en vivo, verde aprende, amarillo infórmate, azul radio.
+        tecla: {
+          red: "#E5484D",
+          green: "#30A46C",
+          yellow: "#F5D90A",
+          blue: "#3E63DD",
+        },
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        // Marca de la tele ("Jamz Software · Free TV") y rótulos en pantalla.
+        tele: ["Righteous", "Trebuchet MS", "system-ui", "sans-serif"],
+        osd: ["VT323", "ui-monospace", "monospace"],
       },
       // Cada entrada empaqueta tamaño + interlineado + tracking + peso, que es
       // la fórmula completa. Pesos intermedios (670) en vez de 700: solo

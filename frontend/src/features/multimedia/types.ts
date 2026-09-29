@@ -43,5 +43,8 @@ export interface CustomChannel {
   category?: string;
 }
 
-/** Dónde vive el vídeo de TV en la pantalla. */
-export type VideoPlacement = "hidden" | "docked" | "floating";
+/**
+ * Dónde vive el vídeo de TV en la pantalla. `stage` = dentro de la tele grande
+ * de La Sala (la página de inicio), que manda sobre el panel mientras existe.
+ */
+export type VideoPlacement = "hidden" | "docked" | "floating" | "stage";

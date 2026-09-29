@@ -11,7 +11,8 @@ import { ProjectWorkspace } from "./features/workspace/components/ProjectWorkspa
 import { PublishGuide } from "./features/workspace/components/PublishGuide";
 import { PromptInput } from "./features/workspace/components/PromptInput";
 import { MiCamino } from "./features/camino";
-import { Multimedia } from "./features/multimedia";
+import { MultimediaDock, MultimediaProvider } from "./features/multimedia";
+import { LaSala } from "./features/sala";
 import { MonitorGeneracion } from "./features/monitor/MonitorGeneracion";
 import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
@@ -19,8 +20,16 @@ import { useProjects } from "./features/workspace/hooks/useProjects";
 import { useLanguage } from "./i18n/LanguageProvider";
 
 /**
- * Layout raíz (estilo Skywork): sidebar + topbar + área de trabajo.
- * Integra login por usuario, límites por cuenta y panel de super-admin.
+ * Layout raíz: sidebar + topbar + área de trabajo.
+ *
+ * La página de inicio es LA SALA (entretenimiento, noticias y aprendizaje en
+ * torno a la tele), en el único tema oscuro del sistema. El agente con el que
+ * se habla vive en el módulo «Taller IA» (vista `taller`), con sus proyectos,
+ * su monitor y su publicación, igual de enlazado que antes.
+ *
+ * El MultimediaProvider envuelve TODO el layout: La Sala y el panel lateral
+ * comparten el mismo reproductor, y lo que suena sigue sonando al cambiar de
+ * vista (en la mini tele flotante).
  */
 export default function App() {
   const { t } = useLanguage();
@@ -29,7 +38,7 @@ export default function App() {
   const { projects, loading: loadingProjects, refresh } = useProjects();
   const { account, refresh: refreshAccount, upgrade } = useAccount();
 
-  const [view, setView] = useState("home");
+  const [view, setView] = useState("sala");
   // Proyecto abierto desde la galería (taller: auditar + clases del profesor).
   const [openProject, setOpenProject] = useState<string | null>(null);
   const [teacherMode, setTeacherMode] = useState(false);
@@ -45,23 +54,35 @@ export default function App() {
   const isAdmin = account?.is_admin ?? false;
   // Sin resultado ni carga: pantalla de bienvenida centrada, estilo chat.
   const chatMode = !data && !loading;
+  const enSala = view === "sala";
+
+  // Del sofá al taller: la idea llega ya escrita al cuadro del agente.
+  const llevarIdea = (idea: string) => {
+    setSeed(idea);
+    setView("taller");
+  };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-muted text-ink">
+    <MultimediaProvider>
+    <div className={`flex h-screen overflow-hidden ${enSala ? "bg-sala-bg text-sala-body" : "bg-surface-muted text-ink"}`}>
       <Sidebar
         active={view}
         onNavigate={setView}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         showAdmin={isAdmin}
+        oscuro={enSala}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar onMenu={() => setSidebarOpen(true)} />
+        <TopBar onMenu={() => setSidebarOpen(true)} oscuro={enSala} />
 
         <main className="flex-1 overflow-y-auto">
+          {enSala ? (
+            <LaSala onIr={setView} onLlevarIdea={llevarIdea} />
+          ) : (
           <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
-            {view === "home" && (
+            {view === "taller" && (
               <div className={chatMode ? "flex min-h-[70vh] flex-col justify-center space-y-8" : "space-y-8"}>
                 {/* Hero: centrado estilo chat cuando aún no hay conversación */}
                 {chatMode ? (
@@ -207,7 +228,7 @@ export default function App() {
             {view === "camino" && (
               <MiCamino
                 onContinuar={() => setView("projects")}
-                onEmpezar={() => setView("home")}
+                onEmpezar={() => setView("taller")}
               />
             )}
 
@@ -223,11 +244,14 @@ export default function App() {
               </div>
             )}
           </div>
+          )}
         </main>
       </div>
 
-      {/* Pestaña "Multimedia" (TV en vivo + Radio) fija al borde derecho. */}
-      <Multimedia />
+      {/* Pestaña "Multimedia" (TV, Radio, YouTube) fija al borde izquierdo.
+          En La Sala se oculta: allí la tele es la página entera. */}
+      <MultimediaDock ocultarPestana={enSala} />
     </div>
+    </MultimediaProvider>
   );
 }

@@ -193,6 +193,15 @@ interface MultimediaContextValue {
   // interno: el panel registra dónde va el vídeo acoplado
   registerSlot: (el: HTMLElement | null) => void;
   registerYtSlot: (el: HTMLElement | null) => void;
+
+  // La Sala: la tele grande de la página de inicio. Mientras está montada, lo
+  // que suene se ve AHÍ (y no en el panel); al irse, pasa a la mini tele.
+  onStage: boolean;
+  registerStage: (el: HTMLElement | null) => void;
+  /** La Sala tapa la pantalla (teletexto, cápsula): YouTube sigue sonando, oculto. */
+  setStageCover: (cubierta: boolean) => void;
+  /** El <video> vivo, para que La Sala pinte su luz ambiente sin tocar el stream. */
+  getVideo: () => HTMLVideoElement | null;
 }
 
 const Ctx = createContext<MultimediaContextValue | null>(null);
@@ -204,7 +213,7 @@ export function useMultimedia(): MultimediaContextValue {
 }
 
 const LS_CHANNELS_VER = "mm.channelsVer";
-const CHANNELS_VER = "3"; // subir cuando cambie la lista curada de canales
+const CHANNELS_VER = "4"; // subir cuando cambie la lista curada de canales
 
 /**
  * Lista de YouTube del usuario, guardada en SU navegador.
@@ -354,18 +363,46 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     window.localStorage.setItem(LS_VOLUME, String(volume));
   }, [volume]);
 
-  // Dónde se ve el vídeo: nada si no hay TV; flotante si está minimizado, con el
-  // panel cerrado, o mirando la pestaña de Radio; acoplado en el panel si no.
+  // --- La Sala (escenario de la página de inicio) ---
+  const stageRef = useRef<HTMLElement | null>(null);
+  const [onStage, setOnStage] = useState(false);
+  const [stageCover, setStageCover] = useState(false);
+
+  // Dónde se ve el vídeo: nada si no hay TV; flotante si está minimizado; en la
+  // tele grande si La Sala está montada; acoplado en el panel si su pestaña de
+  // TV está abierta; flotante en cualquier otro caso (la tele te sigue).
   const placement: VideoPlacement =
     active !== "tv"
       ? "hidden"
-      : minimized || !panelOpen || tab !== "tv"
+      : minimized
         ? "floating"
-        : "docked";
+        : onStage
+          ? "stage"
+          : panelOpen && tab === "tv"
+            ? "docked"
+            : "floating";
+  const placementRef = useRef(placement);
+  placementRef.current = placement;
 
   const registerSlot = useCallback((el: HTMLElement | null) => {
     slotRef.current = el;
   }, []);
+
+  const registerStage = useCallback((el: HTMLElement | null) => {
+    const anterior = stageRef.current;
+    stageRef.current = el;
+    // Si La Sala se desmonta con el vídeo dentro, se devuelve a casa en ESTE
+    // mismo instante. Un <video> que se queda fuera del documento lo pausa el
+    // navegador; reinsertado en el mismo tick, ni se entera.
+    const v = videoRef.current;
+    if (!el && anterior && v && v.parentElement === anterior) {
+      screenHostRef.current?.appendChild(v);
+    }
+    setOnStage(!!el);
+    if (!el) setStageCover(false);
+  }, []);
+
+  const getVideo = useCallback(() => videoRef.current, []);
 
   // Mide el hueco del panel donde va el vídeo acoplado. Solo actualiza el estado
   // si el rect CAMBIÓ (evita re-renders en cada frame del seguimiento).
@@ -395,16 +432,18 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     return () => cancelAnimationFrame(raf);
   }, [placement, measureSlot]);
 
-  // El reproductor de YouTube se ve SOLO con su pestaña abierta. En cualquier
-  // otro caso sigue vivo y sonando, apartado fuera de la pantalla: es lo que
-  // permite dejar música puesta y seguir estudiando en el resto de la app.
-  const ytVisible = active === "youtube" && panelOpen && tab === "youtube";
+  // El reproductor de YouTube se ve SOLO en la tele de La Sala o con su pestaña
+  // abierta. En cualquier otro caso sigue vivo y sonando, apartado fuera de la
+  // pantalla: es lo que permite dejar música puesta y seguir estudiando en el
+  // resto de la app. Con La Sala tapada (teletexto, cápsula) también se aparta.
+  const ytOnStage = active === "youtube" && onStage && !stageCover;
+  const ytVisible = ytOnStage || (active === "youtube" && !onStage && panelOpen && tab === "youtube");
 
   useLayoutEffect(() => {
     if (!ytVisible) return;
     let raf = 0;
     const loop = () => {
-      const el = ytSlotRef.current;
+      const el = ytOnStage ? stageRef.current : ytSlotRef.current;
       if (el) {
         const r = el.getBoundingClientRect();
         setYtRect((prev) =>
@@ -418,7 +457,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [ytVisible]);
+  }, [ytVisible, ytOnStage]);
 
   // Crea el <video> IMPERATIVAMENTE (una sola vez) y lo mete en su hueco. Al no
   // ser un nodo de React, se puede mover a la ventana PiP y traerlo de vuelta sin
@@ -453,8 +492,23 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       v.removeEventListener("error", onErr);
       v.removeEventListener("dblclick", onDbl);
       v.remove();
+      // Soltar la referencia: si no, el efecto que muda el vídeo (La Sala)
+      // encontraba este nodo ya desechado y lo volvía a insertar, y quedaban
+      // dos <video> en el hueco (visto con el doble montaje de StrictMode).
+      if (videoRef.current === v) videoRef.current = null;
     };
   }, []);
+
+  // En La Sala el <video> se MUDA dentro de la tele grande (mismo nodo, igual
+  // que al sacarlo a la ventana PiP): así los rótulos, el teletexto y la
+  // cápsula se dibujan ENCIMA con el orden normal del DOM, sin pelear z-index
+  // con un elemento fijo. Fuera de La Sala vuelve a su hueco de siempre.
+  useLayoutEffect(() => {
+    const v = videoRef.current;
+    if (!v || poppedOut) return;
+    const destino = placement === "stage" ? stageRef.current : screenHostRef.current;
+    if (destino && v.parentElement !== destino) destino.appendChild(v);
+  }, [placement, poppedOut, onStage]);
 
   // --- Motor de reproducción (un solo medio activo, como DKEditor) ---
   const stopVideo = useCallback(() => {
@@ -751,14 +805,17 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   const minimizeVideo = useCallback(() => setMinimized(true), []);
   const dockVideo = useCallback(() => {
     setMinimized(false);
+    // Con La Sala abierta, "acoplar" es volver a la tele grande, no al panel.
+    if (stageRef.current) return;
     setPanelOpen(true);
     setTab("tv");
   }, []);
 
-  // Devuelve el <video> imperativo a su hueco en la página.
+  // Devuelve el <video> imperativo a su hueco en la página (la tele de La Sala
+  // si es ahí donde toca verlo).
   const returnVideoHome = useCallback(() => {
     const v = videoRef.current;
-    const host = screenHostRef.current;
+    const host = placementRef.current === "stage" && stageRef.current ? stageRef.current : screenHostRef.current;
     if (v && host && v.parentElement !== host) host.appendChild(v);
   }, []);
 
@@ -820,9 +877,10 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   }, [active, returnVideoHome, t.multimedia.pipNeedsTv, t.multimedia.pipUnsupported, t.multimedia.pipFailed]);
 
   const requestFullscreen = useCallback(() => {
-    const v = videoRef.current as any;
-    v?.requestFullscreen?.().catch(() => undefined);
-  }, []);
+    // YouTube: se amplía su contenedor (el iframe no se puede tocar desde aquí).
+    const el = (active === "youtube" ? ytHostRef.current : videoRef.current) as any;
+    el?.requestFullscreen?.().catch(() => undefined);
+  }, [active]);
 
   // --- Radio: cargar top / buscar ---
   const loadTopRadio = useCallback(
@@ -924,6 +982,10 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       ytCurrentId,
       registerSlot,
       registerYtSlot,
+      onStage,
+      registerStage,
+      setStageCover,
+      getVideo,
     }),
     [
       panelOpen, togglePanel, closePanel, tab, active, current, playing, buffering,
@@ -932,6 +994,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       requestFullscreen, poppedOut, radioItems, radioLoading, radioError, loadTopRadio,
       searchRadio, playRadio, iptvItems, iptvLoading, iptvError, loadIptv, registerSlot,
       ytItems, addYoutube, removeYoutube, playYoutube, ytCurrentId, registerYtSlot,
+      onStage, registerStage, getVideo,
     ],
   );
 
@@ -939,7 +1002,9 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   // ventana del SO: en la página no se muestra (pero el hueco sigue en el DOM
   // para recuperarlo al cerrar).
   activeRef.current = active;
-  const renderPlacement = poppedOut ? "hidden" : placement;
+  // En La Sala el vídeo vive dentro de la tele grande: este contenedor fijo se
+  // queda vacío y apartado, igual que cuando está fuera en la ventana PiP.
+  const renderPlacement = poppedOut || placement === "stage" ? "hidden" : placement;
   const showVideo = renderPlacement !== "hidden";
   const floating = renderPlacement === "floating";
 
@@ -1085,9 +1150,11 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
                 top: ytRect.top,
                 width: ytRect.width,
                 height: ytRect.height,
-                zIndex: 55,
+                // En La Sala va POR DEBAJO de la barra superior (z-20), el menú
+                // móvil y el panel, que deben taparlo al pasar por encima.
+                zIndex: ytOnStage ? 15 : 55,
                 overflow: "hidden",
-                borderRadius: 8,
+                borderRadius: ytOnStage ? 14 : 8,
                 background: "#000",
               }
             : {

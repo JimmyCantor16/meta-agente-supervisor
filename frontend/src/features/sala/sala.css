@@ -1,0 +1,1912 @@
+/*
+ * LA SALA — la página de inicio, en el único tema OSCURO del sistema.
+ *
+ * Colores y fuentes salen de tailwind.config.js vía theme(); aquí viven solo
+ * las piezas que las utilidades no expresan bien: la tele ilustrada, las
+ * animaciones de pantalla y las unidades de contenedor (cqw) que hacen que los
+ * rótulos crezcan y encojan CON la tele.
+ *
+ * Las consultas son de CONTENEDOR (@container sala), no de pantalla: La Sala
+ * vive al lado del menú, y lo que decide si el control remoto cabe de pie es
+ * su ancho, no el de la ventana.
+ */
+
+.sala {
+  container: sala / inline-size;
+  color: theme("colors.sala.body");
+  min-height: 100%;
+  /* Las teclas de color, como variables: las usan el control, los filtros y
+     la cabecera de cada fila de la programación. */
+  --tecla-red: theme("colors.tecla.red");
+  --tecla-green: theme("colors.tecla.green");
+  --tecla-yellow: theme("colors.tecla.yellow");
+  --tecla-blue: theme("colors.tecla.blue");
+  --tecla-yt: #cc0022;
+}
+.sala-wrap {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 26px 40px 56px;
+}
+.sala h1,
+.sala h2,
+.sala h3 {
+  color: theme("colors.sala.ink");
+  letter-spacing: -0.01em;
+}
+.sala-vt {
+  font-family: theme("fontFamily.osd");
+}
+
+/* ---------- Cabecera ---------- */
+.sala-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.sala-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: theme("colors.sala.muted");
+  font-weight: 650;
+}
+.sala-h1 {
+  font-size: 30px;
+  line-height: 34px;
+  font-weight: 670;
+  margin-top: 6px;
+}
+.sala-lede {
+  margin-top: 6px;
+  color: theme("colors.sala.muted");
+  font-size: 14.5px;
+}
+.sala-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sala-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid theme("colors.sala.line");
+  background: theme("colors.sala.panel");
+  border-radius: 999px;
+  font-size: 13px;
+}
+.sala-pill b {
+  color: theme("colors.sala.ink");
+}
+.sala-flame {
+  color: #ff8b3e;
+}
+.sala-week {
+  display: flex;
+  gap: 3px;
+}
+.sala-week i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 139, 62, 0.2);
+}
+.sala-week i.on {
+  background: #ff8b3e;
+}
+.sala-clock {
+  font-family: theme("fontFamily.osd");
+  font-size: 22px;
+  color: theme("colors.tele.osd");
+  letter-spacing: 0.04em;
+}
+.sala-sep {
+  width: 1px;
+  height: 24px;
+  background: theme("colors.sala.line-2");
+  margin: 0 4px;
+}
+.sala-appbtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  transition: transform 0.15s;
+}
+.sala-appbtn:hover {
+  transform: translateY(-2px);
+}
+
+/* ---------- Escenario: la sala ---------- */
+.sala-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 172px;
+  gap: 32px;
+  align-items: center;
+  margin-top: 22px;
+}
+.sala-room {
+  position: relative;
+  padding: clamp(74px, 8.4cqw, 112px) 12px 26px;
+  outline: none;
+  border-radius: 16px;
+}
+.sala-room:focus-visible {
+  box-shadow: 0 0 0 2px rgba(47, 191, 161, 0.5);
+}
+.sala-room::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 44px);
+  -webkit-mask-image: radial-gradient(70% 70% at 50% 45%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(70% 70% at 50% 45%, #000 30%, transparent 80%);
+}
+.sala-floor {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 6px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  filter: blur(18px);
+}
+
+/* La tele */
+.sala-tv {
+  position: relative;
+  width: min(100%, 700px);
+  margin: 0 auto;
+  z-index: 2;
+}
+.sala-ambi {
+  position: absolute;
+  left: -14%;
+  top: -16%;
+  width: 128%;
+  height: 132%;
+  z-index: -1;
+  filter: blur(48px) saturate(1.6);
+  opacity: 0.72;
+  transition: opacity 0.7s;
+  border-radius: 40%;
+}
+.sala-tv.off .sala-ambi {
+  opacity: 0;
+}
+.sala-ant {
+  position: absolute;
+  bottom: calc(100% + 18px);
+  left: 50%;
+  width: 34%;
+  transform: translateX(-50%);
+  overflow: visible;
+  transform-origin: 50% 100%;
+}
+.sala-tv.bump .sala-ant {
+  animation: sala-wob 0.6s ease-out;
+}
+@keyframes sala-wob {
+  25% {
+    transform: translateX(-50%) rotate(-4deg);
+  }
+  60% {
+    transform: translateX(-50%) rotate(3deg);
+  }
+}
+.sala-dvd {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36%;
+  height: 26px;
+  background: linear-gradient(#454b73, #363b5c);
+  border: 4px solid theme("colors.tele.out");
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.sala-dvd .slot {
+  width: 46%;
+  height: 4px;
+  background: theme("colors.tele.out");
+  border-radius: 2px;
+}
+.sala-dvd .dled,
+.sala-led {
+  border-radius: 50%;
+  background: theme("colors.tele.led");
+  box-shadow: 0 0 8px theme("colors.tele.led");
+}
+.sala-dvd .dled {
+  width: 7px;
+  height: 7px;
+}
+.sala-tv.off .sala-dvd .dled,
+.sala-tv.off .sala-led {
+  background: #3aa655;
+  box-shadow: none;
+}
+.sala-cable {
+  position: absolute;
+  left: calc(100% - 8px);
+  top: 56%;
+  width: 74px;
+  overflow: visible;
+  z-index: -1;
+}
+.sala-tv-body {
+  position: relative;
+  /* El mueble de la tele Simpsons: es la ilustración, no interfaz; lleva el
+     mismo degradado que la mini tele flotante y la ventana PiP. */
+  background: linear-gradient(160deg, #9aa3d8 0%, #8791cf 55%, #7682c4 100%);
+  border: 4px solid theme("colors.tele.out");
+  border-radius: 38px;
+  padding: 20px 20px 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 62px;
+  gap: 16px;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -6px 0 rgba(32, 35, 59, 0.16),
+    0 40px 80px -24px rgba(0, 0, 0, 0.75);
+}
+.sala-tv.bump .sala-tv-body {
+  animation: sala-bump 0.35s ease-out;
+}
+@keyframes sala-bump {
+  30% {
+    translate: 0 -3px;
+  }
+  70% {
+    translate: 0 1px;
+  }
+}
+.sala-bezel {
+  background: theme("colors.tele.bezel");
+  border: 4px solid theme("colors.tele.out");
+  border-radius: 24px;
+  padding: 10px;
+}
+.sala-screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 20px / 18px;
+  overflow: hidden;
+  background: #000;
+  border: 3px solid theme("colors.tele.out");
+  container-type: inline-size;
+  cursor: pointer;
+}
+.sala-screen:fullscreen {
+  border: 0;
+  border-radius: 0;
+}
+.sala-host,
+.sala-viz {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.sala-viz {
+  display: block;
+  transition: opacity 0.2s;
+}
+.sala-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0 1px, transparent 1px 3px);
+}
+.sala-vig {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 8cqw rgba(0, 0, 0, 0.7);
+}
+.sala-glass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(110% 70% at 16% -4%, rgba(255, 255, 255, 0.16), transparent 46%);
+}
+.sala-ctrl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-top: 4px;
+}
+.sala-knob {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #e1e5fb, #9aa3d8 70%);
+  border: 4px solid theme("colors.tele.out");
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1);
+  padding: 0;
+}
+.sala-knob::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 4px;
+  height: 12px;
+  margin-left: -2px;
+  background: theme("colors.tele.out");
+  border-radius: 2px;
+}
+.sala-led {
+  width: 13px;
+  height: 13px;
+  border: 3px solid theme("colors.tele.out");
+}
+.sala-grille {
+  display: grid;
+  gap: 5px;
+  width: 38px;
+  margin-top: 4px;
+}
+.sala-grille i {
+  height: 4px;
+  border-radius: 2px;
+  background: theme("colors.tele.out");
+  opacity: 0.5;
+}
+.sala-tv-brand {
+  position: absolute;
+  left: 24px;
+  right: 98px;
+  bottom: 10px;
+  text-align: center;
+  font-family: theme("fontFamily.tele");
+  font-size: 17px;
+  letter-spacing: 1px;
+  color: theme("colors.tele.out");
+}
+.sala-tv-brand span {
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.sala-feet {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: -17px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.sala-feet span {
+  display: flex;
+  gap: 22px;
+}
+.sala-feet i {
+  width: 18px;
+  height: 17px;
+  background: theme("colors.tele.out");
+  border-radius: 0 0 6px 6px;
+}
+.sala-board {
+  position: relative;
+  width: min(100%, 860px);
+  height: 66px;
+  margin: 13px auto 0;
+  background: #2a2748;
+  border: 4px solid theme("colors.tele.out");
+  border-radius: 12px 12px 8px 8px;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.07);
+  z-index: 1;
+}
+.sala-board .dr {
+  flex: 1;
+  border: 3px solid theme("colors.tele.out");
+  border-radius: 6px;
+  background: #332f58;
+  position: relative;
+}
+.sala-board .dr::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 6px;
+  margin: -3px 0 0 -8px;
+  border-radius: 3px;
+  background: theme("colors.tele.out");
+}
+.sala-plant {
+  position: absolute;
+  bottom: calc(100% + 1px);
+  left: 0.5%;
+  width: 70px;
+}
+.sala-books {
+  position: absolute;
+  bottom: calc(100% + 1px);
+  right: 0.5%;
+  width: 72px;
+}
+
+/* ---------- Capas en pantalla (escalan con la tele: cqw) ---------- */
+.sala-osd {
+  position: absolute;
+  left: 4cqw;
+  top: 3.4cqw;
+  font-family: theme("fontFamily.osd");
+  font-size: 7cqw;
+  line-height: 1;
+  color: theme("colors.tele.osd");
+  text-shadow: 0 0 0.8cqw rgba(0, 224, 172, 0.8), 0.35cqw 0.35cqw 0 rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  animation: sala-osd 2.2s linear forwards;
+}
+.sala-osd.fijo {
+  animation: none;
+}
+@keyframes sala-osd {
+  0%,
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.sala-lower {
+  position: absolute;
+  left: 4cqw;
+  bottom: 5cqw;
+  display: flex;
+  align-items: stretch;
+  pointer-events: none;
+  font-size: 2.5cqw;
+  opacity: 0;
+  animation: sala-lower 4.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+@keyframes sala-lower {
+  0% {
+    opacity: 0;
+    transform: translateX(-4cqw);
+  }
+  10%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+.sala-lower .ln {
+  font-family: theme("fontFamily.osd");
+  font-size: 2.4em;
+  line-height: 1;
+  background: theme("colors.tele.osd");
+  color: #04211b;
+  padding: 0.25em 0.45em;
+  display: grid;
+  place-items: center;
+}
+.sala-lower .lt {
+  background: rgba(9, 11, 21, 0.86);
+  padding: 0.55em 1.1em 0.55em 0.9em;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.sala-lower .lt b {
+  color: #fff;
+  font-size: 1.25em;
+  line-height: 1.15;
+  font-weight: 650;
+}
+.sala-lower .lt small {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.95em;
+}
+.sala-volosd {
+  position: absolute;
+  left: 50%;
+  bottom: 9cqw;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1.3cqw;
+  font-family: theme("fontFamily.osd");
+  font-size: 4.2cqw;
+  color: theme("colors.tele.osd");
+  pointer-events: none;
+  text-shadow: 0 0 0.6cqw rgba(0, 224, 172, 0.7);
+  animation: sala-osd 1.8s linear forwards;
+}
+.sala-volosd .bars {
+  display: flex;
+  gap: 0.5cqw;
+}
+.sala-volosd .bars i {
+  width: 1.1cqw;
+  height: 3.2cqw;
+  background: rgba(0, 224, 172, 0.22);
+}
+.sala-volosd .bars i.on {
+  background: theme("colors.tele.osd");
+}
+.sala-aviso {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2cqw;
+  text-align: center;
+  background: #06070d;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: theme("fontFamily.osd");
+  font-size: clamp(14px, 3.4cqw, 24px);
+  padding: 4cqw;
+}
+.sala-aviso button {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: clamp(12px, 2.2cqw, 14px);
+  font-weight: 600;
+  color: #fff;
+  background: theme("colors.brand.600");
+  border-radius: 6px;
+  padding: 0.55em 1em;
+}
+.sala-aviso button:hover {
+  background: theme("colors.brand.700");
+}
+.sala-pw {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+.sala-pw::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 100%;
+  background: #fff;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+.sala-tv.off .sala-pw,
+.sala-tv.going-off .sala-pw {
+  opacity: 1;
+}
+.sala-tv.going-off .sala-pw::before {
+  animation: sala-crt-off 0.55s ease-in forwards;
+}
+.sala-tv.going-on .sala-pw {
+  animation: sala-fade-out 0.6s ease-out forwards;
+}
+.sala-tv.going-on .sala-pw::before {
+  animation: sala-crt-on 0.45s ease-out forwards;
+}
+@keyframes sala-crt-off {
+  0% {
+    opacity: 0.85;
+    transform: translateY(-50%) scale(1, 1);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1, 0.008);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-50%) scale(0.03, 0.008);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scale(0, 0);
+  }
+}
+@keyframes sala-crt-on {
+  0% {
+    opacity: 1;
+    transform: translateY(-50%) scale(0.02, 0.008);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1, 0.008);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scale(1, 1);
+  }
+}
+@keyframes sala-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+.sala-offmsg {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  font-family: theme("fontFamily.osd");
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 3.6cqw;
+  letter-spacing: 0.1em;
+  z-index: 1;
+}
+.sala-tv.off .sala-offmsg {
+  display: grid;
+}
+
+/* ---------- Teletexto ---------- */
+.sala-ttx {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  color: #fff;
+  font-family: theme("fontFamily.osd");
+  font-size: clamp(10px, 3.05cqw, 22px);
+  line-height: 1.12;
+  padding: 2.2cqw 3.4cqw;
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+}
+.sala-ttx-top {
+  display: flex;
+  gap: 2.4cqw;
+  white-space: nowrap;
+}
+.sala-ttx-top .y {
+  color: #ffff00;
+}
+.sala-ttx-top .c {
+  color: #00ffff;
+  margin-left: auto;
+}
+.sala-ttx-title {
+  margin: 1cqw 0 0.8cqw;
+  background: #0000cc;
+  padding: 0.4cqw 1.6cqw 0.9cqw;
+  display: flex;
+  gap: 2cqw;
+  align-items: baseline;
+}
+.sala-ttx-title b {
+  font-weight: 400;
+  font-size: 1.8em;
+  line-height: 1;
+  color: #ffff00;
+  transform: scaleY(1.3);
+  transform-origin: bottom;
+  display: inline-block;
+}
+.sala-ttx-title b + b {
+  color: #fff;
+}
+.sala-ttx-title span {
+  margin-left: auto;
+  color: #00ffff;
+  text-align: right;
+}
+.sala-ttx ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.sala-ttx li button {
+  display: flex;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  padding: 0.06em 0;
+  color: inherit;
+}
+.sala-ttx li button:hover .tx {
+  background: #fff;
+  color: #000;
+}
+.sala-ttx li .tx {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.sala-ttx li .dots {
+  flex: 1;
+  min-width: 1.5em;
+  border-bottom: 0.3cqw dotted currentColor;
+  margin: 0 1cqw;
+  opacity: 0.7;
+  transform: translateY(-0.5cqw);
+}
+.sala-ttx li .pg {
+  color: #ffff00;
+}
+.sala-ttx li.g {
+  color: #00ff00;
+}
+.sala-ttx li.c {
+  color: #00ffff;
+}
+.sala-ttx li .bullet {
+  color: #00ffff;
+  margin-right: 0.6em;
+}
+.sala-ttx-note {
+  color: #ff00ff;
+  margin: 0.4cqw 0 1cqw;
+  display: flex;
+  justify-content: space-between;
+  gap: 2cqw;
+}
+.sala-ttx-fast {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1cqw;
+}
+.sala-ttx-fast button {
+  padding: 0.2cqw 1cqw;
+  color: #000;
+  text-align: left;
+}
+.sala-ttx-fast .f-r {
+  background: #ff0000;
+}
+.sala-ttx-fast .f-g {
+  background: #00ff00;
+}
+.sala-ttx-fast .f-y {
+  background: #ffff00;
+}
+.sala-ttx-fast .f-b {
+  background: #00aaff;
+}
+
+/* ---------- Cápsula ---------- */
+.sala-caps {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 8, 18, 0.66);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  padding: 4cqw;
+  cursor: default;
+}
+.sala-caps-card {
+  width: 100%;
+  max-width: 86cqw;
+  font-size: clamp(11px, 2.35cqw, 16px);
+}
+.sala-caps-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.1em;
+}
+.sala-caps-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  background: rgba(48, 164, 108, 0.18);
+  color: #5bd49a;
+  border: 1px solid rgba(48, 164, 108, 0.45);
+  border-radius: 999px;
+  padding: 0.25em 0.8em;
+  font-weight: 650;
+  font-size: 0.9em;
+}
+.sala-caps-timer {
+  position: relative;
+  width: 3em;
+  height: 3em;
+  display: grid;
+  place-items: center;
+  font-family: theme("fontFamily.osd");
+  font-size: 1.2em;
+  color: #fff;
+}
+.sala-caps-timer svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.sala-caps-q {
+  color: #fff;
+  font-size: 1.5em;
+  line-height: 1.22;
+  font-weight: 650;
+  margin: 0 0 0.9em;
+}
+.sala-caps-opts {
+  display: grid;
+  gap: 0.5em;
+}
+.sala-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  text-align: left;
+  padding: 0.62em 0.85em;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8eaf4;
+  line-height: 1.3;
+}
+.sala-opt:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.sala-opt .l {
+  font-family: theme("fontFamily.osd");
+  font-size: 1.25em;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.sala-opt.ok {
+  border-color: theme("colors.tecla.green");
+  background: rgba(48, 164, 108, 0.22);
+}
+.sala-caps-e {
+  margin: 0.9em 0 0;
+  color: #c9f2de;
+  line-height: 1.45;
+}
+.sala-caps-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1em;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9em;
+}
+.sala-caps-foot button {
+  color: theme("colors.brand.400");
+  font-weight: 650;
+}
+
+/* En pantallas estrechas el teletexto y la cápsula no caben en la tele: van
+   debajo, en su propio recuadro (la tele sigue sonando arriba). */
+.sala-dock {
+  margin-top: 16px;
+  position: relative;
+  container-type: inline-size;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid theme("colors.sala.line");
+}
+.sala-dock .sala-ttx,
+.sala-dock .sala-caps {
+  position: relative;
+  inset: auto;
+  min-height: 260px;
+}
+.sala-dock .sala-ttx {
+  font-size: 13px;
+  padding: 12px;
+}
+.sala-dock .sala-caps {
+  padding: 18px;
+}
+.sala-dock .sala-caps-card {
+  max-width: none;
+  font-size: 14px;
+}
+
+/* ---------- Control remoto ---------- */
+.sala-remote {
+  width: 172px;
+  justify-self: center;
+  background: theme("colors.sala.remote");
+  border-radius: 46px 46px 62px 62px;
+  padding: 20px 18px 24px;
+  box-shadow: 0 40px 60px -20px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transform: rotate(-4deg);
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sala-remote:hover,
+.sala-remote:focus-within {
+  transform: rotate(0);
+}
+.sala-ir {
+  width: 24px;
+  height: 8px;
+  border-radius: 4px;
+  background: #3a1f2a;
+  margin: 0 auto 14px;
+  transition: background 0.1s, box-shadow 0.1s;
+}
+.sala-ir.blink {
+  background: #ff4d6d;
+  box-shadow: 0 0 12px #ff4d6d;
+}
+.sala-r-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sala-rk {
+  background: theme("colors.sala.key");
+  color: theme("colors.sala.body");
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 3px 0 theme("colors.sala.key-edge");
+  transition: transform 0.07s, box-shadow 0.07s, background 0.15s;
+}
+.sala-rk:hover {
+  background: #2e3356;
+  color: theme("colors.sala.ink");
+}
+.sala-rk:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 0 theme("colors.sala.key-edge");
+}
+.sala-rk.pwr {
+  color: #ff6b6b;
+}
+.sala-rockers {
+  display: flex;
+  justify-content: space-between;
+  margin: 16px 0;
+}
+.sala-rocker {
+  width: 54px;
+  height: 122px;
+  border-radius: 27px;
+  background: theme("colors.sala.key");
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 3px 0 theme("colors.sala.key-edge");
+}
+.sala-rocker button {
+  flex: 1;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  color: theme("colors.sala.body");
+}
+.sala-rocker button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: theme("colors.sala.ink");
+}
+.sala-rocker button:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+.sala-rocker span {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: theme("colors.sala.faint");
+  font-weight: 700;
+  padding: 2px 0;
+}
+.sala-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 10px;
+  justify-items: center;
+}
+.sala-numpad .sala-rk {
+  width: 36px;
+  height: 28px;
+  border-radius: 14px;
+  font-family: theme("fontFamily.osd");
+  font-size: 19px;
+}
+.sala-numpad .z {
+  grid-column: 2;
+}
+.sala-ckeys {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 18px;
+}
+.sala-ck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: theme("colors.sala.muted");
+  font-size: 9.5px;
+  font-weight: 650;
+}
+.sala-ck i {
+  width: 26px;
+  height: 11px;
+  border-radius: 6px;
+  background: var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(0, 0, 0, 0.45);
+  transition: box-shadow 0.2s;
+}
+.sala-ck:hover,
+.sala-ck.on {
+  color: theme("colors.sala.ink");
+}
+.sala-ck.on i {
+  box-shadow: 0 0 0 2px theme("colors.sala.remote"), 0 0 0 3.5px var(--c), 0 0 14px var(--c);
+}
+.sala-zap {
+  margin: 20px auto 0;
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  background: theme("colors.brand.600");
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 0 0 5px theme("colors.sala.key"), 0 6px 0 5px theme("colors.sala.key-edge"),
+    0 0 34px rgba(0, 224, 172, 0.22);
+  transition: transform 0.08s, background 0.15s;
+}
+.sala-zap:hover {
+  background: theme("colors.brand.700");
+}
+.sala-zap:active {
+  transform: translateY(3px);
+}
+.sala-r-brand {
+  text-align: center;
+  margin-top: 20px;
+  font-family: theme("fontFamily.tele");
+  color: #3a3f66;
+  letter-spacing: 0.3em;
+  font-size: 12px;
+}
+
+/* ---------- Barra "ahora" ---------- */
+.sala-now {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: theme("colors.sala.panel");
+  border: 1px solid theme("colors.sala.line");
+  border-radius: 8px;
+}
+.sala-chnum {
+  font-family: theme("fontFamily.osd");
+  font-size: 28px;
+  line-height: 1;
+  color: theme("colors.tele.osd");
+  background: #04211b;
+  border: 1px solid rgba(0, 224, 172, 0.25);
+  border-radius: 6px;
+  padding: 5px 9px;
+  min-width: 52px;
+  text-align: center;
+}
+.sala-now-t {
+  min-width: 0;
+}
+.sala-now-t b {
+  display: block;
+  color: theme("colors.sala.ink");
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sala-now-t span {
+  font-size: 12.5px;
+  color: theme("colors.sala.muted");
+}
+.sala-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: theme("colors.tecla.red");
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.sala-live i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  animation: sala-blink 1.2s steps(2, start) infinite;
+}
+@keyframes sala-blink {
+  to {
+    visibility: hidden;
+  }
+}
+.sala-live.blue {
+  background: theme("colors.tecla.blue");
+}
+.sala-live.yt {
+  background: #cc0022;
+}
+.sala-now-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.sala-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid theme("colors.sala.line-2");
+  color: theme("colors.sala.body");
+  font-size: 13px;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.sala-btn:hover:not(:disabled) {
+  border-color: rgba(47, 191, 161, 0.55);
+  color: theme("colors.sala.ink");
+}
+.sala-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sala-btn.primary {
+  background: theme("colors.brand.600");
+  border-color: theme("colors.brand.600");
+  color: #fff;
+}
+.sala-btn.primary:hover {
+  background: theme("colors.brand.700");
+  border-color: theme("colors.brand.700");
+}
+.sala-error {
+  margin-top: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 217, 10, 0.3);
+  background: rgba(245, 217, 10, 0.08);
+  color: #f5e98a;
+  font-size: 13px;
+}
+.sala-error button {
+  margin-left: auto;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* ---------- Programación ---------- */
+.sala-guide {
+  margin-top: 52px;
+}
+.sala-g-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sala-h2 {
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 670;
+  margin-top: 6px;
+}
+.sala-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sala-chip {
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid theme("colors.sala.line-2");
+  color: theme("colors.sala.muted");
+  font-size: 13px;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.sala-chip:hover {
+  color: theme("colors.sala.ink");
+}
+.sala-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.sala-chip.on {
+  background: theme("colors.sala.ink");
+  color: theme("colors.sala.bg");
+  border-color: theme("colors.sala.ink");
+}
+.sala-row {
+  margin-top: 30px;
+}
+.sala-row-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.sala-row-h h3 {
+  font-size: 17px;
+  font-weight: 650;
+}
+.sala-row-h .key {
+  width: 20px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--c);
+}
+.sala-row-h .count {
+  color: theme("colors.sala.faint");
+  font-size: 13px;
+}
+.sala-arrows {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.sala-arrows button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid theme("colors.sala.line-2");
+  display: grid;
+  place-items: center;
+  color: theme("colors.sala.muted");
+}
+.sala-arrows button:hover {
+  color: theme("colors.sala.ink");
+  border-color: theme("colors.sala.faint");
+}
+.sala-shelf {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 214px;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px 2px 12px;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+.sala-shelf::-webkit-scrollbar {
+  display: none;
+}
+.sala-shelf.wide {
+  grid-auto-columns: 280px;
+}
+.sala-card {
+  scroll-snap-align: start;
+  background: theme("colors.sala.panel");
+  border: 1px solid theme("colors.sala.line");
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  text-align: left;
+  display: block;
+  width: 100%;
+}
+.sala-card:hover {
+  transform: translateY(-3px);
+  border-color: theme("colors.sala.line-2");
+}
+.sala-card.on {
+  border-color: theme("colors.tele.osd");
+  box-shadow: 0 0 0 1px theme("colors.tele.osd"), 0 12px 30px -12px rgba(0, 224, 172, 0.45);
+}
+.sala-poster {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #1a1030;
+}
+.sala-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+.sala-poster .num {
+  position: absolute;
+  left: 10px;
+  top: 4px;
+  font-family: theme("fontFamily.osd");
+  font-size: 30px;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+.sala-poster .tag {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 1;
+}
+.sala-poster .play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.25);
+}
+.sala-poster .play span {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: theme("colors.sala.bg");
+  display: grid;
+  place-items: center;
+}
+.sala-card:hover .sala-poster .play {
+  opacity: 1;
+}
+.sala-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sala-meta {
+  padding: 10px 12px 12px;
+  min-width: 0;
+}
+.sala-meta .t {
+  font-size: 14px;
+  font-weight: 600;
+  color: theme("colors.sala.ink");
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sala-meta .s {
+  font-size: 12.5px;
+  color: theme("colors.sala.muted");
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sala-rcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+.sala-rcard .sala-meta {
+  padding: 0;
+}
+.sala-vinyl {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  background: radial-gradient(circle, #0b0d18 0 9%, var(--c) 10% 30%, #15182c 31% 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.sala-vinyl::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 2px, rgba(255, 255, 255, 0.05) 2px 3px);
+  -webkit-mask: radial-gradient(circle, transparent 0 32%, #000 33%);
+  mask: radial-gradient(circle, transparent 0 32%, #000 33%);
+}
+.sala-card.on .sala-vinyl {
+  animation: sala-spin 2.4s linear infinite;
+}
+@keyframes sala-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sala-tcard {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sala-tcard .ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+.sala-tcard p {
+  font-size: 13px;
+  color: theme("colors.sala.muted");
+  line-height: 1.45;
+}
+.sala-tcard b {
+  color: theme("colors.sala.ink");
+  font-size: 15px;
+}
+.sala-flip {
+  scroll-snap-align: start;
+  perspective: 900px;
+  height: 196px;
+  text-align: left;
+}
+.sala-flip .in {
+  position: relative;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.3, 0.9, 0.3, 1);
+  transform-style: preserve-3d;
+}
+.sala-flip.on .in {
+  transform: rotateY(180deg);
+}
+.sala-face {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid theme("colors.sala.line");
+  background: theme("colors.sala.panel");
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sala-face .k {
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #5bd49a;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sala-face .q {
+  color: theme("colors.sala.ink");
+  font-size: 15.5px;
+  line-height: 1.3;
+  font-weight: 620;
+}
+.sala-face .a {
+  color: #d5f5e5;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.sala-face .hint {
+  margin-top: auto;
+  font-size: 12px;
+  color: theme("colors.sala.faint");
+}
+.sala-face.back {
+  transform: rotateY(180deg);
+  background: #0f2a22;
+  border-color: rgba(48, 164, 108, 0.4);
+}
+.sala-empty {
+  padding: 18px;
+  border: 1px dashed theme("colors.sala.line-2");
+  border-radius: 8px;
+  color: theme("colors.sala.muted");
+  font-size: 13px;
+}
+
+/* ---------- Pausa comercial ---------- */
+.sala-break {
+  margin-top: 56px;
+  position: relative;
+  border: 1px dashed rgba(47, 191, 161, 0.4);
+  border-radius: 12px;
+  padding: 30px;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 32px;
+  align-items: center;
+  background: theme("colors.sala.raise");
+}
+.sala-break .tag {
+  position: absolute;
+  top: -13px;
+  left: 22px;
+  background: theme("colors.brand.400");
+  color: #04211b;
+  font-family: theme("fontFamily.osd");
+  font-size: 19px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.08em;
+}
+.sala-break h2 {
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 670;
+  margin-top: 6px;
+  text-wrap: balance;
+}
+.sala-break p {
+  color: theme("colors.sala.muted");
+  margin: 10px 0 18px;
+  font-size: 15px;
+  max-width: 46ch;
+}
+.sala-seeds {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.sala-seed {
+  min-height: 30px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid theme("colors.sala.line-2");
+  color: theme("colors.sala.muted");
+  font-size: 12.5px;
+  text-align: left;
+}
+.sala-seed.on {
+  border-color: theme("colors.brand.400");
+  color: theme("colors.sala.ink");
+  background: rgba(47, 191, 161, 0.1);
+}
+/* Vista previa del Taller: a propósito en el tema CLARO del resto del sistema. */
+.sala-preview {
+  background: theme("colors.surface.muted");
+  border-radius: 10px;
+  padding: 18px;
+  color: theme("colors.ink.body");
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+}
+.sala-preview .ph {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: theme("colors.ink.muted");
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.sala-preview .ph i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: theme("colors.brand.600");
+}
+.sala-preview .box {
+  background: #fff;
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: theme("boxShadow.card");
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+}
+.sala-preview .typed {
+  font-size: 15px;
+  color: theme("colors.ink.DEFAULT");
+  min-height: 48px;
+}
+.sala-preview .caret {
+  display: inline-block;
+  width: 2px;
+  height: 17px;
+  background: theme("colors.brand.600");
+  vertical-align: -3px;
+  margin-left: 1px;
+  animation: sala-blink 1s steps(2, start) infinite;
+}
+.sala-preview .pf {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.sala-preview .pf span {
+  font-size: 12px;
+  color: theme("colors.ink.faint");
+}
+.sala-preview .go {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: theme("colors.brand.600");
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ---------- Pie ---------- */
+.sala-foot {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid theme("colors.sala.line");
+  font-size: 12.5px;
+  color: theme("colors.sala.faint");
+  line-height: 2;
+}
+.sala-foot kbd {
+  font-family: theme("fontFamily.osd");
+  font-size: 15px;
+  color: theme("colors.sala.body");
+  border: 1px solid theme("colors.sala.line-2");
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  margin: 0 2px;
+}
+
+/* ---------- Anchos intermedios y estrechos (del CONTENEDOR) ---------- */
+@container sala (max-width: 1100px) {
+  .sala-wrap {
+    padding: 22px 24px 48px;
+  }
+  .sala-stage {
+    grid-template-columns: minmax(0, 1fr) 160px;
+    gap: 20px;
+  }
+  .sala-remote {
+    width: 160px;
+    padding: 18px 14px 22px;
+  }
+}
+@container sala (max-width: 760px) {
+  .sala-wrap {
+    padding: 16px 16px 40px;
+  }
+  .sala-h1 {
+    font-size: 25px;
+    line-height: 29px;
+  }
+  .sala-stage {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .sala-room {
+    padding: 64px 0 20px;
+  }
+  .sala-tv-body {
+    border-radius: 26px;
+    padding: 12px 12px 32px;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    gap: 10px;
+  }
+  .sala-bezel {
+    border-radius: 16px;
+    padding: 6px;
+  }
+  .sala-screen {
+    border-radius: 12px / 11px;
+  }
+  .sala-knob {
+    width: 28px;
+    height: 28px;
+    border-width: 3px;
+  }
+  .sala-knob::after {
+    height: 8px;
+    top: 2px;
+    width: 3px;
+    margin-left: -1.5px;
+  }
+  .sala-grille {
+    width: 26px;
+  }
+  .sala-grille i:nth-child(n + 4) {
+    display: none;
+  }
+  .sala-tv-brand {
+    font-size: 11px;
+    bottom: 7px;
+    left: 14px;
+    right: 64px;
+  }
+  .sala-dvd {
+    height: 18px;
+    border-width: 3px;
+  }
+  .sala-feet i {
+    width: 12px;
+    height: 12px;
+  }
+  .sala-feet span {
+    gap: 12px;
+  }
+  .sala-cable,
+  .sala-plant,
+  .sala-books {
+    display: none;
+  }
+  .sala-board {
+    height: 44px;
+    padding: 7px 9px;
+  }
+  .sala-remote {
+    width: 100%;
+    transform: none;
+    border-radius: 24px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .sala-remote:hover,
+  .sala-remote:focus-within {
+    transform: none;
+  }
+  .sala-ir,
+  .sala-numpad,
+  .sala-r-brand,
+  .sala-rk.mute {
+    display: none;
+  }
+  .sala-rockers {
+    margin: 0;
+    gap: 8px;
+  }
+  .sala-rocker {
+    flex-direction: row;
+    height: 40px;
+    width: auto;
+    border-radius: 20px;
+  }
+  .sala-rocker button {
+    width: 40px;
+    height: 40px;
+    flex: none;
+  }
+  .sala-rocker span {
+    padding: 0 2px;
+  }
+  .sala-ckeys {
+    margin: 0;
+    gap: 10px;
+  }
+  .sala-zap {
+    width: 54px;
+    height: 54px;
+    margin: 0;
+    font-size: 9.5px;
+    box-shadow: 0 0 0 3px theme("colors.sala.key"), 0 4px 0 3px theme("colors.sala.key-edge");
+  }
+  .sala-now {
+    flex-wrap: wrap;
+  }
+  .sala-now-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .sala-now-actions .sala-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 0 8px;
+  }
+  .sala-now-actions .lbl {
+    display: none;
+  }
+  .sala-shelf {
+    grid-auto-columns: 72%;
+  }
+  .sala-shelf.wide {
+    grid-auto-columns: 84%;
+  }
+  .sala-row-h .count,
+  .sala-clockp,
+  .sala-sep {
+    display: none;
+  }
+  .sala-break {
+    grid-template-columns: 1fr;
+    padding: 24px 18px;
+  }
+  .sala-break h2 {
+    font-size: 23px;
+    line-height: 27px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sala *,
+  .sala *::before,
+  .sala *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Ecualizador diminuto "en el aire": lo usa también el menú lateral (fuera de
+   La Sala) para decir que algo está sonando. */
+.sala-onair {
+  display: inline-flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 12px;
+}
+.sala-onair i {
+  width: 2px;
+  background: theme("colors.tele.osd");
+  border-radius: 1px;
+  animation: sala-eq 1s ease-in-out infinite;
+}
+.sala-onair i:nth-child(2) {
+  animation-delay: -0.4s;
+}
+.sala-onair i:nth-child(3) {
+  animation-delay: -0.7s;
+}
+@keyframes sala-eq {
+  0%,
+  100% {
+    height: 3px;
+  }
+  50% {
+    height: 12px;
+  }
+}

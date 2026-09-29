@@ -46,6 +46,21 @@ export const DEFAULT_CHANNELS: CustomChannel[] = [
   // --- 🌸 Anime ---
   { name: "MAX Anime", url: "https://cdnlive.klicgo.net/maxanime/live/playlist.m3u8", category: "Anime" },
   { name: "EnerGeek Anime", url: "https://backend.energeek.cl/webtv/egfanweb/index.m3u8?token=ZZDemoIPTVGH", category: "Anime" },
+
+  // --- 📰 Noticias (2026-09-29) ---
+  // Mismo filtro que el resto (Chrome + hls.js, >8 s de avance con fotograma
+  // real) y además CORS comprobado contra el origen de PRODUCCIÓN: France 24
+  // no responde con `*` sino devolviendo el origen, así que se verificó con
+  // metaagente-frontend.onrender.com y no solo desde localhost.
+  // Es la categoría que alimenta la fila «Infórmate» de La Sala. Euronews en
+  // español (restream de tlink.cl) se probó y no reprodujo: fuera.
+  { name: "DW Español", url: "https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/master.m3u8", category: "Noticias" },
+  { name: "France 24 Español", url: "https://live.france24.com/hls/live/2037220-b/F24_ES_HI_HLS/master_5000.m3u8", category: "Noticias" },
+  { name: "Red+ Noticias (Colombia)", url: "https://inforedvos.lcdn.claro.net.co/Content/HLS_HLS_DIR/Live/channel(REDMASHDWEB)/master.m3u8", category: "Noticias" },
+  { name: "T13 En Vivo (Chile)", url: "https://redirector.dps.live/hls/t13/playlist.m3u8", category: "Noticias" },
+  { name: "Canal 26 (Argentina)", url: "https://stream-gtlc.telecentro.net.ar/hls/canal26hls/main.m3u8", category: "Noticias" },
+  { name: "Estrella News", url: "https://estrella-news-oando.amagi.tv/playlist.m3u8", category: "Noticias" },
+  { name: "Newsmax Español", url: "https://n1ottesorkatv.akamaized.net/hls/live/2113795/Live_1/index.m3u8", category: "Noticias" },
 ];
 
 /**

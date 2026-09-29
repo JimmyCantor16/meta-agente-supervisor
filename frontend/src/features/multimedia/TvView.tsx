@@ -32,7 +32,9 @@ export function TvView() {
         {!dockedHere && (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-ink-faint">
             <span className="text-3xl">📺</span>
-            <span className="text-xs">{t.multimedia.tvEmpty}</span>
+            <span className="text-xs">
+              {m.active === "tv" && m.placement === "stage" ? t.multimedia.onStage : t.multimedia.tvEmpty}
+            </span>
           </div>
         )}
       </div>
