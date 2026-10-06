@@ -559,6 +559,8 @@ const es = {
     pipNeedsTv: "Primero elige un canal de TV que se esté viendo.",
     pipUnsupported: "Tu navegador no permite sacar la tele fuera. Usa Chrome o Edge.",
     pipFailed: "No pude sacar la tele del navegador. Prueba con un canal que se esté viendo bien.",
+    castError: "La tele no pudo cargar este canal. Prueba con otro o vuelve a conectarla.",
+    castYoutube: "YouTube se ve aquí, no en la tele: para verlo allí usa la app de YouTube de tu televisor.",
     poppedOut: "En ventana flotante",
     bringBack: "Traer de vuelta",
     fullscreen: "Pantalla completa",
@@ -638,6 +640,11 @@ const es = {
     keyText: "Texto",
     keyRadio: "Radio",
     zap: "ZAPPING",
+    // Google Cast (la tele de verdad: Google TV, Chromecast)
+    cast: "Enviar a la tele",
+    castStop: "Dejar de enviar",
+    castOn: (tele: string | null) => (tele ? `Viendo en ${tele}` : "Viendo en la tele"),
+    castNoDevices: "No encuentro ninguna tele en tu Wi-Fi. Conecta este equipo a la misma red que tu Google TV.",
     // Barra "ahora"
     nothing: "Nada sonando todavía",
     nothingSub: "Elige un canal, una emisora o un video",
@@ -1339,6 +1346,8 @@ const en: Translation = {
     pipNeedsTv: "First pick a TV channel that is actually playing.",
     pipUnsupported: "Your browser can't pop the TV out. Use Chrome or Edge.",
     pipFailed: "Couldn't pop the TV out. Try a channel that is playing well.",
+    castError: "The TV couldn't load this channel. Try another one or reconnect it.",
+    castYoutube: "YouTube plays here, not on the TV: use your TV's YouTube app to watch it there.",
     poppedOut: "In floating window",
     bringBack: "Bring it back",
     fullscreen: "Fullscreen",
@@ -1418,6 +1427,11 @@ const en: Translation = {
     keyText: "Text",
     keyRadio: "Radio",
     zap: "ZAPPING",
+    // Google Cast (the real TV: Google TV, Chromecast)
+    cast: "Send to TV",
+    castStop: "Stop sending",
+    castOn: (tele: string | null) => (tele ? `Watching on ${tele}` : "Watching on the TV"),
+    castNoDevices: "No TV found on your Wi-Fi. Put this device on the same network as your Google TV.",
     // "Now" bar
     nothing: "Nothing playing yet",
     nothingSub: "Pick a channel, a station or a video",

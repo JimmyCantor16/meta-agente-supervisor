@@ -579,6 +579,15 @@
 .sala-aviso button:hover {
   background: theme("colors.brand.700");
 }
+/* Viendo en la tele (Google Cast): la pantalla de aquí se queda en negro con el aviso. */
+.sala-aviso.cast {
+  color: #fff;
+}
+.sala-aviso.cast > svg {
+  color: theme("colors.tele.osd");
+  width: clamp(26px, 8cqw, 48px);
+  height: auto;
+}
 .sala-pw {
   position: absolute;
   inset: 0;
@@ -982,6 +991,18 @@
 }
 .sala-rk.pwr {
   color: #ff6b6b;
+}
+/* Tecla «Enviar a la tele» (Google Cast): sin teles a la vista, buscando, conectada. */
+.sala-rk.cast.sin-dispositivos {
+  opacity: 0.55;
+}
+.sala-rk.cast.conectando {
+  animation: sala-blink 0.9s steps(2, start) infinite;
+}
+.sala-rk.cast.conectado {
+  color: theme("colors.tele.osd");
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 3px 0 theme("colors.sala.key-edge"),
+    0 0 14px rgba(0, 224, 172, 0.45);
 }
 .sala-rockers {
   display: flex;

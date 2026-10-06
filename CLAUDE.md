@@ -308,9 +308,32 @@ Publicar. Diseño de referencia: `docs/mockups/la-sala.html` (local).
   backend borra usuarios y cursos, y una sección de noticias no vale ese
   precio. Una fuente nueva sin comprobar su CORS = una página que siempre dice
   "no disponible".
-- **Canales de noticias** (categoría `Noticias` de `defaultChannels.ts`,
-  `CHANNELS_VER` = 4): verificados en Chrome con hls.js Y con CORS contra el
-  origen de producción (France 24 no responde `*`, devuelve el origen).
+- **Canales de la tele** (`defaultChannels.ts`, `CHANNELS_VER` = 5, oct-2026):
+  el ORDEN es el número del canal en el mando, y toda URL que entra en la
+  lista entra también en `LEGACY_SEEDED_URLS` el mismo día (si no, al
+  retirarla se queda en los navegadores como si la hubiera puesto el
+  usuario). Se verifican en **Chrome real** (Playwright con
+  `channel: "chrome"`; el Chromium de Playwright no trae H.264) con hls.js,
+  desde una página servida con `page.route` en el ORIGEN DE PRODUCCIÓN, y
+  cuentan solo si decodifican fotogramas (>6 s de avance y
+  `getVideoPlaybackQuality().totalVideoFrames` > 0: Mega Cine TV avanzaba
+  con audio y sin imagen). `curl` NO basta: France 24, T13, NTN24 y los
+  regionales de cdnmedia.tv devuelven CORS a curl y al navegador NO. Pluto
+  (Comedy Central en español) sigue bloqueado; Star Channel solo existe en
+  `http://` (local). Categoría `Colombia` = públicos y regionales (RTVC,
+  Capital, Telepacífico, TeleQuindío, Canal Más); `Noticias` alimenta la
+  fila «Infórmate». Un error fatal de hls.js ya no es SIN SEÑAL al primer
+  tropiezo: la red se reintenta dos veces y el decodificador se recupera.
+- **Enviar a la tele (Google Cast)** (`multimedia/lib/cast.ts`): tecla en el
+  mando y botón en la barra «ahora». La tele NO recibe el vídeo desde el
+  equipo: Chrome le pasa la URL y la tele lo descarga ella (Default Media
+  Receiver), así que necesita lo mismo que el navegador —HTTPS y CORS— y
+  mientras dura la sesión `playTv`/`playRadio` mandan allí y aquí no se
+  descarga nada (sonaría dos veces). Al cortar, vuelve por donde iba.
+  YouTube no se puede enviar (iframe oficial). Solo Chrome/Edge con el
+  componente de Cast: Firefox, Safari y el WebView2 de Tauri reciben
+  `__onGCastApiAvailable(false)` y la opción no se dibuja. El SDK se baja de
+  gstatic 1,5 s después de montar, nunca en el primer pintado.
 - **Facebook y WhatsApp Web** (`lib/abrirExterno.ts`, `components/AppsExternas.tsx`):
   NO se pueden incrustar (`X-Frame-Options`, y dentro de un iframe no llegarían
   sus cookies). Se abren en el navegador, donde el usuario ya tiene su sesión;

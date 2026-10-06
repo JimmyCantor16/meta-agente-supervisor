@@ -11,3 +11,4 @@ export { MultimediaDock } from "./MultimediaDock";
 export { DEFAULT_STATIONS } from "./lib/defaultStations";
 export { miniaturaDe } from "./lib/youtube";
 export type { StreamItem, YoutubeItem, CustomChannel } from "./types";
+export type { EstadoCast } from "./lib/cast";

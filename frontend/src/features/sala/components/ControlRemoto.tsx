@@ -1,7 +1,8 @@
 import { useRef } from "react";
 import type { CSSProperties, MouseEvent } from "react";
-import { ChevronDown, ChevronUp, Minus, Plus, Power, Shuffle, Volume2, VolumeX } from "lucide-react";
+import { Cast, ChevronDown, ChevronUp, Minus, Plus, Power, Shuffle, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import type { EstadoCast } from "../../multimedia";
 
 /** Las cuatro teclas de color: cada una es un pilar de La Sala. */
 export type TeclaColor = "tv" | "caps" | "ttx" | "radio";
@@ -9,6 +10,9 @@ export type TeclaColor = "tv" | "caps" | "ttx" | "radio";
 interface Props {
   activa: TeclaColor | null;
   mudo: boolean;
+  /** Google Cast: la tecla no se dibuja cuando el navegador no sabe de teles. */
+  cast: EstadoCast;
+  onCast: () => void;
   onPower: () => void;
   onMute: () => void;
   onCanal: (paso: 1 | -1) => void;
@@ -43,6 +47,9 @@ export function ControlRemoto(p: Props) {
     window.setTimeout(() => led.classList.remove("blink"), 140);
   };
 
+  const castTitulo =
+    p.cast === "conectado" ? t.sala.castStop : p.cast === "sin-dispositivos" ? t.sala.castNoDevices : t.sala.cast;
+
   const teclas: { k: TeclaColor; label: string }[] = [
     { k: "tv", label: t.sala.keyLive },
     { k: "caps", label: t.sala.keyLearn },
@@ -62,6 +69,18 @@ export function ControlRemoto(p: Props) {
         <button type="button" className="sala-rk pwr" onClick={p.onPower} aria-label={t.sala.power} title={t.sala.power}>
           <Power size={18} />
         </button>
+        {p.cast !== "no-disponible" && (
+          <button
+            type="button"
+            className={`sala-rk cast ${p.cast}`}
+            onClick={p.onCast}
+            aria-label={castTitulo}
+            title={castTitulo}
+            aria-pressed={p.cast === "conectado"}
+          >
+            <Cast size={18} />
+          </button>
+        )}
         <button type="button" className="sala-rk mute" onClick={p.onMute} aria-label={t.sala.mute} title={t.sala.mute}>
           {p.mudo ? <VolumeX size={18} /> : <Volume2 size={18} />}
         </button>

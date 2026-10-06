@@ -1,7 +1,7 @@
 import "../sala.css";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ExternalLink, Flame, Maximize, PictureInPicture2, X } from "lucide-react";
+import { Cast, ExternalLink, Flame, Maximize, PictureInPicture2, X } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import { useAuth } from "../../auth/AuthProvider";
 import { obtenerCamino } from "../../../lib/api";
@@ -355,8 +355,20 @@ export function LaSala({ onIr, onLlevarIdea }: Props) {
       <Capsula onCerrar={cerrarCapa} />
     ) : null;
 
+  const castConectado = m.castEstado === "conectado";
+  const castTitulo = castConectado ? g.castStop : m.castEstado === "sin-dispositivos" ? g.castNoDevices : g.cast;
+  const alternarTele = castConectado ? m.cortarTele : m.enviarATele;
+
   const aviso: ReactNode =
-    modo === "tv" && (m.poppedOut || m.placement === "floating") ? (
+    castConectado && (modo === "tv" || modo === "radio") ? (
+      <div className="sala-aviso cast">
+        <Cast />
+        <span>{g.castOn(m.castNombre)}</span>
+        <button type="button" onClick={m.cortarTele}>
+          {g.castStop}
+        </button>
+      </div>
+    ) : modo === "tv" && (m.poppedOut || m.placement === "floating") ? (
       <div className="sala-aviso">
         <span>{m.poppedOut ? g.inWindow : g.inMini}</span>
         <button type="button" onClick={m.poppedOut ? m.requestPip : m.dockVideo}>
@@ -465,6 +477,8 @@ export function LaSala({ onIr, onLlevarIdea }: Props) {
           <ControlRemoto
             activa={teclaActiva}
             mudo={m.volume === 0}
+            cast={m.castEstado}
+            onCast={alternarTele}
             onPower={power}
             onMute={silenciar}
             onCanal={pasoCanal}
@@ -490,6 +504,17 @@ export function LaSala({ onIr, onLlevarIdea }: Props) {
             </span>
           )}
           <div className="sala-now-actions">
+            {m.castEstado !== "no-disponible" && (
+              <button
+                type="button"
+                className={`sala-btn${castConectado ? " primary" : ""}`}
+                onClick={alternarTele}
+                title={castTitulo}
+              >
+                <Cast size={16} />
+                <span className="lbl">{castConectado ? g.castStop : g.cast}</span>
+              </button>
+            )}
             <button type="button" className="sala-btn" disabled={modo !== "tv"} onClick={m.minimizeVideo} title={g.mini}>
               <PictureInPicture2 size={16} />
               <span className="lbl">{g.mini}</span>

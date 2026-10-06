@@ -15,6 +15,19 @@ import { searchRadio as apiSearchRadio, topRadio } from "./lib/radioBrowser";
 import { DEFAULT_CHANNELS, LEGACY_SEEDED_URLS } from "./lib/defaultChannels";
 import { DEFAULT_STATIONS, filterStations } from "./lib/defaultStations";
 import { loadCountryIptv } from "./lib/iptv";
+import {
+  alternarCast,
+  cargarCast,
+  cortarCast,
+  detenerMediaCast,
+  enviarCast,
+  escucharCast,
+  estadoCast,
+  nombreDispositivoCast,
+  pedirSesionCast,
+  volumenCast,
+} from "./lib/cast";
+import type { EstadoCast } from "./lib/cast";
 import type { CustomChannel, StreamItem, VideoPlacement, YoutubeItem } from "./types";
 import { YOUTUBE_SUGERIDOS, consultarOEmbed, parseYoutube } from "./lib/youtube";
 
@@ -202,6 +215,15 @@ interface MultimediaContextValue {
   setStageCover: (cubierta: boolean) => void;
   /** El <video> vivo, para que La Sala pinte su luz ambiente sin tocar el stream. */
   getVideo: () => HTMLVideoElement | null;
+
+  // Google Cast: mandar lo que suena a una tele con Chromecast (Google TV).
+  castEstado: EstadoCast;
+  /** Nombre con el que la tele se presenta en la red, si hay sesión. */
+  castNombre: string | null;
+  /** Abre el selector de teles de Chrome (llamar desde un clic). */
+  enviarATele: () => void;
+  /** Corta la sesión: lo que sonaba en la tele vuelve a este equipo. */
+  cortarTele: () => void;
 }
 
 const Ctx = createContext<MultimediaContextValue | null>(null);
@@ -213,7 +235,7 @@ export function useMultimedia(): MultimediaContextValue {
 }
 
 const LS_CHANNELS_VER = "mm.channelsVer";
-const CHANNELS_VER = "4"; // subir cuando cambie la lista curada de canales
+const CHANNELS_VER = "5"; // subir cuando cambie la lista curada de canales
 
 /**
  * Lista de YouTube del usuario, guardada en SU navegador.
@@ -312,6 +334,17 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   const volumeRef = useRef(volume);
   volumeRef.current = volume;
 
+  // --- Google Cast ---
+  // Mientras haya una tele conectada, los `play*` mandan allí en vez de
+  // reproducir aquí; lo leen por ref para no quedarse con un estado viejo.
+  const [castEstado, setCastEstado] = useState<EstadoCast>("no-disponible");
+  const [castNombre, setCastNombre] = useState<string | null>(null);
+  const castConectado = castEstado === "conectado";
+  const castRef = useRef(false);
+  castRef.current = castConectado;
+  const currentRef = useRef<StreamItem | null>(null);
+  currentRef.current = current;
+
   const [channels, setChannels] = useState<CustomChannel[]>(readChannels);
   const [minimized, setMinimized] = useState(false);
 
@@ -353,6 +386,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume / 100;
     if (audioRef.current) audioRef.current.volume = volume / 100;
+    if (castRef.current) volumenCast(volume);
     // YouTube trabaja en 0-100, no en 0-1: el mismo control gobierna las tres
     // fuentes para que no haya un volumen distinto por pestaña.
     try {
@@ -565,10 +599,19 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       setActive("tv");
       setCurrent(item);
       setMinimized(false);
+      stopVideo();
+      // Con una tele conectada, el canal va a la tele y aquí no se descarga
+      // nada: la pantalla de La Sala solo dice dónde se está viendo.
+      if (castRef.current) {
+        setBuffering(false);
+        enviarCast({ url: item.url, titulo: item.title, subtitulo: item.subtitle, tipo: "tv" }).catch(() =>
+          setError(tRef.current.multimedia.castError),
+        );
+        return;
+      }
       setBuffering(true);
       const v = videoRef.current;
       if (!v) return;
-      stopVideo();
       const isHls = /\.m3u8(\?|#|$)/i.test(item.url);
       try {
         if (isHls) {
@@ -578,11 +621,30 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
           if (Hls.isSupported()) {
             const hls = new Hls({ enableWorker: true });
             hlsRef.current = hls;
+            // Un tropiezo no es «sin señal»: un corte de red se reintenta un
+            // par de veces y un error de decodificación se recupera, como
+            // hace cualquier reproductor. Antes el primer error fatal dejaba
+            // el canal en SIN SEÑAL hasta cambiar de canal a mano.
+            let reintentosRed = 0;
+            let reintentosMedia = 0;
             hls.loadSource(item.url);
             hls.attachMedia(v);
             hls.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(() => undefined));
             hls.on(Hls.Events.ERROR, (_e: unknown, data: any) => {
-              if (data?.fatal) setError(t.multimedia.tvError);
+              if (!data?.fatal || hlsRef.current !== hls) return;
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && reintentosRed < 2) {
+                reintentosRed++;
+                window.setTimeout(() => {
+                  if (hlsRef.current === hls) hls.startLoad();
+                }, 1200 * reintentosRed);
+                return;
+              }
+              if (data.type === Hls.ErrorTypes.MEDIA_ERROR && reintentosMedia < 2) {
+                reintentosMedia++;
+                hls.recoverMediaError();
+                return;
+              }
+              setError(tRef.current.multimedia.tvError);
             });
             return;
           }
@@ -591,10 +653,10 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
         v.src = item.url;
         v.play().catch(() => undefined);
       } catch (e) {
-        setError(e instanceof Error ? e.message : t.multimedia.tvError);
+        setError(e instanceof Error ? e.message : tRef.current.multimedia.tvError);
       }
     },
-    [stopAudio, stopVideo, stopYoutube, t.multimedia.tvError],
+    [stopAudio, stopVideo, stopYoutube],
   );
 
   const playYoutube = useCallback(
@@ -603,6 +665,12 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       // Solo suena una cosa a la vez, igual que entre TV y radio.
       stopVideo();
       stopAudio();
+      // YouTube no se puede mandar a la tele desde aquí (es el reproductor
+      // oficial incrustado): se ve en este equipo y la tele queda en espera.
+      if (castRef.current) {
+        detenerMediaCast();
+        setError(tRef.current.multimedia.castYoutube);
+      }
       setActive("youtube");
       setCurrent({ title: item.titulo, subtitle: item.autor || "YouTube", url: item.id, kind: "youtube" });
       setBuffering(true);
@@ -694,6 +762,14 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       stopVideo();
       setActive("radio");
       setCurrent(item);
+      if (castRef.current) {
+        stopAudio();
+        setBuffering(false);
+        enviarCast({ url: item.url, titulo: item.title, subtitulo: item.subtitle, tipo: "radio" }).catch(() =>
+          setError(tRef.current.multimedia.castError),
+        );
+        return;
+      }
       setBuffering(true);
       const a = audioRef.current;
       if (!a) return;
@@ -727,7 +803,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
         setError(t.multimedia.radioError);
       }
     },
-    [stopVideo, stopYoutube, t.multimedia.radioError],
+    [stopAudio, stopVideo, stopYoutube, t.multimedia.radioError],
   );
 
   const loadIptv = useCallback(() => {
@@ -740,6 +816,10 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
   }, [t.multimedia.iptvError]);
 
   const togglePlay = useCallback(() => {
+    if (castRef.current && active !== "youtube") {
+      alternarCast();
+      return;
+    }
     if (active === "youtube") {
       const p = ytPlayerRef.current;
       if (!p) return;
@@ -764,11 +844,57 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
     stopVideo();
     stopAudio();
     stopYoutube();
+    if (castRef.current) detenerMediaCast();
     setActive(null);
     setCurrent(null);
     setPlaying(false);
     setBuffering(false);
   }, [stopVideo, stopAudio, stopYoutube]);
+
+  // --- Google Cast: la tele de la sala, de verdad ---
+  // El SDK se pide cuando la página ya está tranquila (no compite con el
+  // primer pintado) y solo donde puede existir (Chrome/Edge, fuera de Tauri).
+  useEffect(() => {
+    let vivo = true;
+    let quitar: () => void = () => undefined;
+    const timer = window.setTimeout(() => {
+      void cargarCast().then((ok) => {
+        if (!ok || !vivo) return;
+        setCastEstado(estadoCast());
+        setCastNombre(nombreDispositivoCast());
+        quitar = escucharCast((e, n) => {
+          setCastEstado(e);
+          setCastNombre(n);
+        });
+      });
+    }, 1500);
+    return () => {
+      vivo = false;
+      window.clearTimeout(timer);
+      quitar();
+    };
+  }, []);
+
+  // Al conectar, lo que suena se muda a la tele y aquí se corta (si no,
+  // sonaría dos veces). Al desconectar, vuelve a este equipo por donde iba.
+  // Basta con volver a pedir lo mismo: `playTv`/`playRadio` ya miran la ref.
+  const castPrevio = useRef(false);
+  useEffect(() => {
+    const antes = castPrevio.current;
+    castPrevio.current = castConectado;
+    if (antes === castConectado) return;
+    const item = currentRef.current;
+    if (!item) return;
+    if (activeRef.current === "tv") void playTv(item);
+    else if (activeRef.current === "radio") void playRadio(item);
+  }, [castConectado, playTv, playRadio]);
+
+  const enviarATele = useCallback(() => {
+    void pedirSesionCast();
+  }, []);
+  const cortarTele = useCallback(() => {
+    cortarCast();
+  }, []);
 
   const setVolume = useCallback((v: number) => {
     setVolumeState(Math.max(0, Math.min(100, Math.round(v))));
@@ -946,8 +1072,9 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       setTab,
       active,
       current,
-      playing,
-      buffering,
+      // Con la tele conectada, lo que «suena» suena allí: ni nieve ni espera aquí.
+      playing: castConectado || playing,
+      buffering: castConectado ? false : buffering,
       volume,
       setVolume,
       togglePlay,
@@ -986,6 +1113,10 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       registerStage,
       setStageCover,
       getVideo,
+      castEstado,
+      castNombre,
+      enviarATele,
+      cortarTele,
     }),
     [
       panelOpen, togglePanel, closePanel, tab, active, current, playing, buffering,
@@ -994,7 +1125,7 @@ export function MultimediaProvider({ children }: PropsWithChildren) {
       requestFullscreen, poppedOut, radioItems, radioLoading, radioError, loadTopRadio,
       searchRadio, playRadio, iptvItems, iptvLoading, iptvError, loadIptv, registerSlot,
       ytItems, addYoutube, removeYoutube, playYoutube, ytCurrentId, registerYtSlot,
-      onStage, registerStage, getVideo,
+      onStage, registerStage, getVideo, castConectado, castEstado, castNombre, enviarATele, cortarTele,
     ],
   );
 
