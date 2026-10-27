@@ -47,7 +47,10 @@ from src.domain.entities import (  # noqa: E402
     Syllabus,
     TrabajoFondo,
 )
+from src.domain.catalogo import ProgresoCatalogo  # noqa: E402
 from src.infrastructure.adapters.sqlite_actividad_repository import SqliteActividadRepository  # noqa: E402
+from src.infrastructure.adapters.sqlite_catalogo_repository import SqliteCatalogoRepository  # noqa: E402
+from src.infrastructure.semillas import cursos_semilla  # noqa: E402
 from src.infrastructure.adapters.sqlite_caso_repository import SqliteCasoRepository  # noqa: E402
 from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository  # noqa: E402
 from src.infrastructure.adapters.sqlite_despliegues_repository import SqliteDespliegueRepository  # noqa: E402
@@ -90,6 +93,28 @@ def guion_actividad(repo) -> list:
     repo.registrar("", "2026-08-21")
     repo.registrar("beto", "fecha-mala")
     return [repo.fechas_de("ana"), repo.fechas_de("beto"), repo.fechas_de("ana", 1)]
+
+
+def guion_catalogo(repo) -> list:
+    curso = cursos_semilla()[0]
+    repo.guardar(curso)
+    curso.version += 1
+    repo.guardar(curso)
+    repo.guardar_progreso(ProgresoCatalogo(usuario="ana", curso_id=curso.id, puntajes={"q": 90},
+                                           actualizado="2026-10-01T10:00:00+00:00"))
+    repo.guardar_progreso(ProgresoCatalogo(usuario="ana", curso_id=curso.id, puntajes={"q": 100},
+                                           lecciones_completadas=["l1"], actualizado="2026-10-02T10:00:00+00:00"))
+    guardado = repo.obtener(curso.id)
+    return [
+        [c.id for c in repo.listar()],
+        guardado.version if guardado else None,
+        guardado == curso,
+        repo.obtener("no-existe"),
+        repo.obtener_progreso("ana", curso.id).model_dump(),
+        repo.obtener_progreso("beto", curso.id),
+        [p.puntajes for p in repo.progresos_de("ana")],
+        repo.progresos_de("beto"),
+    ]
 
 
 def guion_despliegues(repo) -> list:
@@ -165,6 +190,7 @@ GUIONES = [
     ("metas", guion_metas, SqliteMetaRepository, "PostgresMetaRepository"),
     ("casos", guion_casos, SqliteCasoRepository, "PostgresCasoRepository"),
     ("curso", guion_curso, SqliteCursoRepository, "PostgresCursoRepository"),
+    ("catalogo", guion_catalogo, SqliteCatalogoRepository, "PostgresCatalogoRepository"),
 ]
 
 
@@ -176,6 +202,7 @@ def _clase_postgres(nombre: str):
         "PostgresMetaRepository": "postgres_meta_repository",
         "PostgresCasoRepository": "postgres_caso_repository",
         "PostgresCursoRepository": "postgres_curso_repository",
+        "PostgresCatalogoRepository": "postgres_catalogo_repository",
     }[nombre]
     import importlib
 

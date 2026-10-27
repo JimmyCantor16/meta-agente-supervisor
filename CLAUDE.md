@@ -74,6 +74,75 @@ No lo pongas si el adaptador ya es **defensivo** (`data.get(...)` con valores po
 defecto, como `llm_diagnostico_mvp` o `skeleton_generator`): esos degradan a
 propósito y un validador estricto los volvería más frágiles, no menos.
 
+## DeepSeek primero y OpenRouter solo gratis (cadena de IA)
+
+`Settings.resolved_providers` arma la cadena: **DeepSeek** (según
+`DEEPSEEK_MODE`) → `LLM_PROVIDERS` → **OpenRouter `:free`** (si hay
+`OPENROUTER_API_KEY`) → **OpenCode** (si su binario está en la máquina). Poda
+sola lo que no puede responder: GitHub Models (retirado, 410) y cualquier id de
+OpenRouter que no sea `:free` u `openrouter/free` (para no gastar saldo por un
+error de tecleo). Y cambia los Llama retirados de Groq por su sucesor
+(`_MODELOS_VIGENTES`: `gpt-oss-120b`, `qwen3.8-27b`).
+
+- **27-oct-2026 producción se quedó con UN modelo vivo**: Groq retiró
+  `llama-3.3-70b-versatile` y `llama-3.1-8b-instant` (404), NVIDIA su
+  `deepseek-v4-flash` (410), Hugging Face sin créditos (402). Cadena de Render
+  hoy: `groq-gptoss-120b` → `groq-qwen3` → `mistral-codestral` →
+  `groq-gptoss-20b` → `mistral-small`. Antes de culpar al código, prueba cada
+  proveedor con su clave (los tiers gratis cambian cada pocas semanas).
+- **OpenCode** (`adapters/opencode_cli_client.py`, `kind="opencode_cli"`,
+  `OPENCODE_MODE=auto`): `opencode run -m opencode/deepseek-v4.1-flash-free`
+  (~40 s) en una carpeta vacía y sin herramientas, como en
+  `soporte-ia-linkysign`. Se lanza el `.exe` real, **nunca** el `opencode.cmd`
+  de npm (pasaría el texto del alumno por `cmd.exe`). Ojo: apagar en
+  `OPENCODE_CONFIG_CONTENT` herramientas que el CLI no conoce lo deja colgado
+  sin responder. No existe en Render.
+
+- `DEEPSEEK_MODE=local`: proveedor `deepseek-web` (`kind="deepseek_web"`) que
+  habla con **`deepseek-web-chat`** (otro repo, la «terminal 2», :6174) usando la
+  sesión web de DeepSeek de la máquina. Cliente: `adapters/deepseek_web_client.py`,
+  que imita la forma del SDK de OpenAI para que `MultiModelLLM` lo trate como
+  uno más (mismo fallback, throttling y `validar`). `remote` = endpoint
+  compatible OpenAI (`DEEPSEEK_API_URL` + `DEEPSEEK_REMOTE_KEY`). En Render: `off`
+  o `remote`; **`deepseek-web-chat` no existe en el servidor**.
+- **Usa `/api/deepseek/stream` (SSE), NUNCA `/api/deepseek/chat`**: el no-stream
+  de ese repo devuelve `content: ""` con `status: FINISHED` (su parser de
+  pruebas no entiende el formato de fragments actual). Comprobado el 27-oct-2026.
+- Cada llamada abre un chat en la cuenta del usuario: el cliente lo **borra**
+  al terminar. No quites eso o su historial se llena de conversaciones del agente.
+- Servicio apagado o sin sesión → el proveedor queda **en pausa 120 s** (en
+  Windows, conectar a un puerto cerrado tarda segundos). URL por defecto
+  `127.0.0.1`, no `localhost` (que prueba `::1` antes y paga el intento doble).
+- `GET /api/v1/agent/ia/cadena` (admin): la cadena que corre DE VERDAD, sin
+  secretos, con los proveedores descartados y el estado de `deepseek-web-chat`.
+- Arranque en dos terminales: `scripts/dos-terminales.ps1` (o `npm run dev` en
+  la raíz + `npm run dev:deepseek`). `npm run check` = tsc + pruebas offline.
+  Ojo: `node --watch` de `deepseek-web-chat` puede reiniciarse a mitad de una
+  petición (se vio cortar una con `WinError 10054`); el fallback lo absorbe.
+
+## Academia: cursos escritos estilo Platzi (`/api/v1/cursos`)
+
+Aparte del Modo Profesor (que GENERA un curso por proyecto): aquí el curso ya
+está escrito y la IA hace de **tutor** (explica dudas y revisa retos). Dominio
+puro en `domain/catalogo.py` (`CursoCatalogo`→`ModuloCurso`→`Leccion`→`Evaluacion`,
+`ProgresoCatalogo`); caso de uso `application/catalogo_cursos.py`; repos SQLite
++ gemelo Postgres; tutor `llm_tutor_curso.py` / `mock_tutor_curso.py`; rutas en
+`entrypoints/catalogo.py`. Frontend: `features/cursos/` (vista `cursos`,
+«Academia» en el Sidebar, carga diferida).
+
+- **Las respuestas no salen del servidor** (`curso_sin_respuestas`): ni
+  `correcta`, ni su explicación, ni `solucion_referencia`. El quiz se corrige
+  en el servidor, como el precio de la tienda.
+- **Contenido = semilla versionada** (`infrastructure/semillas/`), sembrada al
+  arrancar: sin disco en Render la base nace vacía. Para corregir un curso
+  publicado se SUBE su `version`; la siembra solo reemplaza si es mayor.
+- Las opciones se barajan de forma estable por id de pregunta (`_barajar`): al
+  redactar, la correcta caía en la B seis de cada diez.
+- Certificado = todas las lecciones + todas las evaluaciones aprobadas. Los
+  retos son práctica: NO bloquean el certificado (la IA caída no puede dejar a
+  nadie sin graduarse). Una lección con quiz se completa al aprobarlo (409 si
+  se intenta a mano).
+
 ## Agente CLI local: `AgenteCliPort` / `ClaudeCliAgent`
 
 Segundo motor de IA, aparte del multi-modelo: `ClaudeCliAgent`
@@ -583,4 +652,5 @@ Pendiente:
    proyectos hace falta disco (plan de pago) o subirlos a GitHub.
 3. Adoptar el blueprint (`render.yaml`) para que el archivo mande de verdad,
    y quitar de ahí el `disk:` que hoy no se aplica.
-4. Podar de `LLM_PROVIDERS` los modelos retirados de GitHub (panel de Render).
+4. ~~Podar de `LLM_PROVIDERS` los modelos retirados~~ (hecho por API el
+   27-oct-2026; además el código ya los poda o reemplaza solo).

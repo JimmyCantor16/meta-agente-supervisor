@@ -27,6 +27,8 @@ from openai import (
 )
 
 from src.config import LLMProvider, get_settings
+from src.infrastructure.adapters.deepseek_web_client import DeepSeekWebClient, DeepSeekWebError
+from src.infrastructure.adapters.opencode_cli_client import OpenCodeCliClient, OpenCodeCliError
 
 logger = logging.getLogger(__name__)
 
@@ -89,18 +91,26 @@ class MultiModelLLM:
         # último recurso, porque lo que se gasta ahí no vuelve.
         candidates.sort(key=lambda p: p.exhaustible)
 
-        # Un cliente OpenAI por proveedor (mismo SDK, distinta base_url/key).
+        # Un cliente por proveedor: el SDK de OpenAI (misma API, distinta
+        # base_url/key) o, para `deepseek_web`, el cliente del servicio local,
+        # que imita esa misma forma.
         self._clients: list[tuple[LLMProvider, OpenAI]] = [
-            (
-                p,
-                OpenAI(api_key=p.api_key, base_url=p.base_url, timeout=timeout, max_retries=max_retries),
-            )
+            (p, self._cliente_para(p, timeout, max_retries, settings.deepseek_web_timeout))
             for p in candidates
         ]
         logger.info(
             "MultiModelLLM [rol=%s] con %d proveedor(es): %s",
             role or "todos", len(candidates), [p.name for p in candidates],
         )
+
+    @staticmethod
+    def _cliente_para(p: LLMProvider, timeout: float, max_retries: int, timeout_web: float):
+        if p.kind == "deepseek_web":
+            return DeepSeekWebClient(p.base_url, timeout=timeout_web)
+        if p.kind == "opencode_cli":
+            # `base_url` lleva la ruta del binario (ver Settings._proveedores_opencode).
+            return OpenCodeCliClient(p.base_url, timeout=get_settings().opencode_timeout)
+        return OpenAI(api_key=p.api_key, base_url=p.base_url, timeout=timeout, max_retries=max_retries)
 
     # ------------------------------------------------------------------
     # API pública
@@ -229,7 +239,8 @@ class MultiModelLLM:
                 temperature=temperature,
                 response_format=response_format,  # type: ignore[arg-type]
             )
-        except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as exc:
+        except (RateLimitError, APITimeoutError, APIConnectionError, APIError, DeepSeekWebError,
+                OpenCodeCliError) as exc:
             # Un 410/404/401 no es un mal momento: es que ese proveedor ya no
             # existe o no nos acepta. Se apunta y no se le vuelve a llamar en
             # toda la ejecución — si no, cuesta un viaje en cada petición.

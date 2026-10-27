@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { useAuth } from "./features/auth/AuthProvider";
@@ -18,6 +18,9 @@ import { useAccount } from "./features/workspace/hooks/useAccount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
 import { useProjects } from "./features/workspace/hooks/useProjects";
 import { useLanguage } from "./i18n/LanguageProvider";
+
+// La Academia carga CodeMirror con Java/Vue/SQL/YAML: se baja solo al abrirla.
+const VistaCursos = lazy(() => import("./features/cursos"));
 
 /**
  * Layout raíz: sidebar + topbar + área de trabajo.
@@ -80,6 +83,10 @@ export default function App() {
         <main className="flex-1 overflow-y-auto">
           {enSala ? (
             <LaSala onIr={setView} onLlevarIdea={llevarIdea} />
+          ) : view === "cursos" ? (
+            <Suspense fallback={<p className="p-8 text-sm text-ink-muted">{t.cursos.loading}</p>}>
+              <VistaCursos />
+            </Suspense>
           ) : (
           <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
             {view === "taller" && (

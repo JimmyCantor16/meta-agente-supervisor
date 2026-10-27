@@ -123,6 +123,7 @@ from src.infrastructure.adapters.sqlite_caso_repository import SqliteCasoReposit
 from src.infrastructure.adapters.sqlite_meta_repository import SqliteMetaRepository
 from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepository
 from src.infrastructure.adapters.mock_code_auditor import MockCodeAuditor
+from src.infrastructure.adapters.multimodel_llm import MultiModelLLM
 from src.infrastructure.adapters.mock_code_teacher import MockCodeTeacher
 from src.infrastructure.adapters.mock_project_generator import MockProjectGenerator
 from src.infrastructure.adapters.project_reader import FileSystemProjectReader
@@ -2630,6 +2631,46 @@ class VersionEscritorioResponse(BaseModel):
     url_descarga: str
 
 
+class ProveedorIADTO(BaseModel):
+    nombre: str
+    tipo: str
+    modelo: str
+    roles: list[str]
+    descartado: str = ""
+
+
+class CadenaIAResponse(BaseModel):
+    deepseek_mode: str
+    proveedores: list[ProveedorIADTO]
+    deepseek_web: dict | None = None
+
+
+@router.get(
+    "/ia/cadena",
+    response_model=CadenaIAResponse,
+    summary="(Admin) La cadena de IA que corre DE VERDAD en este proceso, sin secretos.",
+)
+def cadena_ia(_admin: UserAccount = Depends(require_admin)) -> CadenaIAResponse:
+    """El orden de `LLM_PROVIDERS` en producción no es el del `.env` local:
+    antes de depurar algo del LLM, se mira aquí lo que corre de verdad."""
+    from src.infrastructure.adapters.deepseek_web_client import estado_servicio
+
+    settings = get_settings()
+    cadena = settings.resolved_providers
+    web = next((p for p in cadena if p.kind == "deepseek_web"), None)
+    return CadenaIAResponse(
+        deepseek_mode=settings.deepseek_mode,
+        proveedores=[
+            ProveedorIADTO(
+                nombre=p.name, tipo=p.kind, modelo=p.model, roles=p.roles,
+                descartado=MultiModelLLM._muertos.get(p.name, ""),
+            )
+            for p in cadena
+        ],
+        deepseek_web=estado_servicio(web.base_url, timeout=8.0) if web else None,
+    )
+
+
 @router.get(
     "/version-escritorio",
     response_model=VersionEscritorioResponse,
@@ -3152,6 +3193,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(_bucle_respaldo(settings.respaldo_db_horas))
             )
 
+        # 5) El catálogo de cursos escritos se siembra solo: sin disco, la base
+        #    nace vacía en cada deploy. Nunca impide arrancar.
+        async def _sembrar_catalogo() -> None:
+            from src.infrastructure.entrypoints.catalogo import sembrar_catalogo
+
+            try:
+                escritos = await asyncio.to_thread(sembrar_catalogo)
+                if escritos:
+                    logger.info("Catálogo de cursos sembrado: %s", escritos)
+            except Exception:  # noqa: BLE001 - sin catálogo, el resto sigue
+                logger.exception("No se pudo sembrar el catálogo de cursos.")
+
+        app.state.tareas_fondo.append(asyncio.create_task(_sembrar_catalogo()))
+
         yield
 
     app = FastAPI(
@@ -3195,6 +3250,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from src.infrastructure.entrypoints.vista_previa import router as preview_router
 
     app.include_router(preview_router)
+
+    # Catálogo de cursos escritos (estilo Platzi): reproductor, quizzes y tutor IA.
+    from src.infrastructure.entrypoints.catalogo import router as catalogo_router
+
+    app.include_router(catalogo_router)
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:

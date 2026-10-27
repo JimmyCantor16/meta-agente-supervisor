@@ -2,8 +2,12 @@ import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
+import { java } from "@codemirror/lang-java";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
+import { sql } from "@codemirror/lang-sql";
+import { vue } from "@codemirror/lang-vue";
+import { yaml } from "@codemirror/lang-yaml";
 
 /**
  * Editor de código del aula, sobre CodeMirror 6.
@@ -18,6 +22,7 @@ export function EditorCodigo({
   path,
   lineaInicial = null,
   onCambio,
+  className = "h-full min-h-[48vh]",
 }: {
   /** Contenido con el que nace (o renace) el editor: al abrir/deshacer. */
   valor: string;
@@ -27,6 +32,8 @@ export function EditorCodigo({
   lineaInicial?: number | null;
   /** Cada tecla del alumno llega aquí (el estado `editado` de arriba). */
   onCambio: (texto: string) => void;
+  /** Tamaño del editor (el aula lo quiere alto; un reto de curso, no). */
+  className?: string;
 }) {
   const contenedorRef = useRef<HTMLDivElement>(null);
   const vistaRef = useRef<EditorView | null>(null);
@@ -83,15 +90,24 @@ export function EditorCodigo({
     []
   );
 
-  return <div ref={contenedorRef} className="h-full min-h-[48vh]" />;
+  return <div ref={contenedorRef} className={className} />;
 }
 
 /** Resaltado según la extensión del archivo abierto. */
-function lenguajePorExtension(path: string) {
+export function lenguajePorExtension(path: string) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   switch (ext) {
     case "py":
       return python();
+    case "java":
+      return java();
+    case "vue":
+      return vue();
+    case "sql":
+      return sql();
+    case "yml":
+    case "yaml":
+      return yaml();
     case "js":
     case "jsx":
     case "mjs":
@@ -113,7 +129,7 @@ function lenguajePorExtension(path: string) {
 
 // Tema claro con los tokens del sistema (tailwind.config.js): fondo blanco,
 // grises azulados (ink-*), y la marca (#027E6F) solo en cursor y acentos.
-const temaClaro = EditorView.theme({
+export const temaClaro = EditorView.theme({
   "&": {
     height: "100%",
     backgroundColor: "#FFFFFF",

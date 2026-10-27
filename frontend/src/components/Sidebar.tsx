@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowUpRight,
+  BookOpen,
   CircleHelp,
   Compass,
   Folder,
@@ -62,6 +63,7 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false, 
     {
       titulo: t.sala.groupLearn,
       items: [
+        { key: "cursos", label: t.cursos.nav, Icon: BookOpen },
         { key: "learn", label: t.sala.navCursos, Icon: GraduationCap },
         { key: "camino", label: t.nav.camino, Icon: Compass },
       ],

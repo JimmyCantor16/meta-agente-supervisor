@@ -26,6 +26,13 @@ services:
       # v_xxx». Son contenedores de usar y tirar, sin datos de nadie.
       VERIFY_POSTGRES_URL: postgresql://verificador:verificador@verify-postgres:5432/verificacion
       VERIFY_MYSQL_URL: mysql://root:verificador@verify-mysql:3306/verificacion
+      # DEEPSEEK_MODE=local desde Docker: deepseek-web-chat corre en el HOST
+      # (la segunda terminal), no en este contenedor; 127.0.0.1 sería el propio
+      # contenedor. Solo se usa si backend/.env pone DEEPSEEK_MODE=local.
+      DEEPSEEK_API_URL: http://host.docker.internal:6174
+    # En Linux, host.docker.internal no existe por defecto (Docker Desktop sí lo trae).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/data:/app/data
       - ./backend/generated:/app/generated

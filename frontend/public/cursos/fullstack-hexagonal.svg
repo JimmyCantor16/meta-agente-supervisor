@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" role="img" aria-label="Arquitectura hexagonal: Spring Boot y Vue 3">
+  <rect width="1600" height="700" fill="#0A423B"/>
+  <g fill="none" stroke="#2FBFA1" stroke-width="3" opacity=".35">
+    <path d="M0 120h1600M0 580h1600M240 0v700M1360 0v700"/>
+  </g>
+  <!-- Anillo exterior: infraestructura -->
+  <polygon points="800,90 1060,240 1060,460 800,610 540,460 540,240" fill="#075147" stroke="#2FBFA1" stroke-width="4"/>
+  <!-- Aplicación -->
+  <polygon points="800,175 986,282 986,418 800,525 614,418 614,282" fill="#04665A" stroke="#6BD9C0" stroke-width="3"/>
+  <!-- Dominio -->
+  <polygon points="800,262 905,322 905,378 800,438 695,378 695,322" fill="#027E6F" stroke="#00E0AC" stroke-width="3"/>
+  <text x="800" y="358" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="30" font-weight="670" fill="#ECFBF7">Dominio</text>
+  <!-- Puertos -->
+  <g fill="#00E0AC">
+    <circle cx="540" cy="350" r="14"/>
+    <circle cx="1060" cy="350" r="14"/>
+    <circle cx="800" cy="90" r="14"/>
+    <circle cx="800" cy="610" r="14"/>
+  </g>
+  <!-- Adaptadores -->
+  <g font-family="Inter, system-ui, sans-serif" font-size="30" font-weight="620" fill="#ECFBF7">
+    <rect x="250" y="320" width="250" height="60" rx="6" fill="#0E101A" stroke="#2FBFA1" stroke-width="2"/>
+    <text x="375" y="361" text-anchor="middle">Vue 3 · Pinia</text>
+    <rect x="1100" y="320" width="250" height="60" rx="6" fill="#0E101A" stroke="#2FBFA1" stroke-width="2"/>
+    <text x="1225" y="361" text-anchor="middle">PostgreSQL</text>
+    <rect x="675" y="20" width="250" height="52" rx="6" fill="#0E101A" stroke="#2FBFA1" stroke-width="2"/>
+    <text x="800" y="57" text-anchor="middle" font-size="26">REST · Spring</text>
+    <rect x="675" y="628" width="250" height="52" rx="6" fill="#0E101A" stroke="#2FBFA1" stroke-width="2"/>
+    <text x="800" y="665" text-anchor="middle" font-size="26">S3 · Email</text>
+  </g>
+  <g stroke="#00E0AC" stroke-width="3">
+    <path d="M500 350h26M1074 350h26M800 72v4M800 624v4"/>
+  </g>
+</svg>

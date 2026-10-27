@@ -1,0 +1,16 @@
+{
+  "name": "metaagente-dev",
+  "private": true,
+  "description": "Arranque local en dos terminales: (1) Meta-Agente backend+frontend, (2) deepseek-web-chat. Ver scripts/dos-terminales.ps1.",
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "node scripts/backend-dev.mjs",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:deepseek": "node scripts/deepseek-web-chat.mjs",
+    "check": "npm --prefix frontend run type-check && node scripts/backend-dev.mjs --check",
+    "build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

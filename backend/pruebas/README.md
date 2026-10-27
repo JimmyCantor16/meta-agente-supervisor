@@ -14,12 +14,14 @@ PYTHONIOENCODING=utf-8 python pruebas/base_de_datos_pedida.py
 PYTHONIOENCODING=utf-8 python pruebas/licencia_por_usuario.py
 PYTHONIOENCODING=utf-8 python pruebas/contrato_dixel.py
 PYTHONIOENCODING=utf-8 python pruebas/persistencia_no_se_borra.py
+PYTHONIOENCODING=utf-8 python pruebas/cadena_ia.py
+PYTHONIOENCODING=utf-8 python pruebas/catalogo_cursos.py
 ```
 
 (En Windows, `PYTHONIOENCODING=utf-8` evita que la consola se atragante con los
 acentos y las flechas.)
 
-Esos ocho son **offline**: no tocan la red ni gastan cupo de ningún modelo.
+Esos diez son **offline**: no tocan la red ni gastan cupo de ningún modelo.
 
 | Guion | Qué demuestra |
 |---|---|
@@ -31,6 +33,8 @@ Esos ocho son **offline**: no tocan la red ni gastan cupo de ningún modelo.
 | `persistencia_no_se_borra.py` | Que una base fuera del disco persistente se detecta y se grita al arrancar (el fallo más caro del proyecto), y que la copia del SQLite restaura de verdad y rota. |
 | `contrato_dixel.py` | Que el contrato de DIXEL se corrige por máquina: cada regla salta con el código que la incumple, un componente correcto pasa limpio, y la librería real cumple su propio contrato salvo tres desvíos conocidos. |
 | `licencia_por_usuario.py` | Que la licencia y el cupo son de cada usuario: activarla no licencia a los demás, ni el contador de uno se le enseña a otro; y que un repositorio antiguo sigue funcionando en global. |
+| `cadena_ia.py` | Que DeepSeek va primero con `DEEPSEEK_MODE=local/remote`, que GitHub Models y los modelos de pago de OpenRouter se podan solos, y que el cliente de `deepseek-web-chat` (contra un SSE falso) valida el contrato, borra el chat que abre y, con el servicio apagado, salta al siguiente y queda en pausa. |
+| `catalogo_cursos.py` | Que la semilla del curso es válida e idempotente, que el navegador no recibe respuestas, que el quiz se corrige en el servidor, que no se completa una lección sin aprobar su quiz, que el certificado sale una sola vez y que el progreso no cruza usuarios. |
 | `base_de_datos_pedida.py` | Que quien pide MySQL reciba MySQL: driver declarado, compose, conexión leída del entorno, prefijo normalizado al driver, y que el verificador le preste el motor correcto. |
 
 ## La prueba end to end (sí usa red y cupo)

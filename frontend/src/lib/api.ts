@@ -15,6 +15,14 @@ import type {
   UsageStatus,
 } from "../features/workspace/types";
 import type { Language } from "../i18n/translations";
+import type {
+  CursoResumen,
+  DetalleCurso,
+  ProgresoCatalogo as ProgresoCatalogoApi,
+  RespuestaTutor,
+  ResultadoEvaluacion,
+  VeredictoReto,
+} from "../features/cursos/types";
 
 // Base de la API. Vacía = rutas relativas, que es lo correcto cuando algo hace
 // de proxy hacia el backend (Vite en desarrollo, Nginx en Docker, o un rewrite
@@ -911,4 +919,67 @@ export function verificarClase(
     texto,
     language,
   });
+}
+
+// --- Catálogo de cursos escritos (estilo Platzi) ---
+const CURSOS_BASE = `${API_BASE}/api/v1/cursos`;
+
+async function cursosFetch<T>(ruta: string, cuerpo?: unknown): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(`${CURSOS_BASE}${ruta}`, {
+      method: cuerpo === undefined ? "GET" : "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor.");
+  }
+  if (!r.ok) {
+    handleAuthExpiry(r.status);
+    throw new ApiError(await errorDetail(r, `Error ${r.status}`), r.status);
+  }
+  return (await r.json()) as T;
+}
+
+/** Cursos publicados, con el avance del usuario si hay sesión. */
+export function listarCursosCatalogo(): Promise<CursoResumen[]> {
+  return cursosFetch<CursoResumen[]>("");
+}
+
+/** Un curso completo (sin respuestas) y el progreso del usuario. */
+export function obtenerCursoCatalogo(cursoId: string): Promise<DetalleCurso> {
+  return cursosFetch<DetalleCurso>(`/${encodeURIComponent(cursoId)}`);
+}
+
+export function completarLeccionCatalogo(cursoId: string, leccionId: string): Promise<ProgresoCatalogoApi> {
+  return cursosFetch(`/${encodeURIComponent(cursoId)}/lecciones/${encodeURIComponent(leccionId)}/completar`, {});
+}
+
+/** Corrige un quiz EN EL SERVIDOR: el navegador solo manda lo elegido. */
+export function evaluarCatalogo(
+  cursoId: string,
+  evaluacionId: string,
+  respuestas: Record<string, number>
+): Promise<{ resultado: ResultadoEvaluacion; progreso: ProgresoCatalogoApi }> {
+  return cursosFetch(`/${encodeURIComponent(cursoId)}/evaluaciones/${encodeURIComponent(evaluacionId)}`, {
+    respuestas,
+  });
+}
+
+export function revisarRetoCatalogo(
+  cursoId: string,
+  retoId: string,
+  codigo: string
+): Promise<{ veredicto: VeredictoReto; progreso: ProgresoCatalogoApi }> {
+  return cursosFetch(`/${encodeURIComponent(cursoId)}/retos/${encodeURIComponent(retoId)}`, { codigo });
+}
+
+export function preguntarTutorCatalogo(
+  cursoId: string,
+  leccionId: string,
+  pregunta: string,
+  codigo = ""
+): Promise<RespuestaTutor> {
+  return cursosFetch(`/${encodeURIComponent(cursoId)}/tutor`, { leccion_id: leccionId, pregunta, codigo });
 }

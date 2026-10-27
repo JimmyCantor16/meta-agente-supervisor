@@ -90,6 +90,22 @@ services:
       # --- Secretos: se rellenan a mano en el dashboard ---
       - key: LLM_PROVIDERS       # cadena JSON de proveedores gratuitos
         sync: false
+      # DeepSeek prioritario. En Render NO existe deepseek-web-chat (necesita
+      # Chrome y un login interactivo): aquí va "off", o "remote" con un
+      # endpoint compatible OpenAI que sirva DeepSeek (DEEPSEEK_API_URL +
+      # DEEPSEEK_REMOTE_KEY). "local" es solo para las máquinas del equipo.
+      - key: DEEPSEEK_MODE
+        value: "off"
+      - key: DEEPSEEK_API_URL
+        sync: false
+      - key: DEEPSEEK_REMOTE_KEY
+        sync: false
+      # OpenRouter como red de seguridad: SOLO modelos ":free" (el backend
+      # descarta cualquier otro id). Sin clave, no entra en la cadena.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODELS
+        value: "openrouter/free,nvidia/nemotron-3.5-lightning:free,google/gemma-4-31b-it:free"
       - key: DEEPSEEK_API_KEY    # clave del proveedor por defecto
         sync: false
       - key: DEEPSEEK_BASE_URL

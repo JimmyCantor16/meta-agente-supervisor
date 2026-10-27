@@ -12,6 +12,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from src.domain.catalogo import (
+    CursoCatalogo,
+    Leccion,
+    ProgresoCatalogo,
+    RespuestaTutor,
+    RetoCodigo,
+    VeredictoReto,
+)
 from src.domain.entities import (
     AgentEvaluation,
     AuditReport,
@@ -80,6 +88,18 @@ class AgenteCliError(Exception):
     salida sin la forma pedida tras reintentos) a esta excepción; los workers
     la convierten en un trabajo fallido con su detalle, nunca en un 500.
     """
+
+
+class CatalogoError(Exception):
+    """Error de dominio del catálogo de cursos (curso o pieza inexistente)."""
+
+
+class LeccionBloqueadaError(Exception):
+    """La lección no puede darse por completada todavía (falta aprobar su quiz)."""
+
+
+class TutorCursoError(Exception):
+    """El tutor IA del catálogo no pudo responder (todos los proveedores fallaron)."""
 
 
 class UserRepositoryPort(ABC):
@@ -881,4 +901,53 @@ class GitAlumnoPort(ABC):
 
         Nunca lanza: si git falla o no hay repositorio, devuelve lista vacía.
         """
+        raise NotImplementedError
+
+
+class CatalogoCursosRepositoryPort(ABC):
+    """Persistencia del catálogo de cursos escritos y del progreso por alumno.
+
+    El progreso va por (usuario, curso): nunca cruza usuarios, así que no
+    necesita el filtro por dueño de los listados de proyectos.
+    """
+
+    @abstractmethod
+    def listar(self) -> list[CursoCatalogo]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def obtener(self, curso_id: str) -> CursoCatalogo | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def guardar(self, curso: CursoCatalogo) -> None:
+        """Inserta o reemplaza el curso entero (por `id`)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def obtener_progreso(self, usuario: str, curso_id: str) -> ProgresoCatalogo | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def guardar_progreso(self, progreso: ProgresoCatalogo) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def progresos_de(self, usuario: str) -> list[ProgresoCatalogo]:
+        """Todo el progreso de un usuario, el más reciente primero."""
+        raise NotImplementedError
+
+
+class TutorCursoPort(ABC):
+    """El tutor IA de los cursos del catálogo: explica y revisa retos.
+
+    Ambos métodos lanzan `TutorCursoError` si no hay IA que responda.
+    """
+
+    @abstractmethod
+    def explicar(self, curso: CursoCatalogo, leccion: Leccion, pregunta: str, codigo: str = "") -> RespuestaTutor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def revisar_reto(self, curso: CursoCatalogo, reto: RetoCodigo, codigo: str) -> VeredictoReto:
         raise NotImplementedError
