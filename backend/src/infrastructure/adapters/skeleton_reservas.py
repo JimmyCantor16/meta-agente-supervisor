@@ -1050,7 +1050,18 @@ RESERVAR_JS = r"""(function () {
       dias.querySelectorAll(".rs-dia").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.iso === st.fecha ? "true" : "false"); });
       actualizarBarra();
     }
-    function cargar() {
+    // Al entrar, la fecha la elige la página: si a «hoy» ya no le quedan
+    // horas, salta sola al siguiente día con huecos. Abrir la agenda con «no
+    // quedan horarios» parecía una barbería llena o rota (13-nov-2026).
+    var saltos = 0;
+    function siguienteAbierto(iso) {
+      var botones = Array.prototype.slice.call(dias.querySelectorAll(".rs-dia"));
+      for (var k = 0; k < botones.length; k++) {
+        if (botones[k].dataset.iso > iso && !botones[k].disabled) return botones[k];
+      }
+      return null;
+    }
+    function cargar(auto) {
       horas.innerHTML = "";
       horas.appendChild(el("p", { clase: "rs-cargando", texto: T.cargando }));
       var q = "api/disponibilidad?servicio=" + encodeURIComponent(st.servicio.id) + "&fecha=" + st.fecha +
@@ -1060,6 +1071,17 @@ RESERVAR_JS = r"""(function () {
         if (pedida !== st.fecha) return;
         horas.innerHTML = "";
         var lista = (r.ok && r.datos.horas) || [];
+        if (!lista.length && auto && r.ok && saltos < 14) {
+          var sig = siguienteAbierto(st.fecha);
+          if (sig) {
+            saltos++;
+            st.fecha = sig.dataset.iso;
+            marcar();
+            if (sig.scrollIntoView) sig.scrollIntoView({ block: "nearest", inline: "center" });
+            cargar(true);
+            return;
+          }
+        }
         if (!lista.length) { horas.appendChild(el("p", { clase: "rs-vacio", texto: T.sin_huecos })); return; }
         [[T.manana, 0, 720], [T.tarde, 720, 1080], [T.noche, 1080, 1440]].forEach(function (f) {
           var dentro = lista.filter(function (h) { var m = +h.slice(0, 2) * 60 + +h.slice(3); return m >= f[1] && m < f[2]; });
@@ -1081,9 +1103,10 @@ RESERVAR_JS = r"""(function () {
     tarjeta.appendChild(el("h2", { texto: T.q3 }));
     tarjeta.appendChild(dias);
     tarjeta.appendChild(horas);
+    var automatica = !st.fecha;
     if (!st.fecha) st.fecha = primero;
     marcar();
-    if (st.fecha) cargar();
+    if (st.fecha) cargar(automatica);
   }
 
   function detalle() {
