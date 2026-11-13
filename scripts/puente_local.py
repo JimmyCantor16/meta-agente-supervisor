@@ -71,7 +71,53 @@ def binario_claude() -> str | None:
     return None
 
 
+REGISTRO_RAROS = RAIZ / "backend" / "data" / "puente_respuestas_raras.log"
+
+
+def json_valido(texto: str) -> bool:
+    """El mismo criterio tolerante que el servidor (fences y texto alrededor)."""
+    limpio = texto.strip()
+    if limpio.startswith("```"):
+        limpio = limpio[3:].removeprefix("json").rsplit("```", 1)[0].strip()
+    for candidato in (limpio, limpio[limpio.find("{"): limpio.rfind("}") + 1] if "{" in limpio else ""):
+        for estricto in (True, False):
+            try:
+                return isinstance(json.loads(candidato, strict=estricto), dict)
+            except ValueError:
+                continue
+    return False
+
+
+def anotar_raro(encargo: dict, texto: str) -> None:
+    try:
+        REGISTRO_RAROS.parent.mkdir(parents=True, exist_ok=True)
+        with REGISTRO_RAROS.open("a", encoding="utf-8") as f:
+            f.write(f"--- {time.strftime('%H:%M:%S')} {encargo.get('id')} {encargo.get('tipo')}\n{texto[:1500]}\n")
+    except OSError:
+        pass
+
+
 def motor_claude(encargo: dict, modelo: str) -> str:
+    """Claude Code; si se pidió JSON y no lo devolvió, se le pide UNA corrección."""
+    texto = _llamar_claude(encargo, modelo)
+    if encargo.get("want_json") and not json_valido(texto):
+        anotar_raro(encargo, texto)
+        log("mal", f"  {encargo['id']}: Claude no devolvió JSON; le pido que lo corrija")
+        correccion = dict(encargo)
+        correccion["user"] = (
+            (encargo.get("user") or "")
+            + "\n\n### TU RESPUESTA ANTERIOR NO ERA JSON VÁLIDO\n"
+            + texto[:4000]
+            + "\n\nDevuelve AHORA solo el objeto JSON pedido: sin preguntas, sin explicaciones, "
+            "sin markdown. Si te falta un dato, asume un valor razonable."
+        )
+        texto = _llamar_claude(correccion, modelo)
+        if not json_valido(texto):
+            anotar_raro(encargo, texto)
+    return texto
+
+
+def _llamar_claude(encargo: dict, modelo: str) -> str:
     binario = binario_claude()
     if not binario:
         raise RuntimeError("no encuentro el CLI «claude» en el PATH")
