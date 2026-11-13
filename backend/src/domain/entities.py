@@ -7,6 +7,7 @@ conocen nada sobre HTTP, DeepSeek ni FastAPI: pertenecen al núcleo del dominio.
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -203,9 +204,15 @@ class GeneratedProject(BaseModel):
         return slugify(self.name)
 
 
+def sin_tildes(texto: str) -> str:
+    """«Barbería Ñandú» -> «Barberia Nandu». Las tildes en un slug acababan en
+    URLs como `barber-a-urban-style.onrender.com` (13-nov-2026)."""
+    return "".join(c for c in unicodedata.normalize("NFKD", texto or "") if not unicodedata.combining(c))
+
+
 def slugify(name: str) -> str:
     """Convierte un nombre en un slug seguro para carpeta (minúsculas, guiones)."""
-    cleaned = [c.lower() if c.isalnum() else "-" for c in name.strip()]
+    cleaned = [c.lower() if c.isascii() and c.isalnum() else "-" for c in sin_tildes(name.strip())]
     slug = "".join(cleaned).strip("-")
     while "--" in slug:
         slug = slug.replace("--", "-")

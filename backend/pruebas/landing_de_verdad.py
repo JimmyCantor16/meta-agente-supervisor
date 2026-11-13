@@ -367,6 +367,11 @@ def main() -> int:
     assert "frontend/panel.html" in rutas_gen and "frontend/reservar.html" in rutas_gen, sorted(rutas_gen)
     negocio = next(f.content for f in p.files if f.path == "backend/negocio.json")
     assert "Naudi Peña" in negocio and "Fades" in negocio, "los profesionales salen del catálogo del clasificador"
+    from src.domain.entities import slugify
+    from src.infrastructure.adapters.render_deploy import _nombre_servicio
+
+    assert slugify("Barbería Urban Style") == "barberia-urban-style", "sin «barber-a» en la URL"
+    assert _nombre_servicio("Ñandú Spa") == "nandu-spa"
     print("8. panel del dueño (clave, agenda, cobros, resumen, clientes) y negocio con cita = web + panel ✓")
 
     print("\nTODO CORRECTO: la landing sale con la forma del negocio y su contacto funciona.")

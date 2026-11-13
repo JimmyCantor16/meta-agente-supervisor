@@ -691,8 +691,12 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         clasificador (los barberos de la barbería).
         """
         idioma = "español" if language == "es" else "inglés"
-        pista = ("[Este negocio trabaja con CITA: 'reservas' es true, cada servicio lleva su "
-                 "'duracion' real y hay 2-4 'profesionales' con su especialidad]\n\n"
+        # Con 3 servicios la agenda parecía de juguete, y sin país los precios
+        # salían en dólares ($15) para una barbería colombiana (13-nov-2026).
+        pista = ("[Este negocio trabaja con CITA: 'reservas' es true; pon 5 o 6 servicios reales "
+                 "del rubro, cada uno con su 'duracion' real; hay 2-4 'profesionales' con su "
+                 "especialidad. Si la idea no nombra país ni moneda, el negocio está en Colombia y "
+                 "los precios van en pesos colombianos (un corte ≈ 25000)]\n\n"
                  if agenda_de is not None else "")
         try:
             datos = self._llm.chat_json(

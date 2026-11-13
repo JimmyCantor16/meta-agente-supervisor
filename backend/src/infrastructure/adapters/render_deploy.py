@@ -34,7 +34,7 @@ from pathlib import Path
 
 import httpx
 
-from src.domain.entities import InfoDespliegue
+from src.domain.entities import InfoDespliegue, sin_tildes
 from src.domain.ports import DespliegueError, DesplieguePort
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ def _sin_secretos(texto: str) -> str:
 
 def _nombre_servicio(nombre: str) -> str:
     """Normaliza el nombre a lo que Render acepta (minúsculas, guiones, ≤40)."""
-    limpio = re.sub(r"[^a-z0-9-]", "-", (nombre or "").lower())
+    limpio = re.sub(r"[^a-z0-9-]", "-", sin_tildes(nombre or "").lower())
     limpio = re.sub(r"-+", "-", limpio).strip("-")
     return limpio[:40] or "proyecto-generado"
 
