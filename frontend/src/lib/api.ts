@@ -1051,3 +1051,18 @@ export async function getEstadoPuente(): Promise<EstadoPuente | null> {
     return null;
   }
 }
+
+/**
+ * ¿El servidor rechaza ESTA credencial? Un 401 suelto no basta para cerrar la
+ * sesión: una petición que salió un instante antes de entrar (sin token) vuelve
+ * con 401 y borraba la sesión recién guardada (pasó al entrar por #sesion=).
+ * Se pregunta a una ruta protegida con la credencial vigente.
+ */
+export async function credencialRechazada(credencial: string): Promise<boolean> {
+  try {
+    const r = await fetch(PROJECTS_ENDPOINT, { headers: { Authorization: `Bearer ${credencial}` } });
+    return r.status === 401;
+  } catch {
+    return false; // sin red no se decide nada: mejor no echar a nadie
+  }
+}

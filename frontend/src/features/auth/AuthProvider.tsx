@@ -7,7 +7,12 @@ import {
   useState,
 } from "react";
 import type { PropsWithChildren } from "react";
-import { depositarCredencialPuente, getAuthConfig, loginWithGoogle } from "../../lib/api";
+import {
+  credencialRechazada,
+  depositarCredencialPuente,
+  getAuthConfig,
+  loginWithGoogle,
+} from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import type { AuthConfig, AuthUser } from "./types";
 
@@ -123,10 +128,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // Si el backend indica que la sesión expiró (401), cerramos sesión para
   // que la UI pida iniciar sesión de nuevo (login fluido).
   useEffect(() => {
+    // Varias peticiones pueden dar 401 a la vez: una sola comprobación basta.
+    let comprobando: Promise<void> | null = null;
     const onExpired = () => {
-      setUser(null);
-      window.localStorage.removeItem(STORAGE_KEY);
-      window.localStorage.removeItem(CREDENTIAL_KEY);
+      if (comprobando) return;
+      comprobando = (async () => {
+        // Solo se cierra la sesión si la credencial GUARDADA AHORA es rechazada:
+        // un 401 de una petición que salió antes de entrar no cuenta.
+        const vigente = window.localStorage.getItem(CREDENTIAL_KEY);
+        if (vigente && !(await credencialRechazada(vigente))) return;
+        setUser(null);
+        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(CREDENTIAL_KEY);
+      })().finally(() => {
+        comprobando = null;
+      });
     };
     window.addEventListener("auth-expired", onExpired);
     return () => window.removeEventListener("auth-expired", onExpired);
