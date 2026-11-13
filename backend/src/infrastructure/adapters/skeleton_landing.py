@@ -194,7 +194,7 @@ _UI = {
         "fallo": "No pudimos enviar el mensaje. Inténtalo de nuevo o escríbenos directamente:",
         "abierto": "Abrimos tu aplicación con el mensaje listo para enviar.",
         "hola_wa": "Hola, vi su página y quiero más información.",
-        "derechos": "Todos los derechos reservados.",
+        "derechos": "Todos los derechos reservados.", "panel_dueno": "Acceso del negocio",
         "reservar_cita": "Reservar cita", "reservar": "Reservar",
     },
     "en": {
@@ -229,7 +229,7 @@ _UI = {
         "fallo": "We couldn't send your message. Try again or reach us directly:",
         "abierto": "We opened your app with the message ready to send.",
         "hola_wa": "Hi, I saw your page and I'd like more information.",
-        "derechos": "All rights reserved.",
+        "derechos": "All rights reserved.", "panel_dueno": "Staff login",
         "reservar_cita": "Book now", "reservar": "Book",
     },
 }
@@ -503,6 +503,9 @@ def _index_html(d: DominioLanding, t: dict, pal: dict, idioma: str, base: str,
     dixel_tags = dixel_assets.etiquetas(f"{base}vendor", dixel_assets.PERFIL_SITIO)
     dixel_on = dixel_assets.arranque(pal["acc"], "light", dixel_assets.PERFIL_SITIO, sangria="  ")
     pie_nav = "".join(f'<a href="{h}">{_e(n)}</a>' for h, n in enlaces)
+    if reservas:
+        # Discreto, en el pie: el dueño lo encuentra; el cliente no tropieza con él.
+        pie_nav += f'<a href="panel" rel="nofollow">{_e(t["panel_dueno"])}</a>'
 
     return f'''<!doctype html>
 <html lang="{idioma}">
@@ -730,6 +733,20 @@ section[id]{scroll-margin-top:72px}
 .pie a:hover{color:var(--acc)}
 .wa-flotante{position:fixed;right:1.1rem;bottom:1.1rem;z-index:50;display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#1F8F4E;color:#fff;box-shadow:0 14px 30px -12px rgba(0,0,0,.5)}
 .wa-flotante .ico{width:28px;height:28px}
+.mi-cita{position:fixed;left:50%;bottom:1.1rem;transform:translateX(-50%);z-index:60;width:min(560px,calc(100% - 2rem));display:flex;gap:.85rem;align-items:center;padding:.9rem 1rem;border-radius:16px;background:var(--superficie);color:var(--tinta);border:1px solid var(--linea);box-shadow:0 24px 48px -20px rgba(16,24,40,.45)}
+.mi-cita.recien{animation:mi-cita-entra .45s ease-out both}
+@keyframes mi-cita-entra{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+.mi-cita-check{flex:0 0 40px;height:40px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--exito) 15%,transparent);color:var(--exito);font-weight:800;font-size:1.2rem}
+.mi-cita div:not(.mi-cita-acc){flex:1;min-width:0;display:grid;line-height:1.35}
+.mi-cita b{font-size:.98rem}
+.mi-cita span{font-size:.9rem;color:var(--tinta-2)}
+.mi-cita small{font-size:.78rem;color:var(--tinta-2);font-family:ui-monospace,Consolas,monospace}
+.mi-cita-acc{display:flex;align-items:center;gap:.4rem}
+.mi-cita-acc a{font-size:.85rem;font-weight:650;color:var(--acc);text-decoration:none;white-space:nowrap}
+.mi-cita-acc button{width:32px;height:32px;border-radius:50%;border:0;background:var(--fondo);color:var(--tinta-2);font-size:1.2rem;cursor:pointer}
+@media (max-width:520px){.mi-cita{align-items:flex-start}.mi-cita-acc{flex-direction:column-reverse;align-items:flex-end}}
+.wa-flotante{transition:bottom .2s}
+body:has(.mi-cita) .wa-flotante{bottom:7.5rem}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
 .reservar-fila{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--linea)}
 .reservar-fila .dura{display:inline-flex;align-items:center;gap:6px;color:var(--tinta-2);font-size:.9rem}
@@ -873,6 +890,55 @@ _APP_JS = r"""(function () {
   });
 
   revisar(false);
+})();
+
+// Al volver de /reservar, el inicio CONFIRMA la cita (servicio, quién,
+// cuándo y código) en un aviso que se cierra: el cliente no se queda dentro
+// del asistente. Se olvida sola cuando la fecha ya pasó.
+(function () {
+  "use strict";
+  var cita = null;
+  try { cita = JSON.parse(localStorage.getItem("mi_cita") || "null"); } catch (e) { cita = null; }
+  if (!cita || !cita.codigo || !cita.fecha) return;
+  var hoy = new Date();
+  var hoyIso = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0") + "-" + String(hoy.getDate()).padStart(2, "0");
+  if (cita.fecha < hoyIso) { try { localStorage.removeItem("mi_cita"); } catch (e) {} return; }
+  var en = (document.documentElement.lang || "es").slice(0, 2) === "en";
+  var recien = new URLSearchParams(location.search).get("cita") === cita.codigo;
+  var p = cita.fecha.split("-");
+  var cuando = new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString(en ? "en" : "es", { weekday: "long", day: "numeric", month: "long" });
+  var caja = document.createElement("aside");
+  caja.className = "mi-cita" + (recien ? " recien" : "");
+  caja.setAttribute("role", "status");
+  var check = document.createElement("span");
+  check.className = "mi-cita-check";
+  check.setAttribute("aria-hidden", "true");
+  check.textContent = "✓";
+  var texto = document.createElement("div");
+  var titulo = document.createElement("b");
+  titulo.textContent = recien ? (en ? "Your appointment is confirmed" : "¡Tu cita quedó confirmada!") : (en ? "Your next appointment" : "Tu próxima cita");
+  var detalle = document.createElement("span");
+  detalle.textContent = cita.servicio + (cita.profesional ? (en ? " with " : " con ") + cita.profesional : "") + " · " + cuando + " · " + cita.hora;
+  var codigo = document.createElement("small");
+  codigo.textContent = (en ? "Code " : "Código ") + cita.codigo;
+  texto.appendChild(titulo); texto.appendChild(detalle); texto.appendChild(codigo);
+  var acciones = document.createElement("div");
+  acciones.className = "mi-cita-acc";
+  if (cita.calendario) {
+    var cal = document.createElement("a");
+    cal.href = cita.calendario; cal.target = "_blank"; cal.rel = "noopener";
+    cal.textContent = en ? "Add to calendar" : "Añadir al calendario";
+    acciones.appendChild(cal);
+  }
+  var cerrar = document.createElement("button");
+  cerrar.type = "button";
+  cerrar.setAttribute("aria-label", en ? "Close" : "Cerrar");
+  cerrar.textContent = "×";
+  cerrar.addEventListener("click", function () { caja.remove(); });
+  acciones.appendChild(cerrar);
+  caja.appendChild(check); caja.appendChild(texto); caja.appendChild(acciones);
+  document.body.appendChild(caja);
+  if (recien && history.replaceState) history.replaceState(null, "", location.pathname);
 })();
 """
 
@@ -1073,8 +1139,33 @@ Variables de entorno (todas opcionales; sin ellas la reserva funciona igual):
 | `GOOGLE_CLIENT_ID` | Botón «Continuar con Google» (autoriza el dominio de la página en Google Cloud) |
 | `SMTP_USER` / `SMTP_PASSWORD` | Correos de confirmación por Gmail (contraseña de aplicación) |
 | `NOTIFICAR_A` | Correo del dueño que recibe cada reserva (por defecto, el de contacto) |
-| `CLAVE_ADMIN` | Ver la agenda: `GET /api/reservas` con la cabecera `X-Clave-Admin` |
+| `CLAVE_ADMIN` | Clave fija del panel (y de `GET /api/reservas` con la cabecera `X-Clave-Admin`) |
 | `ZONA_HORARIA_HORAS` | Desfase horario (por defecto -5, Colombia) |
+| `RESERVAS_EJEMPLO` | `no` para arrancar sin citas de ejemplo |
+
+## Panel del negocio (`/panel`)
+
+El enlace «Acceso del negocio» está en el pie de la página.
+
+- **Agenda**: las citas del día en una columna por profesional, con el
+  teléfono (abre WhatsApp). Cada cita se marca **Atendida** (eligiendo cómo
+  pagó: efectivo, Nequi, tarjeta o transferencia), **No asistió** o
+  **Cancelada**, y se puede deshacer. Reactivar una cita nunca pisa otra.
+- **Resumen**: ingresos de hoy y del mes, citas de hoy, próximas citas,
+  inasistencia, la gráfica de los últimos 14 días, los servicios más pedidos
+  y el rendimiento de cada profesional.
+- **Clientes**: quién viene, cuántas veces, cuánto ha gastado, su última y
+  su próxima cita, y sus faltas. Con buscador.
+
+**La clave.** La primera persona que abre `/panel` la crea (mínimo 8
+caracteres), así que **ábrelo tú en cuanto publiques**. En producción es mejor
+fijarla con la variable `CLAVE_ADMIN`: así nadie puede crearla antes que tú
+aunque la base se reinicie.
+
+**Citas de ejemplo.** La agenda arranca con citas de ejemplo para que el
+panel se vea en uso. Se borran con un clic («Borrar ejemplos») y no vuelven
+mientras la base exista (si el servidor no tiene disco, una base nueva los
+vuelve a sembrar; pon `RESERVAS_EJEMPLO=no` para evitarlo).
 """
 
 
@@ -1093,6 +1184,9 @@ def _paquete(d: DominioLanding, idioma: str, base: str, endpoint: str | None) ->
                 d, pal, idioma, base, "", ""),
             "reservar.js": skeleton_reservas.RESERVAR_JS,
             "reservar.css": skeleton_reservas.RESERVAR_CSS,
+            "panel.html": skeleton_reservas.panel_html(d, pal, idioma, base),
+            "panel.js": skeleton_reservas.PANEL_JS,
+            "panel.css": skeleton_reservas.PANEL_CSS,
         }
     return {
         **extra,

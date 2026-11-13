@@ -12,6 +12,7 @@ generador libre de siempre.
 from __future__ import annotations
 
 import logging
+import re
 
 from src.domain.dominio_app import DominioApp
 from src.domain.dominio_tienda import MINIMO_PRODUCTOS, DominioTienda
@@ -305,6 +306,51 @@ def _contrato_del_clasificador(datos: dict) -> None:
             raise ValueError("'tipo' es 'por_clases' pero el temario no trae 2+ clases")
 
 
+_ENTIDAD_CITA = re.compile(r"^(cita|reserva|turno|agendamiento|appointment|booking)s?$", re.I)
+_RUBRO_CITA = re.compile(
+    r"barber|peluquer|sal[oó]n de belleza|est[eé]tic|\bspa\b|u[ñn]as|manicur|pedicur|masaj|"
+    r"consultorio|odont|dentist|fisioterap|psic[oó]log|nutricion|veterinari|tatu|pesta[ñn]as|"
+    r"cejas|grooming|barbershop|nail|salon", re.I)
+_PIDE_CITA = re.compile(r"reserv|\bcitas?\b|agend|turnos?\b|booking|appointment|weibook|zyncra", re.I)
+_SOLO_INTERNO = re.compile(
+    r"solo (para )?uso interno|sin (p[aá]gina|web|sitio) p[uú]blic|no necesito (p[aá]gina|web|sitio)", re.I)
+
+
+def es_negocio_con_cita(datos: dict | None, prompt: str) -> bool:
+    """¿Es un negocio que atiende con CITA y quiere que sus clientes reserven?
+
+    Hace falta el rubro (barbería, spa, consultorio…) y además que la idea
+    hable de citas o reservas, o que el clasificador ya haya modelado la
+    entidad como Cita/Reserva/Turno. Quien pide expresamente algo solo interno
+    se queda con la app de gestión.
+    """
+    texto = prompt or ""
+    if _SOLO_INTERNO.search(texto) or not _RUBRO_CITA.search(texto):
+        return False
+    dominio = (datos or {}).get("dominio") if isinstance(datos, dict) else None
+    entidad = str((dominio or {}).get("entidad") or "").strip() if isinstance(dominio, dict) else ""
+    return bool(_PIDE_CITA.search(texto) or _ENTIDAD_CITA.match(entidad))
+
+
+def _profesionales_de(datos: dict) -> list[dict]:
+    """Los profesionales que ya propuso el clasificador como catálogo (p. ej.
+    «Barbero»): nombre = primer campo; especialidad = el campo que lo diga."""
+    dominio = datos.get("dominio") if isinstance(datos, dict) else None
+    for cat in (dominio or {}).get("catalogos") or [] if isinstance(dominio, dict) else []:
+        if not isinstance(cat, dict) or re.search(r"servic|categor|producto", str(cat.get("nombre")), re.I):
+            continue
+        campos = [c.get("nombre") for c in cat.get("campos") or [] if isinstance(c, dict)]
+        if not campos:
+            continue
+        espec = next((c for c in campos[1:] if re.search(r"especial|cargo|rol", str(c), re.I)), None)
+        salida = [{"nombre": str(e.get(campos[0]) or "").strip(), "especialidad": str(e.get(espec) or "") if espec else ""}
+                  for e in cat.get("ejemplos") or [] if isinstance(e, dict)]
+        salida = [p for p in salida if p["nombre"]]
+        if salida:
+            return salida[:6]
+    return []
+
+
 class SkeletonProjectGenerator(ProjectGeneratorPort):
     """Usa el esqueleto probado para CRUD+login; delega el resto al generador libre."""
 
@@ -321,6 +367,20 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
         # replantear la respuesta entera, no solo retocar el modelo de datos.
         datos = self._replantear_con_experto(datos, prompt)
         tipo = (datos or {}).get("tipo")
+        if tipo in ("crud_login", "por_clases") and es_negocio_con_cita(datos, prompt):
+            # Una barbería, un spa o un consultorio no necesitan una TABLA de
+            # citas: necesitan que el cliente reserve solo (huecos reales, sin
+            # doble cita) y un panel donde el dueño ve su día y lo que cobró.
+            # Así se entregó, durante meses, un CRUD donde se podía citar dos
+            # veces al mismo barbero a la misma hora (13-nov-2026).
+            landing = self._disenar_landing(prompt, language, agenda_de=datos)
+            if landing is not None and landing.reservas and landing.servicios:
+                logger.info(
+                    "Esqueleto: NEGOCIO CON CITA '%s' -> web con reservas + panel · %d servicio(s) · "
+                    "%d profesional(es)", landing.nombre, len(landing.servicios), len(landing.profesionales),
+                )
+                return construir_landing_desde(landing, language)
+            logger.warning("Esqueleto: negocio con cita sin diseño de agenda; se sigue como '%s'.", tipo)
         if tipo == "tienda":
             proyecto = self._construir_tienda(datos)
             if proyecto is not None:
@@ -618,23 +678,36 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
     def _es_esqueleto(project: GeneratedProject) -> bool:
         return any(f.path == MARCADOR for f in project.files)
 
-    def _disenar_landing(self, prompt: str, language: str) -> DominioLanding | None:
+    def _disenar_landing(self, prompt: str, language: str,
+                         agenda_de: dict | None = None) -> DominioLanding | None:
         """Pide el CONTENIDO de la landing con su contrato dentro del fallback.
 
         Devuelve None si ningún proveedor da una landing construible: el
         llamador arma entonces la versión corta con lo del clasificador.
+
+        `agenda_de` (los datos del clasificador) marca un negocio con CITA: la
+        landing sale SIEMPRE con reservas y panel del dueño, y si el diseño no
+        trae profesionales se toman de los catálogos que ya propuso el
+        clasificador (los barberos de la barbería).
         """
         idioma = "español" if language == "es" else "inglés"
+        pista = ("[Este negocio trabaja con CITA: 'reservas' es true, cada servicio lleva su "
+                 "'duracion' real y hay 2-4 'profesionales' con su especialidad]\n\n"
+                 if agenda_de is not None else "")
         try:
             datos = self._llm.chat_json(
                 _SYSTEM_LANDING,
-                f"[Escribe todos los textos en {idioma}]\n\nIDEA DEL USUARIO:\n{prompt[:3000]}",
+                f"[Escribe todos los textos en {idioma}]\n{pista}\nIDEA DEL USUARIO:\n{prompt[:3000]}",
                 temperature=0.5,
                 validar=_contrato_landing,
             )
         except Exception as exc:  # noqa: BLE001 - sin diseño se degrada, no se cae
             logger.warning("Esqueleto: no se pudo diseñar la landing (%s).", exc)
             return None
+        if agenda_de is not None and isinstance(datos, dict):
+            datos = dict(datos, reservas=True)
+            if not datos.get("profesionales"):
+                datos["profesionales"] = _profesionales_de(agenda_de)
         # `validar` es un CHEQUEO y su retorno se descarta: la entidad se
         # construye aquí, siempre.
         try:

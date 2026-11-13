@@ -59,6 +59,7 @@ _UI = {
         "correo_ok": "Te enviamos la confirmación a", "correo_no": "Guarda este código: lo necesitas para cambiar o cancelar.",
         "calendario": "Añadir a Google Calendar", "whatsapp": "Escribir al negocio",
         "otra": "Hacer otra reserva", "cancelar": "Cancelar esta cita", "cancelada": "Tu cita quedó cancelada.",
+        "inicio": "Volver al inicio",
         "ocupado": "Esa hora se acaba de ocupar. Elige otra, por favor.",
         "fallo": "No pudimos confirmar la reserva. Inténtalo de nuevo.",
         "min": "min", "con": "con", "equipo": "Nuestro equipo",
@@ -85,6 +86,7 @@ _UI = {
         "correo_ok": "We sent the confirmation to", "correo_no": "Keep this code: you need it to change or cancel.",
         "calendario": "Add to Google Calendar", "whatsapp": "Message the business",
         "otra": "Book another", "cancelar": "Cancel this appointment", "cancelada": "Your appointment was cancelled.",
+        "inicio": "Back to home",
         "ocupado": "That time was just taken. Please pick another.",
         "fallo": "We couldn't confirm the booking. Please try again.",
         "min": "min", "con": "with", "equipo": "Our team",
@@ -177,7 +179,8 @@ def _agenda():
             " inicio INTEGER NOT NULL, fin INTEGER NOT NULL, nombre TEXT NOT NULL,"
             " email TEXT NOT NULL, telefono TEXT NOT NULL DEFAULT '', nota TEXT NOT NULL DEFAULT '',"
             " con_google INTEGER NOT NULL DEFAULT 0, estado TEXT NOT NULL DEFAULT 'confirmada',"
-            " creado_en TEXT NOT NULL)"
+            " creado_en TEXT NOT NULL, pago TEXT NOT NULL DEFAULT '', cobrado INTEGER NOT NULL DEFAULT 0,"
+            " ejemplo INTEGER NOT NULL DEFAULT 0)"
         )
         yield con
 
@@ -190,7 +193,8 @@ def _huecos(con, fecha: _date, servicio: dict, pro: str) -> dict:
         return {}
     candidatos = [pro] if pro in _PROS else list(_PROS)
     ocupado = {p: con.execute(
-        "SELECT inicio, fin FROM reservas WHERE fecha = ? AND profesional = ? AND estado = 'confirmada'",
+        "SELECT inicio, fin FROM reservas WHERE fecha = ? AND profesional = ?"
+        " AND estado IN ('confirmada', 'atendida')",
         (fecha.isoformat(), p)).fetchall() for p in candidatos}
     # Hoy no se ofrece lo que ya pasó, ni lo que empieza en menos de 30 minutos.
     minimo = ahora.hour * 60 + ahora.minute + 30 if fecha == ahora.date() else -1
@@ -410,6 +414,317 @@ def reservas(x_clave_admin: str = Header(default=""), fecha: Optional[_date] = N
 @app.get("/reservar")
 def pagina_reservar():
     return FileResponse(str(_FRONT / "reservar.html"))
+
+
+# ===========================================================================
+# Panel del dueño: agenda del día, estados, cobros, resumen y clientes
+# ===========================================================================
+import hashlib
+from datetime import timedelta as _td
+
+from fastapi import Depends
+
+_ESTADOS = ("confirmada", "atendida", "no_asistio", "cancelada")
+_PAGOS = ("", "efectivo", "nequi", "tarjeta", "transferencia")
+_SESION_HORAS = 12
+
+
+def _precio_num(texto) -> int:
+    """'$25.000' -> 25000 · 'Desde $40.000' -> 40000 · '12.50' -> 12."""
+    m = re.search(r"\d[\d.,]*", str(texto or ""))
+    if not m:
+        return 0
+    tok = m.group(0).rstrip(".,")
+    if re.search(r"[.,]\d{2}$", tok):
+        tok = tok[:-3]
+    return int(re.sub(r"\D", "", tok) or 0)
+
+
+@contextmanager
+def _panel_db():
+    with _agenda() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS panel_clave (id INTEGER PRIMARY KEY CHECK (id = 1),"
+                    " sal TEXT NOT NULL, hash TEXT NOT NULL)")
+        con.execute("CREATE TABLE IF NOT EXISTS panel_sesiones (token TEXT PRIMARY KEY, expira TEXT NOT NULL)")
+        yield con
+
+
+def _hash(clave: str, sal: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", clave.encode("utf-8"), bytes.fromhex(sal), 200_000).hex()
+
+
+def _configurado(con) -> bool:
+    return bool(os.environ.get("CLAVE_ADMIN")) or con.execute("SELECT 1 FROM panel_clave").fetchone() is not None
+
+
+def _clave_valida(con, clave: str) -> bool:
+    fija = os.environ.get("CLAVE_ADMIN", "")
+    if fija:
+        return secrets.compare_digest(clave, fija)
+    fila = con.execute("SELECT sal, hash FROM panel_clave WHERE id = 1").fetchone()
+    return bool(fila) and secrets.compare_digest(_hash(clave, fila[0]), fila[1])
+
+
+def _nueva_sesion(con) -> str:
+    token = secrets.token_urlsafe(32)
+    ahora = datetime.now(timezone.utc)
+    con.execute("DELETE FROM panel_sesiones WHERE expira < ?", (ahora.isoformat(),))
+    con.execute("INSERT INTO panel_sesiones (token, expira) VALUES (?, ?)",
+                (token, (ahora + _td(hours=_SESION_HORAS)).isoformat()))
+    return token
+
+
+def _dueno(authorization: str = Header(default="")) -> None:
+    """Dependencia: exige la sesión del panel (Authorization: Bearer <token>)."""
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    if not token:
+        raise HTTPException(401, "Entra al panel.")
+    with _panel_db() as con:
+        fila = con.execute("SELECT expira FROM panel_sesiones WHERE token = ?", (token,)).fetchone()
+    if not fila or fila[0] < datetime.now(timezone.utc).isoformat():
+        raise HTTPException(401, "Tu sesión terminó. Vuelve a entrar.")
+
+
+class ClaveIn(BaseModel):
+    clave: str = Field(min_length=1, max_length=128)
+
+
+class EstadoIn(BaseModel):
+    estado: str = Field(max_length=20)
+    pago: str = Field(default="", max_length=20)
+
+
+def _fila_cita(f) -> dict:
+    s = _SERVICIOS.get(f[1], {})
+    return {
+        "codigo": f[0], "servicio": s.get("nombre", f[1]), "servicio_id": f[1],
+        "profesional": _PROS.get(f[2], {}).get("nombre", f[2]), "profesional_id": f[2],
+        "fecha": f[3], "hora": _hhmm(f[4]), "fin": _hhmm(f[5]), "nombre": f[6], "email": f[7],
+        "telefono": f[8], "nota": f[9], "estado": f[10], "pago": f[11], "cobrado": f[12],
+        "precio": _precio_num(s.get("precio")), "ejemplo": bool(f[13]),
+    }
+
+
+_COLS = ("codigo, servicio, profesional, fecha, inicio, fin, nombre, email, telefono, nota,"
+         " estado, pago, cobrado, ejemplo")
+
+
+@app.get("/api/panel/estado")
+def panel_estado() -> dict:
+    with _panel_db() as con:
+        return {"configurado": _configurado(con), "negocio": _NEGOCIO["nombre"]}
+
+
+@app.post("/api/panel/crear")
+def panel_crear(c: ClaveIn) -> dict:
+    """La PRIMERA persona que abre el panel fija la clave del dueño (mínimo 8)."""
+    if len(c.clave) < 8:
+        raise HTTPException(422, "La clave necesita al menos 8 caracteres.")
+    with _CANDADO, _panel_db() as con:
+        if _configurado(con):
+            raise HTTPException(409, "El panel ya tiene clave. Entra con ella.")
+        sal = secrets.token_hex(16)
+        con.execute("INSERT INTO panel_clave (id, sal, hash) VALUES (1, ?, ?)", (sal, _hash(c.clave, sal)))
+        return {"token": _nueva_sesion(con)}
+
+
+@app.post("/api/panel/entrar")
+def panel_entrar(c: ClaveIn) -> dict:
+    with _CANDADO, _panel_db() as con:
+        if not _clave_valida(con, c.clave):
+            raise HTTPException(401, "Clave incorrecta.")
+        return {"token": _nueva_sesion(con)}
+
+
+@app.get("/api/panel/agenda", dependencies=[Depends(_dueno)])
+def panel_agenda(fecha: Optional[_date] = None) -> dict:
+    dia = fecha or datetime.now(_zona()).date()
+    with _panel_db() as con:
+        filas = con.execute(f"SELECT {_COLS} FROM reservas WHERE fecha = ? ORDER BY inicio", (dia.isoformat(),)).fetchall()
+    citas = [_fila_cita(f) for f in filas]
+    return {
+        "fecha": dia.isoformat(), "abierto": dia.weekday() in _AG["dias"],
+        "profesionales": _NEGOCIO["profesionales"], "citas": citas,
+        "esperado": sum(c["precio"] for c in citas if c["estado"] in ("confirmada", "atendida")),
+        "cobrado": sum(c["cobrado"] for c in citas if c["estado"] == "atendida"),
+    }
+
+
+@app.post("/api/panel/reservas/{codigo}/estado", dependencies=[Depends(_dueno)])
+def panel_cambiar_estado(codigo: str, e: EstadoIn) -> dict:
+    if e.estado not in _ESTADOS:
+        raise HTTPException(422, "Estado desconocido.")
+    if e.pago not in _PAGOS:
+        raise HTTPException(422, "Método de pago desconocido.")
+    with _CANDADO, _panel_db() as con:
+        fila = con.execute(f"SELECT {_COLS} FROM reservas WHERE codigo = ?", (codigo.strip().upper(),)).fetchone()
+        if not fila:
+            raise HTTPException(404, "Esa cita no existe.")
+        cita = _fila_cita(fila)
+        if e.estado == "confirmada" and not _hueco_libre(con, cita):
+            raise HTTPException(409, "Esa hora ya la tiene otra cita.")
+        cobrado = cita["precio"] if e.estado == "atendida" else 0
+        pago = (e.pago or "efectivo") if e.estado == "atendida" else ""
+        con.execute("UPDATE reservas SET estado = ?, pago = ?, cobrado = ? WHERE codigo = ?",
+                    (e.estado, pago, cobrado, cita["codigo"]))
+        fila = con.execute(f"SELECT {_COLS} FROM reservas WHERE codigo = ?", (cita["codigo"],)).fetchone()
+    return _fila_cita(fila)
+
+
+def _hueco_libre(con, cita: dict) -> bool:
+    """¿Se puede REACTIVAR esta cita sin pisar otra del mismo profesional?"""
+    ini, fin = _min(cita["hora"]), _min(cita["fin"])
+    otras = con.execute(
+        "SELECT inicio, fin FROM reservas WHERE fecha = ? AND profesional = ? AND codigo <> ?"
+        " AND estado IN ('confirmada', 'atendida')",
+        (cita["fecha"], cita["profesional_id"], cita["codigo"])).fetchall()
+    return all(fin <= a or ini >= b for a, b in otras)
+
+
+@app.get("/api/panel/resumen", dependencies=[Depends(_dueno)])
+def panel_resumen() -> dict:
+    hoy = datetime.now(_zona()).date()
+    mes = hoy.replace(day=1).isoformat()
+    desde = (hoy - _td(days=13)).isoformat()
+    with _panel_db() as con:
+        filas = [_fila_cita(f) for f in con.execute(
+            f"SELECT {_COLS} FROM reservas WHERE fecha >= ? ORDER BY fecha, inicio",
+            (min(mes, desde),)).fetchall()]
+    de_hoy = [c for c in filas if c["fecha"] == hoy.isoformat()]
+    del_mes = [c for c in filas if mes <= c["fecha"] <= hoy.isoformat()]
+    cerradas = [c for c in del_mes if c["estado"] in ("atendida", "no_asistio")]
+    serie = []
+    for i in range(14):
+        dia = (hoy - _td(days=13 - i)).isoformat()
+        serie.append({"fecha": dia, "citas": sum(1 for c in filas if c["fecha"] == dia and c["estado"] != "cancelada"),
+                      "ingresos": sum(c["cobrado"] for c in filas if c["fecha"] == dia)})
+    def ranking(clave: str) -> list:
+        cuenta: dict = {}
+        for c in del_mes:
+            if c["estado"] in ("confirmada", "atendida"):
+                x = cuenta.setdefault(c[clave], {"nombre": c[clave], "citas": 0, "ingresos": 0})
+                x["citas"] += 1
+                x["ingresos"] += c["cobrado"]
+        return sorted(cuenta.values(), key=lambda x: (-x["citas"], -x["ingresos"]))[:6]
+    return {
+        "hoy": hoy.isoformat(),
+        "citas_hoy": sum(1 for c in de_hoy if c["estado"] != "cancelada"),
+        "pendientes_hoy": sum(1 for c in de_hoy if c["estado"] == "confirmada"),
+        "ingresos_hoy": sum(c["cobrado"] for c in de_hoy),
+        "ingresos_mes": sum(c["cobrado"] for c in del_mes),
+        "proximas": sum(1 for c in filas if c["fecha"] > hoy.isoformat() and c["estado"] == "confirmada"),
+        "inasistencia": round(100 * sum(1 for c in cerradas if c["estado"] == "no_asistio") / len(cerradas))
+        if cerradas else 0,
+        "serie": serie, "servicios": ranking("servicio"), "profesionales": ranking("profesional"),
+        "hay_ejemplos": any(c["ejemplo"] for c in filas),
+    }
+
+
+@app.get("/api/panel/clientes", dependencies=[Depends(_dueno)])
+def panel_clientes(q: str = "") -> dict:
+    with _panel_db() as con:
+        filas = [_fila_cita(f) for f in con.execute(
+            f"SELECT {_COLS} FROM reservas ORDER BY fecha DESC, inicio DESC LIMIT 5000").fetchall()]
+    clientes: dict = {}
+    for c in filas:
+        x = clientes.setdefault(c["email"].lower(), {
+            "nombre": c["nombre"], "email": c["email"], "telefono": c["telefono"],
+            "visitas": 0, "inasistencias": 0, "gastado": 0, "ultima": c["fecha"], "proxima": "",
+        })
+        x["telefono"] = x["telefono"] or c["telefono"]
+        if c["estado"] == "atendida":
+            x["visitas"] += 1
+            x["gastado"] += c["cobrado"]
+        elif c["estado"] == "no_asistio":
+            x["inasistencias"] += 1
+        elif c["estado"] == "confirmada" and c["fecha"] >= datetime.now(_zona()).date().isoformat():
+            x["proxima"] = c["fecha"] + " " + c["hora"]
+    lista = sorted(clientes.values(), key=lambda x: (-x["visitas"], x["nombre"]))
+    q = q.strip().lower()
+    if q:
+        lista = [x for x in lista if q in x["nombre"].lower() or q in x["email"].lower() or q in x["telefono"]]
+    return {"total": len(lista), "clientes": lista[:300]}
+
+
+@app.post("/api/panel/ejemplos/borrar", dependencies=[Depends(_dueno)])
+def panel_borrar_ejemplos() -> dict:
+    with _CANDADO, _panel_db() as con:
+        n = con.execute("DELETE FROM reservas WHERE ejemplo = 1").rowcount
+    return {"borradas": n}
+
+
+@app.get("/panel")
+def pagina_panel():
+    return FileResponse(str(_FRONT / "panel.html"))
+
+
+_NOMBRES_EJEMPLO = ("Santiago Beltrán", "Valentina Ríos", "Andrés Felipe Rincón", "Camila Ortiz",
+                    "Julián Restrepo", "Mariana Gómez", "Sebastián Ordóñez", "Laura Cárdenas",
+                    "Mateo Arboleda", "Daniela Suárez", "Felipe Marulanda", "Sara Valencia")
+
+
+def _sembrar_ejemplos() -> None:
+    """Una agenda vacía no enseña nada: siembra citas de ejemplo (marcadas, y
+    borrables desde el panel con un clic) la primera vez que arranca."""
+    if os.environ.get("RESERVAS_EJEMPLO", "si").lower() in ("no", "0", "false"):
+        return
+    servicios, pros = list(_SERVICIOS.values()), list(_PROS)
+    if not servicios or not pros:
+        return
+    zona = _zona()
+    ahora = datetime.now(zona)
+    hoy = ahora.date()
+    apertura, cierre, paso = _min(_AG["apertura"]), _min(_AG["cierre"]), int(_AG["intervalo"])
+    with _CANDADO, _agenda() as con:
+        # Una sola vez por base: si el dueño los borró, no vuelven al reiniciar.
+        con.execute("CREATE TABLE IF NOT EXISTS semilla (id INTEGER PRIMARY KEY CHECK (id = 1))")
+        if con.execute("SELECT 1 FROM semilla").fetchone():
+            return
+        con.execute("INSERT INTO semilla (id) VALUES (1)")
+        if con.execute("SELECT COUNT(*) FROM reservas").fetchone()[0]:
+            return
+        n = 0
+        for desfase in list(range(-12, 0)) + [0, 1, 2]:
+            dia = hoy + _td(days=desfase)
+            if dia.weekday() not in _AG["dias"]:
+                continue
+            ocupado: dict = {p: [] for p in pros}
+            for k in range(2 if desfase < 0 else 3):
+                s = servicios[(n + k) % len(servicios)]
+                p = pros[(n + k) % len(pros)]
+                dura = int(s["duracion"])
+                base = apertura
+                if desfase == 0:  # hoy, solo lo que todavía no ha pasado
+                    minimo = ahora.hour * 60 + ahora.minute + 30
+                    if minimo > apertura:
+                        base = apertura + paso * -(-(minimo - apertura) // paso)
+                huecos = (cierre - base - dura) // paso + 1
+                if huecos <= 0:
+                    continue
+                m = base + paso * ((n * 3 + k * 5) % huecos)
+                if m + dura > cierre or not all(m + dura <= a or m >= b for a, b in ocupado[p]):
+                    continue
+                ocupado[p].append((m, m + dura))
+                nombre = _NOMBRES_EJEMPLO[n % len(_NOMBRES_EJEMPLO)]
+                if desfase < 0:
+                    estado = "no_asistio" if n % 9 == 4 else ("cancelada" if n % 11 == 7 else "atendida")
+                else:
+                    estado = "confirmada"
+                cobrado = _precio_num(s.get("precio")) if estado == "atendida" else 0
+                pago = ("efectivo", "nequi", "tarjeta")[n % 3] if estado == "atendida" else ""
+                usuario = re.sub(r"[^a-z]", "", nombre.split()[0].lower().translate(str.maketrans("áéíóúñ", "aeioun")))
+                con.execute(
+                    "INSERT INTO reservas (codigo, servicio, profesional, fecha, inicio, fin, nombre, email,"
+                    " telefono, nota, estado, creado_en, pago, cobrado, ejemplo)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+                    ("R-" + secrets.token_hex(3).upper(), s["id"], p, dia.isoformat(), m, m + dura, nombre,
+                     f"{usuario}{n}@ejemplo.com", f"300{(n * 7919) % 10000000:07d}", "", estado,
+                     datetime.now(timezone.utc).isoformat(timespec="seconds"), pago, cobrado),
+                )
+                n += 1
+
+
+_sembrar_ejemplos()
 '''
 
 
@@ -560,6 +875,7 @@ RESERVAR_CSS = """
 .rs-acciones .btn{justify-content:center}
 .btn-borde{background:transparent;color:var(--acc);border:1px solid var(--acc)}
 .rs-enlace{background:none;border:0;color:var(--tinta-2);font:inherit;text-decoration:underline;cursor:pointer;margin-top:6px}
+.rs-enlaces{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 18px;margin:14px 0 0}
 .rs-barra{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:color-mix(in srgb,var(--hero) 86%,transparent);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.1)}
 .rs-barra-in{max-width:640px;margin:0 auto;display:flex;gap:12px;align-items:center;justify-content:space-between}
@@ -902,22 +1218,35 @@ RESERVAR_JS = r"""(function () {
       return el("div", {}, [el("span", { texto: f[0] }), el("b", { texto: f[1] })]);
     })));
     tarjeta.appendChild(el("p", { texto: r.correo === "enviando" ? T.correo_ok + " " + r.email + "." : T.correo_no }));
+    // La cita viaja al inicio: allí se ve confirmada sin quedarse en el
+    // asistente (el cliente no tiene que «salir» de un bucle de reservas).
+    var guardada = { codigo: r.codigo, servicio: r.servicio, profesional: r.profesional, fecha: r.fecha,
+                     hora: r.hora, email: r.email, calendario: r.calendario };
+    try { localStorage.setItem("mi_cita", JSON.stringify(guardada)); } catch (e) { /* sin almacenamiento: no pasa nada */ }
     var acciones = el("div", { clase: "rs-acciones" }, [
-      el("a", { clase: "btn", href: r.calendario, target: "_blank", rel: "noopener", texto: T.calendario })]);
+      el("a", { clase: "btn", href: "./?cita=" + encodeURIComponent(r.codigo), texto: T.inicio }),
+      el("a", { clase: "btn btn-borde", href: r.calendario, target: "_blank", rel: "noopener", texto: T.calendario })]);
     if (N.whatsapp) {
       var msg = encodeURIComponent(r.codigo + " · " + r.servicio + " · " + fechaLarga(r.fecha) + " " + r.hora + " · " + r.nombre);
       acciones.appendChild(el("a", { clase: "btn btn-borde", href: "https://wa.me/" + N.whatsapp + "?text=" + msg,
         target: "_blank", rel: "noopener", texto: T.whatsapp }));
     }
-    acciones.appendChild(el("button", { type: "button", clase: "btn btn-borde", texto: T.otra, onclick: function () {
+    var enlaces = el("p", { clase: "rs-enlaces" });
+    enlaces.appendChild(el("button", { type: "button", clase: "rs-enlace", texto: T.otra, onclick: function () {
       st.servicio = null; st.hora = ""; st.fecha = ""; st.profesional = ""; ir(1); } }));
-    acciones.appendChild(el("button", { type: "button", clase: "rs-enlace", texto: T.cancelar, onclick: function (ev) {
+    enlaces.appendChild(el("button", { type: "button", clase: "rs-enlace", texto: T.cancelar, onclick: function (ev) {
       var b = ev.currentTarget;
       api("api/reservas/" + encodeURIComponent(r.codigo) + "/cancelar", { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: r.email }) })
-      .then(function (x) { if (x.ok) { b.replaceWith(el("p", { clase: "rs-aviso", texto: T.cancelada })); } });
+      .then(function (x) {
+        if (x.ok) {
+          try { localStorage.removeItem("mi_cita"); } catch (e) { /* nada */ }
+          b.replaceWith(el("span", { clase: "rs-aviso", texto: T.cancelada }));
+        }
+      });
     } }));
     tarjeta.appendChild(acciones);
+    tarjeta.appendChild(enlaces);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -931,5 +1260,496 @@ RESERVAR_JS = r"""(function () {
     tarjeta.innerHTML = "";
     tarjeta.appendChild(el("p", { clase: "rs-vacio", texto: T.fallo }));
   });
+})();
+"""
+
+
+# ---------------------------------------------------------------------------
+# Página /panel (dueño): agenda por profesional, cobros, resumen y clientes
+# ---------------------------------------------------------------------------
+_PANEL_UI = {
+    "es": {
+        "panel": "Panel del negocio", "agenda": "Agenda", "resumen": "Resumen", "clientes": "Clientes",
+        "ver_pagina": "Ver página", "salir": "Salir", "hoy": "Hoy", "nueva": "Nueva cita",
+        "crear_titulo": "Crea la clave del panel", "crear_sub": "Solo tú la sabrás. Con ella ves la agenda, los cobros y los clientes.",
+        "entrar_titulo": "Entra al panel", "entrar_sub": "Escribe la clave del negocio.",
+        "clave": "Clave", "repetir": "Repite la clave", "e_corta": "Mínimo 8 caracteres.", "e_distinta": "Las claves no coinciden.",
+        "crear": "Crear y entrar", "entrar": "Entrar", "entrando": "Entrando…",
+        "citas": "Citas", "pendientes": "Por atender", "esperado": "Esperado", "cobrado": "Cobrado",
+        "sin_citas": "No hay citas este día.", "cerrado": "Cerrado este día.",
+        "atendida": "Atendida", "no_asistio": "No asistió", "cancelada": "Cancelada", "confirmada": "Confirmada",
+        "marcar_atendida": "Atendida", "marcar_no": "No asistió", "cancelar": "Cancelar", "reactivar": "Reactivar", "deshacer": "Deshacer",
+        "como_pago": "¿Cómo pagó?", "efectivo": "Efectivo", "nequi": "Nequi", "tarjeta": "Tarjeta", "transferencia": "Transferencia",
+        "pago_en": "Pagó con", "ingresos_hoy": "Ingresos de hoy", "ingresos_mes": "Ingresos del mes",
+        "citas_hoy": "Citas de hoy", "proximas": "Próximas citas", "inasistencia": "Inasistencia del mes",
+        "ultimos": "Últimos 14 días", "top_servicios": "Servicios más pedidos (mes)", "por_pro": "Por profesional (mes)",
+        "ejemplos": "Estás viendo citas de EJEMPLO para que veas el panel en uso.", "borrar_ejemplos": "Borrar ejemplos",
+        "buscar": "Buscar por nombre, correo o celular…", "visitas": "Visitas", "gastado": "Gastado",
+        "ultima": "Última", "proxima": "Próxima", "faltas": "Faltas", "cliente": "Cliente", "celular": "Celular",
+        "sin_clientes": "Todavía no hay clientes.", "error": "No se pudo cargar. Revisa tu conexión.",
+        "clave_mal": "Clave incorrecta.", "ocupado": "Esa hora ya la tiene otra cita.",
+    },
+    "en": {
+        "panel": "Business panel", "agenda": "Schedule", "resumen": "Overview", "clientes": "Clients",
+        "ver_pagina": "View site", "salir": "Log out", "hoy": "Today", "nueva": "New booking",
+        "crear_titulo": "Create the panel password", "crear_sub": "Only you will know it. It unlocks the schedule, payments and clients.",
+        "entrar_titulo": "Sign in to the panel", "entrar_sub": "Enter the business password.",
+        "clave": "Password", "repetir": "Repeat password", "e_corta": "At least 8 characters.", "e_distinta": "Passwords don't match.",
+        "crear": "Create and enter", "entrar": "Sign in", "entrando": "Signing in…",
+        "citas": "Bookings", "pendientes": "To serve", "esperado": "Expected", "cobrado": "Collected",
+        "sin_citas": "No bookings this day.", "cerrado": "Closed this day.",
+        "atendida": "Done", "no_asistio": "No-show", "cancelada": "Cancelled", "confirmada": "Confirmed",
+        "marcar_atendida": "Done", "marcar_no": "No-show", "cancelar": "Cancel", "reactivar": "Restore", "deshacer": "Undo",
+        "como_pago": "How did they pay?", "efectivo": "Cash", "nequi": "Nequi", "tarjeta": "Card", "transferencia": "Transfer",
+        "pago_en": "Paid by", "ingresos_hoy": "Today's revenue", "ingresos_mes": "Month revenue",
+        "citas_hoy": "Today's bookings", "proximas": "Upcoming", "inasistencia": "No-show rate (month)",
+        "ultimos": "Last 14 days", "top_servicios": "Top services (month)", "por_pro": "By professional (month)",
+        "ejemplos": "You're looking at SAMPLE bookings so you can see the panel in use.", "borrar_ejemplos": "Delete samples",
+        "buscar": "Search by name, email or phone…", "visitas": "Visits", "gastado": "Spent",
+        "ultima": "Last", "proxima": "Next", "faltas": "No-shows", "cliente": "Client", "celular": "Phone",
+        "sin_clientes": "No clients yet.", "error": "Couldn't load. Check your connection.",
+        "clave_mal": "Wrong password.", "ocupado": "That time is taken by another booking.",
+    },
+}
+
+
+def panel_html(d: DominioLanding, pal: dict, idioma: str, base: str) -> str:
+    t = _PANEL_UI.get(idioma, _PANEL_UI["es"])
+    inicial = next((ch for ch in d.nombre.upper() if ch.isalnum()), "A")
+    textos_json = json.dumps(t, ensure_ascii=False).replace("</", "<\\/")
+    return f'''<!doctype html>
+<html lang="{idioma}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{_e(t["panel"])} · {_e(d.nombre)}</title>
+<meta name="theme-color" content="{pal["hero"]}">
+<link rel="icon" href="{base}icono.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{base}styles.css">
+<link rel="stylesheet" href="{base}panel.css">
+</head>
+<body class="pag-panel">
+<section class="pn-acceso" id="pn-acceso" hidden>
+<form class="pn-login" id="pn-login" novalidate>
+<span class="rs-logo" aria-hidden="true">{_e(inicial)}</span>
+<p class="pn-negocio">{_e(d.nombre)}</p>
+<h1 id="pn-login-titulo"></h1>
+<p class="pn-sub" id="pn-login-sub"></p>
+<label for="pn-clave">{_e(t["clave"])}</label>
+<input id="pn-clave" type="password" autocomplete="current-password" required>
+<p class="error" id="pn-e-clave"></p>
+<div id="pn-repetir-caja" hidden>
+<label for="pn-repetir">{_e(t["repetir"])}</label>
+<input id="pn-repetir" type="password" autocomplete="new-password">
+<p class="error" id="pn-e-repetir"></p>
+</div>
+<button class="btn" id="pn-entrar" type="submit" disabled></button>
+<p class="error" id="pn-e-login" role="alert"></p>
+</form>
+</section>
+<div class="pn-app" id="pn-app" hidden>
+<header class="pn-cab">
+<div class="pn-cab-in">
+<a class="pn-marca" href="./"><span class="rs-logo" aria-hidden="true">{_e(inicial)}</span><span><b>{_e(d.nombre)}</b><small>{_e(t["panel"])}</small></span></a>
+<nav class="pn-tabs" id="pn-tabs" role="tablist">
+<button role="tab" data-tab="agenda" aria-selected="true">{_e(t["agenda"])}</button>
+<button role="tab" data-tab="resumen" aria-selected="false">{_e(t["resumen"])}</button>
+<button role="tab" data-tab="clientes" aria-selected="false">{_e(t["clientes"])}</button>
+</nav>
+<div class="pn-cab-acc"><a href="./" class="pn-link">{_e(t["ver_pagina"])}</a><button type="button" class="pn-link" id="pn-salir">{_e(t["salir"])}</button></div>
+</div>
+</header>
+<p class="pn-ejemplos" id="pn-ejemplos" hidden><span>{_e(t["ejemplos"])}</span><button type="button" id="pn-borrar-ejemplos">{_e(t["borrar_ejemplos"])}</button></p>
+<main class="pn-main" id="pn-main"></main>
+</div>
+<script id="pn-textos" type="application/json">{textos_json}</script>
+<script src="{base}panel.js" defer></script>
+</body>
+</html>
+'''
+
+
+PANEL_CSS = """
+.pag-panel{background:var(--fondo);color:var(--tinta);min-height:100vh}
+.pag-panel [hidden]{display:none !important}
+.pn-acceso{min-height:100vh;display:grid;place-items:center;padding:24px 16px;
+  background:radial-gradient(60% 50% at 50% 0%,color-mix(in srgb,var(--acc) 40%,transparent),transparent 70%),var(--hero)}
+.pn-login{width:100%;max-width:400px;background:var(--superficie);border-radius:20px;padding:28px;text-align:center;
+  box-shadow:0 30px 60px -30px rgba(0,0,0,.6)}
+.pn-login .rs-logo{margin:0 auto}
+.pn-negocio{margin:12px 0 0;font-weight:700;color:var(--tinta-2)}
+.pn-login h1{font-size:1.4rem;margin:4px 0 4px}
+.pn-sub{color:var(--tinta-2);margin:0 0 18px;font-size:.95rem}
+.pn-login label{display:block;text-align:left;font-weight:600;font-size:.9rem;margin:10px 0 6px}
+.pn-login input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--borde);font:inherit;background:var(--superficie);color:var(--tinta)}
+.pn-login input:focus{outline:2px solid var(--acc);outline-offset:1px}
+.pn-login .btn{width:100%;margin-top:14px}
+.pn-login .btn:disabled{opacity:.5;cursor:not-allowed}
+.pag-panel .error{color:var(--error);font-size:.85rem;margin:4px 0 0;min-height:1em;text-align:left}
+.pag-panel .rs-logo{display:inline-grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--acc);color:#fff;font-size:1.4rem;font-weight:800}
+.pn-cab{background:var(--hero);color:#fff;position:sticky;top:0;z-index:20}
+.pn-cab-in{max-width:1200px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.pn-marca{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;margin-right:auto}
+.pn-marca .rs-logo{width:38px;height:38px;font-size:1rem}
+.pn-marca b{display:block;line-height:1.2}
+.pn-marca small{display:block;color:rgba(255,255,255,.65);font-size:.78rem}
+.pn-tabs{display:flex;gap:4px;background:rgba(255,255,255,.08);padding:4px;border-radius:12px}
+.pn-tabs button{background:none;border:0;color:rgba(255,255,255,.75);font:inherit;font-weight:600;font-size:.92rem;padding:8px 14px;border-radius:9px;cursor:pointer}
+.pn-tabs button[aria-selected=true]{background:#fff;color:var(--hero)}
+.pn-cab-acc{display:flex;gap:6px}
+.pn-link{background:none;border:0;color:rgba(255,255,255,.8);font:inherit;font-size:.9rem;text-decoration:none;cursor:pointer;padding:6px 8px}
+.pn-link:hover{color:#fff}
+.pn-ejemplos{max-width:1200px;margin:14px auto 0;padding:10px 14px;border-radius:12px;background:var(--acc-suave);
+  display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:.92rem;width:calc(100% - 32px)}
+.pn-ejemplos button{background:none;border:1px solid var(--acc);color:var(--acc);border-radius:8px;padding:6px 10px;font:inherit;font-weight:600;cursor:pointer}
+.pn-main{max-width:1200px;margin:0 auto;padding:16px 16px 48px}
+.pn-barra{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 16px}
+.pn-barra h2{font-size:1.25rem;margin:0 8px 0 0}
+.pn-barra h2::first-letter{text-transform:uppercase}
+.pn-ico{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--linea);background:var(--superficie);color:var(--tinta);font:inherit;font-size:1.1rem;cursor:pointer}
+.pn-chipbtn{border:1px solid var(--linea);background:var(--superficie);color:var(--tinta);border-radius:10px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer}
+.pn-barra .btn{margin-left:auto;min-height:40px;padding:.5rem 1rem}
+.pn-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.pn-kpi{background:var(--superficie);border:1px solid var(--linea);border-radius:14px;padding:14px 16px}
+.pn-kpi small{display:block;color:var(--tinta-2);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.pn-kpi b{display:block;font-size:1.6rem;letter-spacing:-.01em;margin-top:4px}
+.pn-kpi.acento b{color:var(--acc)}
+.pn-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:start}
+.pn-col{background:var(--superficie);border:1px solid var(--linea);border-radius:16px;padding:12px}
+.pn-col-cab{display:flex;align-items:center;gap:10px;padding:4px 4px 12px;border-bottom:1px solid var(--linea);margin-bottom:10px}
+.pn-ava{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--acc-suave);color:var(--acc);font-weight:800}
+.pn-col-cab b{display:block;line-height:1.2}
+.pn-col-cab small{color:var(--tinta-2);font-size:.8rem}
+.pn-cita{border:1px solid var(--linea);border-left:4px solid var(--acc);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:var(--fondo)}
+.pn-cita.atendida{border-left-color:var(--exito)}
+.pn-cita.no_asistio{border-left-color:var(--error);opacity:.8}
+.pn-cita.cancelada{border-left-color:var(--borde);opacity:.6}
+.pn-cita.cancelada .pn-quien{text-decoration:line-through}
+.pn-hora{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;font-size:.92rem}
+.pn-estado{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--acc-suave);color:var(--acc);text-transform:uppercase;letter-spacing:.04em}
+.pn-estado.atendida{background:color-mix(in srgb,var(--exito) 14%,transparent);color:var(--exito)}
+.pn-estado.no_asistio{background:color-mix(in srgb,var(--error) 12%,transparent);color:var(--error)}
+.pn-estado.cancelada{background:var(--linea);color:var(--tinta-2)}
+.pn-quien{font-weight:650;margin:4px 0 0}
+.pn-que{color:var(--tinta-2);font-size:.88rem;margin:2px 0 0}
+.pn-tel{font-size:.85rem;color:var(--acc);text-decoration:none;font-weight:600}
+.pn-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.pn-acc button{border:1px solid var(--linea);background:var(--superficie);color:var(--tinta);border-radius:8px;padding:6px 10px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
+.pn-acc button.si{background:var(--exito);border-color:var(--exito);color:#fff}
+.pn-acc button:disabled{opacity:.5}
+.pn-pago{font-size:.82rem;color:var(--exito);font-weight:600;margin:6px 0 0}
+.pn-vacio{padding:22px;text-align:center;color:var(--tinta-2);background:var(--superficie);border:1px dashed var(--borde);border-radius:14px}
+.pn-col .pn-vacio{padding:14px;border:0;background:none;font-size:.9rem}
+.pn-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.pn-caja{background:var(--superficie);border:1px solid var(--linea);border-radius:16px;padding:16px}
+.pn-caja h3{font-size:1rem;margin:0 0 14px}
+.pn-grafica{display:flex;align-items:flex-end;gap:6px;height:170px;padding-top:8px}
+.pn-barra-g{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.pn-barra-g i{display:block;width:100%;max-width:34px;border-radius:6px 6px 2px 2px;background:var(--acc);min-height:3px}
+.pn-barra-g.hoy i{background:var(--hero)}
+.pn-barra-g small{font-size:.7rem;color:var(--tinta-2)}
+.pn-rank{display:grid;gap:10px}
+.pn-rank div{display:grid;gap:4px}
+.pn-rank p{display:flex;justify-content:space-between;gap:8px;margin:0;font-size:.92rem}
+.pn-rank p span{color:var(--tinta-2);white-space:nowrap}
+.pn-rank i{display:block;height:8px;border-radius:99px;background:var(--acc)}
+.pn-buscar{width:100%;max-width:420px;padding:11px 14px;border-radius:12px;border:1px solid var(--borde);font:inherit;background:var(--superficie);color:var(--tinta);margin-bottom:14px}
+.pn-tabla-caja{overflow-x:auto;background:var(--superficie);border:1px solid var(--linea);border-radius:16px}
+.pn-tabla{width:100%;border-collapse:collapse;font-size:.92rem}
+.pn-tabla th{text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--tinta-2);padding:12px 14px;border-bottom:1px solid var(--linea);white-space:nowrap}
+.pn-tabla td{padding:12px 14px;border-bottom:1px solid var(--linea);vertical-align:top}
+.pn-tabla tr:last-child td{border-bottom:0}
+.pn-tabla td small{display:block;color:var(--tinta-2)}
+.pn-num{text-align:right;white-space:nowrap}
+@media (max-width:640px){.pn-tabs{order:3;width:100%}.pn-tabs button{flex:1}.pn-kpi b{font-size:1.3rem}
+  .pn-barra h2{flex-basis:100%;margin:0 0 4px}.pn-barra .btn{margin-left:0;width:100%}.pn-cab-acc{margin-left:auto}}
+"""
+
+
+PANEL_JS = r"""(function () {
+  "use strict";
+  var T = JSON.parse(document.getElementById("pn-textos").textContent);
+  var CLAVE = "panel_sesion";
+  var token = "";
+  try { token = localStorage.getItem(CLAVE) || ""; } catch (e) { token = ""; }
+  var main = document.getElementById("pn-main");
+  var tab = "agenda";
+  var fecha = null;
+  var buscarTimer = null;
+  var configurado = true;
+
+  function el(tag, o, hijos) {
+    var n = document.createElement(tag);
+    o = o || {};
+    if (o.clase) n.className = o.clase;
+    if (o.texto != null) n.textContent = o.texto;
+    if (o.attrs) Object.keys(o.attrs).forEach(function (k) { n.setAttribute(k, o.attrs[k]); });
+    if (o.click) n.addEventListener("click", o.click);
+    (hijos || []).forEach(function (h) { if (h) n.appendChild(h); });
+    return n;
+  }
+  function $(id) { return document.getElementById(id); }
+  function plata(n) { return "$" + Number(n || 0).toLocaleString("es-CO"); }
+  function guardar(t) { token = t; try { if (t) localStorage.setItem(CLAVE, t); else localStorage.removeItem(CLAVE); } catch (e) {} }
+  function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function deIso(s) { var p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function wa(tel) { var d = (tel || "").replace(/\D/g, ""); return d ? "https://wa.me/" + (d.length === 10 ? "57" + d : d) : ""; }
+
+  function api(ruta, metodo, cuerpo) {
+    var o = { method: metodo || "GET", headers: { "Authorization": "Bearer " + token } };
+    if (cuerpo) { o.headers["Content-Type"] = "application/json"; o.body = JSON.stringify(cuerpo); }
+    return fetch(ruta, o).then(function (r) {
+      if (r.status === 401) { guardar(""); acceso(); throw new Error("401"); }
+      return r.json().then(function (j) {
+        if (!r.ok) { var e = new Error(j.detail || "error"); e.status = r.status; throw e; }
+        return j;
+      });
+    });
+  }
+
+  // ---------------- acceso ----------------
+  function textoBoton() { return configurado ? T.entrar : T.crear; }
+  function acceso() {
+    $("pn-app").hidden = true;
+    $("pn-acceso").hidden = false;
+    fetch("api/panel/estado").then(function (r) { return r.json(); }).then(function (j) {
+      configurado = j.configurado;
+      $("pn-login-titulo").textContent = configurado ? T.entrar_titulo : T.crear_titulo;
+      $("pn-login-sub").textContent = configurado ? T.entrar_sub : T.crear_sub;
+      $("pn-repetir-caja").hidden = configurado;
+      $("pn-clave").setAttribute("autocomplete", configurado ? "current-password" : "new-password");
+      $("pn-entrar").textContent = textoBoton();
+      validar();
+      $("pn-clave").focus();
+    }).catch(function () { $("pn-e-login").textContent = T.error; });
+  }
+  function validar() {
+    var c = $("pn-clave").value, r = $("pn-repetir").value, ok = c.length > 0;
+    $("pn-e-clave").textContent = "";
+    $("pn-e-repetir").textContent = "";
+    if (!configurado) {
+      if (c && c.length < 8) $("pn-e-clave").textContent = T.e_corta;
+      if (r && r !== c) $("pn-e-repetir").textContent = T.e_distinta;
+      ok = c.length >= 8 && r === c;
+    }
+    $("pn-entrar").disabled = !ok;
+    return ok;
+  }
+  $("pn-clave").addEventListener("input", validar);
+  $("pn-repetir").addEventListener("input", validar);
+  $("pn-login").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!validar()) return;
+    var b = $("pn-entrar"), err = $("pn-e-login");
+    b.disabled = true; b.textContent = T.entrando; err.textContent = "";
+    fetch(configurado ? "api/panel/entrar" : "api/panel/crear", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clave: $("pn-clave").value })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        b.textContent = textoBoton();
+        if (!x.ok) { err.textContent = x.j.detail || T.clave_mal; validar(); return; }
+        guardar(x.j.token);
+        $("pn-clave").value = ""; $("pn-repetir").value = "";
+        abrir();
+      }).catch(function () { err.textContent = T.error; b.textContent = textoBoton(); validar(); });
+  });
+  $("pn-salir").addEventListener("click", function () { guardar(""); acceso(); });
+
+  // ---------------- app ----------------
+  function abrir() {
+    $("pn-acceso").hidden = true;
+    $("pn-app").hidden = false;
+    pintar();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("#pn-tabs button"), function (b) {
+    b.addEventListener("click", function () {
+      tab = b.getAttribute("data-tab");
+      Array.prototype.forEach.call(document.querySelectorAll("#pn-tabs button"), function (x) {
+        x.setAttribute("aria-selected", x === b ? "true" : "false");
+      });
+      pintar();
+    });
+  });
+  $("pn-borrar-ejemplos").addEventListener("click", function () {
+    api("api/panel/ejemplos/borrar", "POST").then(function () { $("pn-ejemplos").hidden = true; pintar(); });
+  });
+
+  function fallo(e) {
+    if (e && e.message === "401") return;
+    main.innerHTML = "";
+    main.appendChild(el("p", { clase: "pn-vacio", texto: T.error }));
+  }
+  function pintar() {
+    main.innerHTML = "";
+    main.appendChild(el("p", { clase: "pn-vacio", texto: "…" }));
+    api("api/panel/resumen").then(function (r) {
+      $("pn-ejemplos").hidden = !r.hay_ejemplos;
+      if (tab === "agenda") return agenda();
+      if (tab === "resumen") return resumen(r);
+      main.innerHTML = "";
+      return clientes("");
+    }).catch(fallo);
+  }
+
+  function kpi(etq, valor, acento) {
+    return el("div", { clase: "pn-kpi" + (acento ? " acento" : "") }, [el("small", { texto: etq }), el("b", { texto: String(valor) })]);
+  }
+
+  // ---- agenda ----
+  function agenda() {
+    return api("api/panel/agenda" + (fecha ? "?fecha=" + fecha : "")).then(function (a) {
+      fecha = a.fecha;
+      main.innerHTML = "";
+      var etiqueta = deIso(a.fecha).toLocaleDateString(document.documentElement.lang || "es", { weekday: "long", day: "numeric", month: "long" });
+      function mover(n) { var x = deIso(fecha); x.setDate(x.getDate() + n); fecha = iso(x); agenda().catch(fallo); }
+      main.appendChild(el("div", { clase: "pn-barra" }, [
+        el("h2", { texto: etiqueta }),
+        el("button", { clase: "pn-ico", texto: "‹", attrs: { "aria-label": "←", type: "button" }, click: function () { mover(-1); } }),
+        el("button", { clase: "pn-ico", texto: "›", attrs: { "aria-label": "→", type: "button" }, click: function () { mover(1); } }),
+        el("button", { clase: "pn-chipbtn", texto: T.hoy, attrs: { type: "button" }, click: function () { fecha = null; agenda().catch(fallo); } }),
+        el("a", { clase: "btn", texto: "+ " + T.nueva, attrs: { href: "reservar", target: "_blank", rel: "noopener" } })
+      ]));
+      main.appendChild(el("div", { clase: "pn-kpis" }, [
+        kpi(T.citas, a.citas.filter(function (c) { return c.estado !== "cancelada"; }).length),
+        kpi(T.pendientes, a.citas.filter(function (c) { return c.estado === "confirmada"; }).length),
+        kpi(T.esperado, plata(a.esperado)),
+        kpi(T.cobrado, plata(a.cobrado), true)
+      ]));
+      if (!a.citas.length) {
+        main.appendChild(el("p", { clase: "pn-vacio", texto: a.abierto ? T.sin_citas : T.cerrado }));
+        return;
+      }
+      var cols = el("div", { clase: "pn-cols" });
+      a.profesionales.forEach(function (p) {
+        var suyas = a.citas.filter(function (c) { return c.profesional_id === p.id; });
+        var col = el("section", { clase: "pn-col" }, [
+          el("div", { clase: "pn-col-cab" }, [
+            el("span", { clase: "pn-ava", texto: (p.nombre || "?").charAt(0) }),
+            el("div", {}, [el("b", { texto: p.nombre }), el("small", { texto: suyas.length + " · " + T.citas.toLowerCase() })])
+          ])
+        ]);
+        if (!suyas.length) col.appendChild(el("p", { clase: "pn-vacio", texto: T.sin_citas }));
+        suyas.forEach(function (c) { col.appendChild(tarjetaCita(c)); });
+        cols.appendChild(col);
+      });
+      main.appendChild(cols);
+    });
+  }
+
+  function cambiar(c, estado, pago, boton) {
+    if (boton) boton.disabled = true;
+    return api("api/panel/reservas/" + encodeURIComponent(c.codigo) + "/estado", "POST", { estado: estado, pago: pago || "" })
+      .then(function () { return agenda(); })
+      .catch(function (e) {
+        if (boton) boton.disabled = false;
+        if (e && e.status === 409) window.alert(T.ocupado);
+      });
+  }
+
+  function tarjetaCita(c) {
+    var enlace = wa(c.telefono);
+    var caja = el("article", { clase: "pn-cita " + c.estado }, [
+      el("div", { clase: "pn-hora" }, [el("span", { texto: c.hora + " – " + c.fin }), el("span", { clase: "pn-estado " + c.estado, texto: T[c.estado] || c.estado })]),
+      el("p", { clase: "pn-quien", texto: c.nombre }),
+      el("p", { clase: "pn-que", texto: c.servicio + (c.precio ? " · " + plata(c.precio) : "") }),
+      enlace ? el("a", { clase: "pn-tel", texto: c.telefono, attrs: { href: enlace, target: "_blank", rel: "noopener" } }) : null,
+      c.nota ? el("p", { clase: "pn-que", texto: "“" + c.nota + "”" }) : null
+    ]);
+    var acc = el("div", { clase: "pn-acc" });
+    if (c.estado === "confirmada") {
+      acc.appendChild(el("button", { clase: "si", texto: "✓ " + T.marcar_atendida, attrs: { type: "button" }, click: function () {
+        acc.innerHTML = "";
+        acc.appendChild(el("span", { clase: "pn-que", texto: T.como_pago }));
+        ["efectivo", "nequi", "tarjeta", "transferencia"].forEach(function (m) {
+          acc.appendChild(el("button", { texto: T[m], attrs: { type: "button" }, click: function (ev) { cambiar(c, "atendida", m, ev.currentTarget); } }));
+        });
+      } }));
+      acc.appendChild(el("button", { texto: T.marcar_no, attrs: { type: "button" }, click: function (ev) { cambiar(c, "no_asistio", "", ev.currentTarget); } }));
+      acc.appendChild(el("button", { texto: T.cancelar, attrs: { type: "button" }, click: function (ev) { cambiar(c, "cancelada", "", ev.currentTarget); } }));
+    } else {
+      if (c.estado === "atendida") caja.appendChild(el("p", { clase: "pn-pago", texto: T.pago_en + " " + (T[c.pago] || c.pago) + " · " + plata(c.cobrado) }));
+      acc.appendChild(el("button", { texto: c.estado === "atendida" ? T.deshacer : T.reactivar, attrs: { type: "button" }, click: function (ev) { cambiar(c, "confirmada", "", ev.currentTarget); } }));
+    }
+    caja.appendChild(acc);
+    return caja;
+  }
+
+  // ---- resumen ----
+  function resumen(r) {
+    main.innerHTML = "";
+    main.appendChild(el("div", { clase: "pn-kpis" }, [
+      kpi(T.ingresos_hoy, plata(r.ingresos_hoy), true),
+      kpi(T.ingresos_mes, plata(r.ingresos_mes), true),
+      kpi(T.citas_hoy, r.citas_hoy),
+      kpi(T.proximas, r.proximas),
+      kpi(T.inasistencia, r.inasistencia + "%")
+    ]));
+    var max = Math.max.apply(null, r.serie.map(function (s) { return s.citas; }).concat([1]));
+    var graf = el("div", { clase: "pn-grafica" });
+    r.serie.forEach(function (s) {
+      var barra = el("i");
+      barra.style.height = Math.round(100 * s.citas / max) + "%";
+      graf.appendChild(el("div", { clase: "pn-barra-g" + (s.fecha === r.hoy ? " hoy" : ""), attrs: { title: s.fecha + " · " + s.citas + " · " + plata(s.ingresos) } },
+        [barra, el("small", { texto: String(+s.fecha.slice(8)) })]));
+    });
+    function rank(lista) {
+      var tope = Math.max.apply(null, lista.map(function (x) { return x.citas; }).concat([1]));
+      var caja = el("div", { clase: "pn-rank" });
+      if (!lista.length) caja.appendChild(el("p", { clase: "pn-que", texto: T.sin_citas }));
+      lista.forEach(function (x) {
+        var b = el("i");
+        b.style.width = Math.round(100 * x.citas / tope) + "%";
+        caja.appendChild(el("div", {}, [el("p", {}, [el("b", { texto: x.nombre }), el("span", { texto: x.citas + " · " + plata(x.ingresos) })]), b]));
+      });
+      return caja;
+    }
+    main.appendChild(el("div", { clase: "pn-grid2" }, [
+      el("section", { clase: "pn-caja" }, [el("h3", { texto: T.ultimos }), graf]),
+      el("section", { clase: "pn-caja" }, [el("h3", { texto: T.top_servicios }), rank(r.servicios)]),
+      el("section", { clase: "pn-caja" }, [el("h3", { texto: T.por_pro }), rank(r.profesionales)])
+    ]));
+  }
+
+  // ---- clientes ----
+  function clientes(q) {
+    return api("api/panel/clientes?q=" + encodeURIComponent(q)).then(function (r) {
+      var input = main.querySelector(".pn-buscar");
+      if (!input) {
+        main.innerHTML = "";
+        input = el("input", { clase: "pn-buscar", attrs: { type: "search", placeholder: T.buscar, "aria-label": T.buscar } });
+        input.addEventListener("input", function () {
+          clearTimeout(buscarTimer);
+          buscarTimer = setTimeout(function () { clientes(input.value).catch(fallo); }, 250);
+        });
+        main.appendChild(input);
+        main.appendChild(el("div", { clase: "pn-tabla-caja", attrs: { id: "pn-tabla" } }));
+      }
+      var caja = $("pn-tabla");
+      caja.innerHTML = "";
+      if (!r.clientes.length) { caja.appendChild(el("p", { clase: "pn-vacio", texto: T.sin_clientes })); return; }
+      var cab = el("tr");
+      [T.cliente, T.celular, T.visitas, T.gastado, T.ultima, T.proxima, T.faltas].forEach(function (h, i) {
+        cab.appendChild(el("th", { clase: (i === 2 || i === 3 || i === 6) ? "pn-num" : "", texto: h }));
+      });
+      var tbody = el("tbody");
+      r.clientes.forEach(function (c) {
+        var enlace = wa(c.telefono);
+        tbody.appendChild(el("tr", {}, [
+          el("td", {}, [el("b", { texto: c.nombre }), el("small", { texto: c.email })]),
+          el("td", {}, [enlace ? el("a", { clase: "pn-tel", texto: c.telefono, attrs: { href: enlace, target: "_blank", rel: "noopener" } }) : el("span", { texto: "—" })]),
+          el("td", { clase: "pn-num", texto: String(c.visitas) }),
+          el("td", { clase: "pn-num", texto: plata(c.gastado) }),
+          el("td", { texto: c.ultima }),
+          el("td", { texto: c.proxima || "—" }),
+          el("td", { clase: "pn-num", texto: String(c.inasistencias) })
+        ]));
+      });
+      caja.appendChild(el("table", { clase: "pn-tabla" }, [el("thead", {}, [cab]), tbody]));
+    });
+  }
+
+  if (token) abrir(); else acceso();
 })();
 """

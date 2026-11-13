@@ -227,6 +227,7 @@ def main() -> int:
             destino.parent.mkdir(parents=True, exist_ok=True)
             destino.write_text(f.content, encoding="utf-8")
         os.environ["CONTACTO_DB"] = str(Path(tmp) / "data" / "c.db")
+        os.environ["RESERVAS_EJEMPLO"] = "no"  # esta parte cuenta huecos: agenda vacía
         for k in ("CLAVE_ADMIN", "GOOGLE_CLIENT_ID", "SMTP_USER", "SMTP_PASSWORD"):
             os.environ.pop(k, None)
         spec = importlib.util.spec_from_file_location("landing_agenda", Path(tmp) / "backend" / "main.py")
@@ -269,7 +270,104 @@ def main() -> int:
         assert agenda["total"] == 3 and {x["estado"] for x in agenda["reservas"]} == {"confirmada", "cancelada"}
         os.environ.pop("CLAVE_ADMIN", None)
         os.environ.pop("CONTACTO_DB", None)
+        os.environ.pop("RESERVAS_EJEMPLO", None)
     print("7. reservas: huecos reales, sin doble cita, «cualquiera», cancelación y agenda del dueño ✓")
+
+    # 8) Panel del dueño: clave, agenda, cobros, resumen, clientes y ejemplos
+    for r in ("frontend/panel.html", "frontend/panel.js", "frontend/panel.css"):
+        assert r in rutas, f"falta {r}"
+    assert 'href="panel"' in html_ag, "el pie lleva al panel del negocio"
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in p_agenda.files:
+            destino = Path(tmp) / f.path
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text(f.content, encoding="utf-8")
+        os.environ["CONTACTO_DB"] = str(Path(tmp) / "data" / "c.db")
+        for k in ("CLAVE_ADMIN", "RESERVAS_EJEMPLO"):
+            os.environ.pop(k, None)
+
+        def arrancar(nombre):
+            spec = importlib.util.spec_from_file_location(nombre, Path(tmp) / "backend" / "main.py")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[nombre] = mod
+            spec.loader.exec_module(mod)
+            return TestClient(mod.app)
+
+        c = arrancar("landing_panel")
+        assert c.get("/panel").status_code == 200 and c.get("/static/panel.js").status_code == 200
+        assert c.get("/api/panel/agenda").status_code == 401, "sin sesión no se ve la agenda"
+        assert c.get("/api/panel/estado").json()["configurado"] is False
+        assert c.post("/api/panel/crear", json={"clave": "corta"}).status_code == 422
+        token = c.post("/api/panel/crear", json={"clave": "barberia2026"}).json()["token"]
+        assert c.post("/api/panel/crear", json={"clave": "otraclave99"}).status_code == 409, "la clave se fija UNA vez"
+        assert c.post("/api/panel/entrar", json={"clave": "mala-clave"}).status_code == 401
+        assert c.post("/api/panel/entrar", json={"clave": "barberia2026"}).status_code == 200
+        H = {"Authorization": f"Bearer {token}"}
+        assert c.get("/api/panel/agenda", headers={"Authorization": "Bearer inventado"}).status_code == 401
+
+        res = c.get("/api/panel/resumen", headers=H).json()
+        assert res["hay_ejemplos"] and res["ingresos_mes"] >= 0 and len(res["serie"]) == 14
+        clientes = c.get("/api/panel/clientes", headers=H).json()
+        assert clientes["total"] >= 5, "la agenda arranca con clientes de ejemplo"
+        assert c.get("/api/panel/clientes", params={"q": "zzz-nadie"}, headers=H).json()["total"] == 0
+
+        manana = (date.today() + timedelta(days=3)).isoformat()
+        cita = {"servicio": "s1", "profesional": "p2", "fecha": manana, "hora": "11:00",
+                "nombre": "Pedro Páramo", "email": "pedro@correo.co", "telefono": "3015550000"}
+        hecha = c.post("/api/reservas", json=cita)
+        assert hecha.status_code == 201, hecha.text
+        codigo = hecha.json()["codigo"]
+        dia = c.get("/api/panel/agenda", params={"fecha": manana}, headers=H).json()
+        mia = next(x for x in dia["citas"] if x["codigo"] == codigo)
+        assert mia["estado"] == "confirmada" and mia["precio"] == 30000 and dia["esperado"] >= 30000
+        url = f"/api/panel/reservas/{codigo}/estado"
+        assert c.post(url, json={"estado": "volando"}, headers=H).status_code == 422
+        assert c.post(url, json={"estado": "atendida", "pago": "bitcoin"}, headers=H).status_code == 422
+        hecho = c.post(url, json={"estado": "atendida", "pago": "nequi"}, headers=H).json()
+        assert hecho["cobrado"] == 30000 and hecho["pago"] == "nequi", "atendida cobra el precio del SERVIDOR"
+        assert c.post("/api/reservas", json={**cita, "email": "otra@x.co"}).status_code == 409, "atendida sigue ocupando"
+        assert c.post(url, json={"estado": "cancelada"}, headers=H).json()["cobrado"] == 0
+        otra = c.post("/api/reservas", json={**cita, "email": "otra@x.co"})
+        assert otra.status_code == 201, "cancelar desde el panel libera la hora"
+        assert c.post(url, json={"estado": "confirmada"}, headers=H).status_code == 409, "reactivar no pisa otra cita"
+        assert c.post("/api/panel/ejemplos/borrar", headers=H).json()["borradas"] > 0
+        assert c.get("/api/panel/resumen", headers=H).json()["hay_ejemplos"] is False
+
+        c2 = arrancar("landing_panel_2")  # reinicio del proceso con la MISMA base
+        assert not c2.get("/api/panel/resumen", headers=H).json()["hay_ejemplos"], "los ejemplos borrados no vuelven"
+        os.environ["CLAVE_ADMIN"] = "clave-fija-123"
+        assert c2.post("/api/panel/entrar", json={"clave": "clave-fija-123"}).status_code == 200, "CLAVE_ADMIN manda"
+        assert c2.post("/api/panel/entrar", json={"clave": "barberia2026"}).status_code == 401
+        os.environ.pop("CLAVE_ADMIN", None)
+        os.environ.pop("CONTACTO_DB", None)
+
+    # El generador: un negocio con CITA sale con web + reservas + panel, no con una tabla
+    assert sg.es_negocio_con_cita({"dominio": {"entidad": "Cita"}},
+                                  "sistema de información para una barbería al estilo weibook")
+    assert sg.es_negocio_con_cita({}, "app para reservar turnos en mi spa")
+    assert not sg.es_negocio_con_cita({"dominio": {"entidad": "Gasto"}}, "control de gastos de mi barbería")
+    assert not sg.es_negocio_con_cita({"dominio": {"entidad": "Cita"}},
+                                      "citas de mi consultorio, solo para uso interno")
+    assert not sg.es_negocio_con_cita({"dominio": {"entidad": "Cita"}}, "agenda de citas de mis clientes de abogacía")
+    clasif = {"tipo": "crud_login", "dominio": {
+        "app_name": "Naudi", "entidad": "Cita", "entidad_plural": "Citas",
+        "campos": [{"nombre": "cliente", "etiqueta": "Cliente", "tipo": "texto", "obligatorio": True},
+                   {"nombre": "fecha", "etiqueta": "Fecha", "tipo": "fecha", "obligatorio": True}],
+        "catalogos": [{"nombre": "Barbero", "plural": "Barberos",
+                       "campos": [{"nombre": "nombre", "etiqueta": "Nombre", "tipo": "texto", "obligatorio": True},
+                                  {"nombre": "especialidades", "etiqueta": "Especialidades", "tipo": "texto"}],
+                       "ejemplos": [{"nombre": "Naudi Peña", "especialidades": "Fades"}, {"nombre": "Kevin Muñoz"}]},
+                      {"nombre": "Servicio", "plural": "Servicios",
+                       "campos": [{"nombre": "nombre", "etiqueta": "Servicio", "tipo": "texto", "obligatorio": True}],
+                       "ejemplos": [{"nombre": "Corte"}, {"nombre": "Barba"}]}]}}
+    sin_pros = {k: v for k, v in BARBERIA.items() if k != "profesionales"}
+    gen._llm = LLMFalso([clasif, sin_pros])
+    p = gen.generate("Sistema completo para una barbería con reservas como weibook")
+    rutas_gen = {f.path for f in p.files}
+    assert "frontend/panel.html" in rutas_gen and "frontend/reservar.html" in rutas_gen, sorted(rutas_gen)
+    negocio = next(f.content for f in p.files if f.path == "backend/negocio.json")
+    assert "Naudi Peña" in negocio and "Fades" in negocio, "los profesionales salen del catálogo del clasificador"
+    print("8. panel del dueño (clave, agenda, cobros, resumen, clientes) y negocio con cita = web + panel ✓")
 
     print("\nTODO CORRECTO: la landing sale con la forma del negocio y su contacto funciona.")
     return 0
