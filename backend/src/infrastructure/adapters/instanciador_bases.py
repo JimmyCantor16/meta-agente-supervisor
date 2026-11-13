@@ -468,7 +468,43 @@ def _manual(m: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+#: Tema de la base dorada -> tono de la landing del esqueleto.
+_TONO_DE_TEMA = {"calido": "calido", "oscuro": "frio", "vidrio": "neutro"}
+
+
 def _instanciar_landing(m: dict) -> list[GeneratedFile]:
+    """La landing de la base dorada sale con el MISMO diseño que la del esqueleto.
+
+    Antes eran dos plantillas distintas y la de aquí usaba emojis como iconos y
+    un contacto sin formulario. Ahora el manifiesto se traduce a
+    `DominioLanding` y se dibuja con el renderer del esqueleto en su forma
+    estática (sin backend: el formulario abre WhatsApp o el correo). Si algo
+    fallara al traducir, se conserva la plantilla clásica: una landing algo
+    más sencilla es mejor que ninguna.
+    """
+    try:
+        from src.domain.dominio_landing import DominioLanding
+        from src.infrastructure.adapters.skeleton_landing import archivos_landing_estatica
+
+        hero = m.get("hero") or {}
+        d = DominioLanding.model_validate({
+            "nombre": m["nombre"],
+            "tono": _TONO_DE_TEMA.get(m.get("tema"), "neutro"),
+            "hero": {"titulo": hero.get("titulo"), "subtitulo": hero.get("subtitulo") or m["descripcion"],
+                     "cta": hero.get("cta")},
+            "servicios": [{"nombre": c.get("titulo"), "descripcion": c.get("texto"), "icono": "chispa"}
+                          for c in (m.get("caracteristicas") or []) if isinstance(c, dict)],
+            "sobre": m.get("sobre"),
+            "contacto": m.get("contacto") if isinstance(m.get("contacto"), dict) else {},
+        })
+        if d.nombre and d.hero.titulo:
+            return [GeneratedFile(path=p, content=c) for p, c in archivos_landing_estatica(d).items()]
+    except Exception as exc:  # noqa: BLE001 - se degrada a la plantilla clásica
+        logger.warning("Landing de base dorada: se usa la plantilla clásica (%s).", exc)
+    return _instanciar_landing_clasica(m)
+
+
+def _instanciar_landing_clasica(m: dict) -> list[GeneratedFile]:
     c1, c2 = _PALETAS[m["tema"]]
     oscuro = m["tema"] == "oscuro"
     hero = m.get("hero") or {}

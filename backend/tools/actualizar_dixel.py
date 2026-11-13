@@ -52,7 +52,11 @@ PERFILES = {
         "components/media",
         "effects/scroll",
         "effects/hover",
-        "effects/background",
+        # SIN "effects/background": su ParticleField depende de ShapeMask, que
+        # vive en `shaders/` y no viaja en este perfil. El resolvedor de DIXEL
+        # LANZA al no encontrarla («unresolved dependencies -> ParticleField»),
+        # `Dixel.init` muere y el gate de render rechaza la página por el error
+        # de consola: así fallaba TODA landing con este perfil (nov-2026).
         "effects/micro",
     ],
 }

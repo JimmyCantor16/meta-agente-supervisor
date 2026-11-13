@@ -19,7 +19,11 @@ from src.domain.entities import GeneratedFile, GeneratedProject
 from src.domain.ports import ProjectGeneratorPort
 from src.infrastructure.adapters.multimodel_llm import MultiModelLLM
 from src.infrastructure.adapters.skeleton_fullstack import MARCADOR
-from src.infrastructure.adapters.skeleton_landing import construir_landing
+from src.domain.dominio_landing import ICONOS, DominioLanding
+from src.infrastructure.adapters.skeleton_landing import (
+    construir_landing,
+    construir_landing_desde,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +163,75 @@ _SYSTEM = (
 )
 
 
+_SYSTEM_LANDING = (
+    "Eres director creativo y redactor de conversión. Diseñas la LANDING PAGE de "
+    "un negocio real a partir de la idea del usuario. Devuelve SOLO un JSON válido, "
+    "sin texto alrededor.\n\n"
+    "Escribe como el dueño de ESE negocio: textos concretos del oficio, de la "
+    "ciudad y del público, con precios, servicios, horarios y nombres creíbles del "
+    "país. Prohibido el relleno genérico («calidad y profesionalismo», «Servicio "
+    "1», «Lorem», «Somos los mejores»). Si la idea trae datos (nombre, ciudad, "
+    "servicios, teléfono, precios), úsalos TAL CUAL. Sin emojis.\n\n"
+    "Forma del JSON:\n"
+    "{\n"
+    '  "nombre": "nombre propio del negocio (el de la idea; si no lo trae, uno con carácter)",\n'
+    '  "rubro": "oficio en 1-2 palabras", "ciudad": "la de la idea, o vacío",\n'
+    '  "tono": "cálido|frío|sobrio|vivo|neutro",\n'
+    '  "acento": "#RRGGBB (color de marca que pegue con el rubro)",\n'
+    '  "hero": {"eyebrow": "rubro + barrio o ciudad",\n'
+    '           "titulo": "la promesa concreta, máximo 9 palabras",\n'
+    '           "subtitulo": "1-2 frases: qué, para quién y por qué aquí",\n'
+    '           "cta": "verbo + objeto, máximo 4 palabras"},\n'
+    '  "destacados": [{"valor": "+8", "etiqueta": "años de experiencia"}],\n'
+    '  "servicios_titulo": "...", "servicios_intro": "1 frase",\n'
+    '  "servicios": [{"nombre": "...", "descripcion": "1 frase concreta",\n'
+    '                 "precio": 35000, "icono": "estrella"}],\n'
+    '  "planes": [{"nombre": "Mensual", "precio": 180000, "periodo": "mes",\n'
+    '              "incluye": ["...", "..."], "destacado": true}],\n'
+    '  "horarios_titulo": "...",\n'
+    '  "horarios": [{"dia": "Lunes a viernes", "horas": "9:00 – 20:00", "detalle": ""}],\n'
+    '  "pasos": [{"titulo": "Escríbenos", "texto": "..."}],\n'
+    '  "sobre": "2-3 frases con personalidad",\n'
+    '  "testimonios": [{"texto": "...", "autor": "Nombre Apellido", "detalle": "Cliente desde 2022"}],\n'
+    '  "faq": [{"pregunta": "...", "respuesta": "..."}],\n'
+    '  "contacto": {"whatsapp": "+57 300 000 0000", "telefono": "", "email": "",\n'
+    '               "direccion": "calle y número", "instagram": "@..."},\n'
+    '  "cta_final": {"titulo": "...", "texto": "..."}\n'
+    "}\n\n"
+    "Reglas:\n"
+    "- 'servicios': OBLIGATORIO, entre 3 y 6, lo que de verdad vende ese negocio, "
+    "con 'precio' como cifra sin símbolos ni puntos (35000) o vacío si no aplica.\n"
+    "- 'planes': SOLO si el negocio vende planes, membresías, paquetes o "
+    "suscripciones (2-3, uno con destacado true). Si no, [].\n"
+    "- 'horarios': SOLO si importan (atención al público, clases, turnos): 2-7 "
+    "filas. Para clases, una fila por franja con la clase en 'detalle'. Si no, [].\n"
+    "- 'pasos': 3 pasos de cómo se reserva, compra o empieza; [] si no aplica.\n"
+    "- 'destacados': 3 cifras creíbles (años, clientes, calificación).\n"
+    "- 'testimonios': 2-3. 'faq': 3-5 dudas REALES de ese cliente (precios, "
+    "parqueadero, cancelaciones, qué llevar...).\n"
+    "- 'contacto': si la idea habla de WhatsApp, reservas o pedidos, pon un "
+    "'whatsapp' con indicativo del país; y entonces el 'cta' del hero invita a "
+    "escribir o reservar por WhatsApp.\n"
+    "- 'icono', uno de: " + ", ".join(ICONOS) + ".\n"
+    "- 'tono': café/comida/artesanal→cálido, salud/finanzas/tecnología→frío, "
+    "legal/corporativo→sobrio, creativo/fiesta/belleza→vivo."
+)
+
+
+def _contrato_landing(datos: dict) -> None:
+    """Comprueba que la landing propuesta SE PUEDA construir con sustancia.
+
+    Corre dentro del fallback: un proveedor que devuelve tres strings sueltos o
+    un hero sin promesa cuenta como fallo SUYO y lo intenta el siguiente. Es
+    un CHEQUEO: su retorno se descarta.
+    """
+    if not isinstance(datos, dict):
+        raise ValueError("la respuesta no es un objeto JSON")
+    faltante = DominioLanding.model_validate(datos).faltante()
+    if faltante:
+        raise ValueError(f"landing no construible: {faltante}")
+
+
 #: Lo que el clasificador tiene permitido responder. Cualquier otra cosa se
 #: ignora: un tipo inventado dejaría la construcción sin camino.
 _TIPOS_VALIDOS = ("crud_login", "tienda", "por_clases", "landing", "otro")
@@ -272,13 +345,30 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
             return self._fallback.generate(prompt, language)
 
         if tipo == "landing":
+            # El clasificador solo trae título, lema y 3-5 párrafos: con eso
+            # salía SIEMPRE la misma página. Una segunda llamada, dedicada y
+            # pequeña, describe el NEGOCIO (servicios con precio, planes,
+            # horarios, preguntas, canales de contacto) y la estructura sale
+            # de ahí.
+            landing = self._disenar_landing(prompt, language)
+            if landing is not None:
+                logger.info(
+                    "Esqueleto: LANDING DISEÑADA '%s' · %d servicio(s) · %d plan(es) · "
+                    "%d horario(s) · %d FAQ · whatsapp=%s",
+                    landing.nombre, len(landing.servicios), len(landing.planes),
+                    len(landing.horarios), len(landing.faq), bool(landing.whatsapp_digitos),
+                )
+                return construir_landing_desde(landing, language)
             title = str(datos.get("title") or datos.get("app_name") or "Mi Producto")[:60]
             tagline = str(datos.get("tagline") or "Algo simple y bien hecho.")[:140]
-            cta = str(datos.get("cta") or "Empezar")[:30]
+            cta = str(datos.get("cta") or "")
             secciones = datos.get("sections") if isinstance(datos.get("sections"), list) else []
             secciones = [s for s in secciones if isinstance(s, dict) and s.get("heading")]
-            logger.info("Esqueleto: LANDING PROBADA ('%s', %d secciones).", title, len(secciones))
-            return construir_landing(title, tagline, cta, secciones)
+            logger.warning(
+                "Esqueleto: sin diseño de landing; se arma con el clasificador ('%s', %d secciones).",
+                title, len(secciones),
+            )
+            return construir_landing(title, tagline, cta, secciones, language)
         logger.info("Esqueleto: idea 'otro' -> generador libre.")
         return self._fallback.generate(prompt, language)
 
@@ -513,6 +603,31 @@ class SkeletonProjectGenerator(ProjectGeneratorPort):
     @staticmethod
     def _es_esqueleto(project: GeneratedProject) -> bool:
         return any(f.path == MARCADOR for f in project.files)
+
+    def _disenar_landing(self, prompt: str, language: str) -> DominioLanding | None:
+        """Pide el CONTENIDO de la landing con su contrato dentro del fallback.
+
+        Devuelve None si ningún proveedor da una landing construible: el
+        llamador arma entonces la versión corta con lo del clasificador.
+        """
+        idioma = "español" if language == "es" else "inglés"
+        try:
+            datos = self._llm.chat_json(
+                _SYSTEM_LANDING,
+                f"[Escribe todos los textos en {idioma}]\n\nIDEA DEL USUARIO:\n{prompt[:3000]}",
+                temperature=0.5,
+                validar=_contrato_landing,
+            )
+        except Exception as exc:  # noqa: BLE001 - sin diseño se degrada, no se cae
+            logger.warning("Esqueleto: no se pudo diseñar la landing (%s).", exc)
+            return None
+        # `validar` es un CHEQUEO y su retorno se descarta: la entidad se
+        # construye aquí, siempre.
+        try:
+            return DominioLanding.model_validate(datos)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Esqueleto: el diseño de la landing no era válido (%s).", exc)
+            return None
 
     def _extraer(self, prompt: str) -> dict | None:
         try:

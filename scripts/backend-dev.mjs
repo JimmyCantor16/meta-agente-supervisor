@@ -28,6 +28,7 @@ if (process.argv.includes("--check")) {
     ["pruebas/catalogo_cursos.py"],
     ["pruebas/contrato_en_el_fallback.py"],
     ["pruebas/puente_local.py"],
+    ["pruebas/landing_de_verdad.py"],
   ];
   // Las pruebas corren con el entorno tal cual: sin el DEEPSEEK_MODE de arriba.
   const envPruebas = { ...process.env, PYTHONIOENCODING: "utf-8" };
