@@ -8,8 +8,10 @@ WORKDIR /app
 # demás se entregarían sin verificar y sin URL.
 # git: cada entrega del agente queda en una RAMA con su informe, para poder
 # revisarla, ajustarla y revertirla como en cualquier equipo de desarrollo.
+# libatomic1: el driver (Node) de Playwright >= 1.65 la enlaza y `slim` no la
+# trae; sin ella el build moría en `playwright install` (13-nov-2026).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm git \
+    && apt-get install -y --no-install-recommends nodejs npm git libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala dependencias primero (mejor cacheo de capas).
