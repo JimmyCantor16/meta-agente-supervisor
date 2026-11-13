@@ -235,7 +235,7 @@ export function useMultimedia(): MultimediaContextValue {
 }
 
 const LS_CHANNELS_VER = "mm.channelsVer";
-const CHANNELS_VER = "5"; // subir cuando cambie la lista curada de canales
+const CHANNELS_VER = "6"; // subir cuando cambie la lista curada de canales
 
 /**
  * Lista de YouTube del usuario, guardada en SU navegador.

@@ -1504,6 +1504,42 @@
   color: theme("colors.sala.ink");
   font-size: 15px;
 }
+/* Directo oficial de YouTube: tarjeta normal + enlace al /live del canal. */
+.sala-dcard {
+  position: relative;
+  scroll-snap-align: start;
+}
+.sala-dcard .ext {
+  position: absolute;
+  right: 8px;
+  bottom: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: theme("colors.sala.muted");
+  border: 1px solid theme("colors.sala.line");
+  background: theme("colors.sala.panel");
+  transition: color 0.2s, border-color 0.2s;
+}
+.sala-dcard .ext:hover {
+  color: theme("colors.sala.ink");
+  border-color: theme("colors.sala.line-2");
+}
+.sala-dcard .sala-meta {
+  padding-right: 44px;
+}
+/* «Ver en la app oficial»: se abre fuera, en la app/web de su dueño. */
+.sala-acard .ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
 .sala-flip {
   scroll-snap-align: start;
   perspective: 900px;

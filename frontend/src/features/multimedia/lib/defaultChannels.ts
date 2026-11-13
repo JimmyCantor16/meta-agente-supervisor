@@ -1,66 +1,84 @@
 import type { CustomChannel } from "../types";
 
 /**
- * Canales de TV precargados — SOLO los que reproducen de verdad (2026-10-06):
- * cada uno se abrió en Chrome REAL (Playwright sobre el Chrome instalado, no
- * el Chromium sin códecs) con hls.js, desde una página servida en el ORIGEN DE
- * PRODUCCIÓN, y avanzó >6 s decodificando fotogramas de verdad (no solo audio,
- * no pantalla negra). Todos los https:// sirven también en producción (CORS
- * abierto); los http:// solo en local, porque en HTTPS el navegador los
- * bloquea por mixed-content y La Sala ni les da número.
+ * Canales de TV precargados — SOLO fuentes OFICIALES que reproducen de verdad.
+ *
+ * Revisión del 2026-11-13 (CHANNELS_VER 6). Cada canal se abrió en Chrome REAL
+ * (Playwright sobre el Chrome instalado, no el Chromium sin códecs) con hls.js,
+ * desde una página servida en el ORIGEN DE PRODUCCIÓN, y avanzó >6 s
+ * decodificando fotogramas de verdad (totalVideoFrames > 0). Ojo al repetir la
+ * prueba: los ENT comparten CDN y en paralelo dan `fragLoadTimeOut`; probados
+ * de uno en uno, todos van. Los http:// solo servirían en local (mixed-content
+ * en HTTPS) y ya no queda ninguno.
+ *
+ * REGLA LEGAL (el cliente monetiza esto): solo canales FAST que distribuye su
+ * dueño o un agregador con licencia (Amagi/Wurl/Rakuten, Zylo, Canal 13, las
+ * señales ENT de 40media Group), señales públicas del propio canal y directos
+ * del canal VERIFICADO de YouTube. Nada de restreams de terceros (listas
+ * iptv-org con IPs sueltas, "bantel/iptvperu") ni de proxies para saltarse un
+ * CORS que el dueño cerró a propósito (Pluto). Lo que no se puede incrustar
+ * legalmente se abre en la app oficial (`sala/lib/canalesOficiales.ts`).
  *
  * El ORDEN es el número del canal en el control remoto. El 1 es el que más
- * se teclea: va un canal adaptativo y rápido en arrancar, no uno de una sola
- * rendición de 5 Mbps que en una conexión floja se queda en nieve.
+ * se teclea: va un canal adaptativo y rápido en arrancar.
  *
- * Se priorizan canales FAST con catálogo grande (Zylo, Canal 13, RCN, ENT,
- * Rakuten) para que no repitan siempre las mismas películas.
+ * Retirados el 2026-11-13:
+ * - Star Channel (FOX): restream http:// de bantel-cdn1.iptvperu.tv — un canal
+ *   de PAGO retransmitido por un tercero. Fuera por la regla legal, no por caído.
+ * - Mega Cine TV (hostlagarto): 404. RCN Novelas y MAX Anime (klicgo.net): a
+ *   curl le responde 200, a Chrome 403. TeleQuindío (bozztv): conexión rechazada.
  *
- * Lo que NO está, y por qué (comprobado hoy, no por pereza):
- * - Comedy Central en español: solo existe por Pluto TV (directo o vía jmp2.uk)
- *   y Pluto no da CORS a nadie fuera de pluto.tv; los restreams http:// de
- *   iptv-org están muertos (403/404). Es un bloqueo deliberado.
- * - Star Channel en español: todas las fuentes públicas son http:// (restreams
- *   de iptvperu y similares). Se deja la que reproduce para uso LOCAL; en la
- *   web pública no puede verse ni enviarse a la tele.
- * - Caracol, RCN, Citytv, Win Sports: solo restreams http:// de terceros, y la
- *   mayoría caídos. Los canales colombianos que sí van por https con CORS son
- *   los públicos y regionales (RTVC, Capital, Telepacífico, TeleQuindío…).
+ * Lo que NO está, y por qué (comprobado hoy):
+ * - ENT Extreme (y ENT Comedy): estrenado el 16-oct-2026, pero su dueño aún no
+ *   publica la señal: `ENT_Extreme`/`ENT_Comedy` dan 404 en cdn.40mediagroup.com
+ *   (al que redirige elektamedia: el 302 no prueba nada), y la propia web de
+ *   40media muestra en su lugar Totalmusic_Concerts/_Dance. Cuando exista será
+ *   `.../c7eds/ENT_Extreme/SA_LIVE_hls_enc/master.m3u8`.
+ * - Comedy Central / South Park: solo por Pluto TV Latam (comedy-central-ptv2,
+ *   south-park-pvt2). El stitcher de Pluto responde
+ *   `Access-Control-Allow-Origin: https://pluto.tv` a cualquier otro origen:
+ *   bloqueo deliberado → van como «Ver en la app oficial».
+ * - FOX: no hay señal FOX gratuita en español. El canal FOX de Disney es hoy
+ *   Star Channel (de pago; su catálogo está en Disney+), FOX One es de pago y
+ *   solo México, Tubi no opera aquí, y LiveNOW from FOX es en inglés.
+ * - Caracol, RCN, Citytv: su señal web va con geobloqueo/DRM y sin CORS. Lo
+ *   oficial y gratuito son sus directos 24/7 en YouTube (Noticias Caracol,
+ *   Noticias RCN, Canal RCN, Citytv), que van en La Sala como YouTube, y sus
+ *   páginas «en vivo» como enlace a la app oficial.
+ * - Win Sports: canal de pago; los partidos solo por Win Play (enlace oficial).
  * - Teleantioquia, Telecaribe, Telecafé, Telemedellín, Canal Trece, Canal TRO,
- *   Tele Amiga (cdnmedia.tv), NTN24 (bitred.cl), France 24 y T13: el
- *   navegador NO recibe `Access-Control-Allow-Origin` (curl a veces sí, el
- *   navegador no): bloqueados por CORS. Canal 1 (mdstrm) responde 400.
+ *   Tele Amiga (cdnmedia.tv), NTN24 (bitred.cl), France 24 y T13: sin
+ *   `Access-Control-Allow-Origin` para el navegador. Canal 1 (mdstrm): 400.
  *
  * Nota: la app no distribuye canales propios; restaura/valida la lista personal.
  */
 export const DEFAULT_CHANNELS: CustomChannel[] = [
   // --- 🎬 Películas y series ---
-  // Solo en local (http://). Alternativa viva si esta cae: http://181.119.66.28:8081/STAR-CHANNEL/index.m3u8
-  { name: "Star Channel (FOX)", url: "http://bantel-cdn1.iptvperu.tv:1935/btnscrtn/StarChannel.stream/playlist.m3u8", category: "Cine y series" },
   { name: "Zylo Cine Friki", url: "https://d2mr4fu91mjx9m.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-rb0tx75ojbc5u/CineFriki_ES.m3u8", category: "Cine y series" },
   { name: "Zylo Cine Western", url: "https://d2nq34q0i1r3la.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-awohw8g217ho8/CineWestern_ES.m3u8", category: "Cine y series" },
   { name: "ENT Channel", url: "https://cdn.global.elektamedia.com/live/c7eds/ENT_Channel/SA_LIVE_hls_enc/master.m3u8", category: "Cine y series" },
+  // ENT Movies/Drama/Classics/Life: misma familia (40media Group), 2026-11-13.
+  { name: "ENT Movies", url: "https://cdn.global.elektamedia.com/live/c7eds/ENT_Movies/SA_LIVE_hls_enc/master.m3u8", category: "Cine y series" },
+  { name: "ENT Drama", url: "https://cdn.global.elektamedia.com/live/c7eds/ENT_Drama/SA_LIVE_hls_enc/master.m3u8", category: "Cine y series" },
+  { name: "ENT Classics", url: "https://cdn.global.elektamedia.com/live/c7eds/ENT_Classics/SA_LIVE_hls_enc/master.m3u8", category: "Cine y series" },
   { name: "BBC Drama", url: "https://amg00793-amg00793c40-rakuten-es-5444.playouts.now.amagi.tv/playlist.m3u8", category: "Cine y series" },
   { name: "MyTime Cine", url: "https://appletree-mytimespain-rakuten.amagi.tv/playlist.m3u8", category: "Cine y series" },
   { name: "CINDIE TV (cine independiente)", url: "https://cc-hqw8u5r1nshjc.akamaized.net/scheduler/scheduleMaster/352.m3u8", category: "Cine y series" },
-  { name: "Mega Cine TV", url: "https://cnn.hostlagarto.com/megacinetv/playlist.m3u8", category: "Cine y series" },
   { name: "Xtrema Cine Clásico", url: "https://stmv6.voxtvhd.com.br/cineclasico/cineclasico/playlist.m3u8", category: "Cine y series" },
   { name: "Xtrema Terror", url: "https://stmv6.voxtvhd.com.br/cineterror/cineterror/playlist.m3u8", category: "Cine y series" },
   // --- 📺 Novelas y entretenimiento ---
   { name: "13 Teleseries", url: "https://origin.dpsgo.com/ssai/event/f4TrySe8SoiGF8Lu3EIq1g/master.m3u8", category: "Novelas y entretenimiento" },
   { name: "13 Realities", url: "https://origin.dpsgo.com/ssai/event/g7_JOM0ORki9SR5RKHe-Kw/master.m3u8", category: "Novelas y entretenimiento" },
-  { name: "RCN Novelas", url: "https://cdnlive.klicgo.net/rcnnovelas/live/playlist.m3u8", category: "Novelas y entretenimiento" },
   { name: "RCN Más", url: "https://rcntv-rcnmas-1-us.plex.wurl.tv/playlist.m3u8", category: "Novelas y entretenimiento" },
   { name: "Zylo Todo Novelas", url: "https://dtsszjrztq9ti.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-yshah5p4v45g1/ToDoNovelas_ES.m3u8", category: "Novelas y entretenimiento" },
   { name: "Estrella TV", url: "https://estrellatv-oando.amagi.tv/playlist.m3u8", category: "Novelas y entretenimiento" },
   { name: "TVS Retro (series clásicas)", url: "https://cdn.streamhispanatv.net:3531/live/tvsretrogtlive.m3u8", category: "Novelas y entretenimiento" },
   // --- 👨‍👩‍👧 Familia y dibujos ---
   { name: "ENT Family", url: "https://cdn.global.elektamedia.com/live/c7eds/ENT_Family/SA_LIVE_hls_enc/master.m3u8", category: "Familia y dibujos" },
+  { name: "ENT Life", url: "https://cdn.global.elektamedia.com/live/c7eds/ENT_Life/SA_LIVE_hls_enc/master.m3u8", category: "Familia y dibujos" },
   { name: "13 Kids", url: "https://origin.dpsgo.com/ssai/event/LhHrVtyeQkKZ-Ye_xEU75g/master.m3u8", category: "Familia y dibujos" },
   { name: "Mr. Bean Animado", url: "https://amg00627-amg00627c30-rakuten-es-3990.playouts.now.amagi.tv/playlist/amg00627-banijayfast-mrbeanescc-rakutenes/playlist.m3u8", category: "Familia y dibujos" },
   { name: "Xtrema Cartoons (clásicos)", url: "https://stmv6.voxtvhd.com.br/xtremacartoons/xtremacartoons/playlist.m3u8", category: "Familia y dibujos" },
-  // --- 🌸 Anime ---
-  { name: "MAX Anime", url: "https://cdnlive.klicgo.net/maxanime/live/playlist.m3u8", category: "Anime" },
 
   // --- 🇨🇴 Colombia (2026-10-06) ---
   // Los canales públicos y regionales que sirven por https con CORS abierto.
@@ -70,7 +88,6 @@ export const DEFAULT_CHANNELS: CustomChannel[] = [
   { name: "Canal Capital (Bogotá)", url: "https://mdstrm.com/live-stream-playlist/6952dc88cb62083467eb6ab4.m3u8", category: "Colombia" },
   { name: "Eureka (Canal Capital, infantil)", url: "https://mdstrm.com/live-stream-playlist/6952e02d19eabace52e2885f.m3u8", category: "Colombia" },
   { name: "Telepacífico (Cali)", url: "https://play.cdn.enetres.net/6E5C615AA5FF4123ACAF0DAB57B7B8DC021/022/playlist.m3u8", category: "Colombia" },
-  { name: "TeleQuindío (Armenia)", url: "https://live20.bozztv.com/akamaissh101/ssh101/telequindio/playlist.m3u8", category: "Colombia" },
   { name: "Canal Más TV (Caldas)", url: "https://video.ejeserver.com/live/teledoradahd.m3u8", category: "Colombia" },
 
   // --- 📰 Noticias ---
@@ -153,4 +170,9 @@ export const LEGACY_SEEDED_URLS: string[] = [
   "https://live20.bozztv.com/akamaissh101/ssh101/telequindio/playlist.m3u8",
   "https://video.ejeserver.com/live/teledoradahd.m3u8",
   "https://play.cdn.enetres.net/621B146D29C541AFB1507809F038F471021/021/playlist.m3u8",
+  // ENT (40media Group), sembradas el 2026-11-13, v6
+  "https://cdn.global.elektamedia.com/live/c7eds/ENT_Movies/SA_LIVE_hls_enc/master.m3u8",
+  "https://cdn.global.elektamedia.com/live/c7eds/ENT_Drama/SA_LIVE_hls_enc/master.m3u8",
+  "https://cdn.global.elektamedia.com/live/c7eds/ENT_Classics/SA_LIVE_hls_enc/master.m3u8",
+  "https://cdn.global.elektamedia.com/live/c7eds/ENT_Life/SA_LIVE_hls_enc/master.m3u8",
 ];

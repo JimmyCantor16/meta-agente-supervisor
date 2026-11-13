@@ -56,7 +56,10 @@ def _autorizar(token: str | None) -> None:
 @router_puente.get("/estado", response_model=EstadoPuente)
 def estado_puente() -> EstadoPuente:
     activo = bool(get_settings().puente_token.strip())
-    return EstadoPuente(activo=activo, **HUB.estado())
+    estado = HUB.estado()
+    # El nombre del equipo es del PC de una persona: no sale en una ruta pública.
+    estado["equipo"] = "terminal del equipo" if estado["conectado"] else ""
+    return EstadoPuente(activo=activo, **estado)
 
 
 @router_puente.get("/tomar")

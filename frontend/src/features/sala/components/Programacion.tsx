@@ -1,12 +1,15 @@
 import { useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { Check, ChevronLeft, ChevronRight, Flame, Lightbulb, Play, SlidersHorizontal } from "lucide-react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import { Check, ChevronLeft, ChevronRight, ExternalLink, Flame, Lightbulb, Play, SlidersHorizontal } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import type { YoutubeItem } from "../../multimedia";
 import { miniaturaDe } from "../../multimedia";
 import type { CanalSala, EmisoraSala } from "../hooks/useCanalesSala";
 import { dosCifras } from "../hooks/useReloj";
-import { fondoCartel } from "../lib/paletas";
+import { fondoCartel, paletaDe } from "../lib/paletas";
+import { APPS_OFICIALES, DIRECTOS_YOUTUBE } from "../lib/canalesOficiales";
+import type { AppOficial, DirectoYoutube } from "../lib/canalesOficiales";
+import { abrirExterno } from "../../../lib/abrirExterno";
 
 type Fila = "vivo" | "radio" | "info" | "aprende" | "estudiar";
 
@@ -77,6 +80,70 @@ export function Programacion(p: Props) {
     </button>
   );
 
+  // Directo oficial de YouTube: se ve aquí con el reproductor incrustado, y el
+  // enlace al /live del canal sirve de respaldo si el medio cambió el ID.
+  const tarjetaDirecto = (y: DirectoYoutube) => (
+    <div key={y.id} className="sala-dcard">
+      <button
+        type="button"
+        className={`sala-card${esta("youtube", y.id) ? " on" : ""}`}
+        onClick={() => p.onYoutube(y)}
+      >
+        <div className="sala-poster">
+          <MiniaturaYt item={y} />
+          <span className="tag">
+            <span className="sala-live yt">
+              <i />
+              {g.liveBadge}
+            </span>
+          </span>
+          <span className="play">
+            <span>
+              <Play size={18} fill="currentColor" />
+            </span>
+          </span>
+        </div>
+        <div className="sala-meta">
+          <div className="t">{y.titulo}</div>
+          <div className="s">{g.ytLiveSub}</div>
+        </div>
+      </button>
+      <a
+        className="ext"
+        href={y.canal}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={abrirFuera(y.canal)}
+        title={g.ytOpenLive(y.autor ?? y.titulo)}
+        aria-label={g.ytOpenLive(y.autor ?? y.titulo)}
+      >
+        <ExternalLink size={14} />
+      </a>
+    </div>
+  );
+
+  const tarjetaApp = (a: AppOficial) => (
+    <a
+      key={a.url}
+      href={a.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={abrirFuera(a.url)}
+      className="sala-card sala-rcard sala-acard"
+      title={g.officialOpen(a.nombre)}
+    >
+      <span className="ico" style={{ background: paletaDe(a.nombre)[0] }}>
+        <ExternalLink size={18} />
+      </span>
+      <div className="sala-meta">
+        <div className="t">{a.nombre}</div>
+        <div className="s">
+          {a.plataforma} · {a.pago ? g.officialPaid : g.officialFree}
+        </div>
+      </div>
+    </a>
+  );
+
   const tarjetaEmisora = (e: EmisoraSala) => (
     <button
       key={e.url}
@@ -123,6 +190,13 @@ export function Programacion(p: Props) {
       {ver("vivo") && (
         <Estanteria titulo={g.rowLive} color="var(--tecla-red)" cuenta={g.countChannels(p.entretenimiento.length)}>
           {p.entretenimiento.map(tarjetaCanal)}
+          {DIRECTOS_YOUTUBE.filter((y) => y.fila === "vivo").map(tarjetaDirecto)}
+        </Estanteria>
+      )}
+
+      {ver("vivo") && (
+        <Estanteria titulo={g.rowOfficial} color="var(--tecla-red)" cuenta={g.officialCount}>
+          {APPS_OFICIALES.map(tarjetaApp)}
         </Estanteria>
       )}
 
@@ -135,6 +209,7 @@ export function Programacion(p: Props) {
       {ver("info") && (
         <Estanteria titulo={g.rowInfo} color="var(--tecla-yellow)" cuenta={g.infoCount}>
           {p.noticias.map(tarjetaCanal)}
+          {DIRECTOS_YOUTUBE.filter((y) => y.fila === "noticias").map(tarjetaDirecto)}
           <button type="button" className="sala-card sala-tcard" onClick={p.onTeletexto}>
             <span className="ico sala-vt" style={{ background: "#000", color: "#FFFF00", fontSize: 20 }}>
               P100
@@ -228,6 +303,18 @@ export function Programacion(p: Props) {
       )}
     </section>
   );
+}
+
+/**
+ * Abre una web oficial fuera del sistema (navegador, o el predeterminado en
+ * Tauri). Es un `<a>` real: el clic central y "copiar enlace" siguen funcionando.
+ */
+function abrirFuera(url: string) {
+  return (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    abrirExterno(url);
+  };
 }
 
 /**
