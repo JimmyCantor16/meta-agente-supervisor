@@ -533,6 +533,53 @@ export async function adminApprove(sub: string, plan = "pro"): Promise<AccountSt
   return (await response.json()) as AccountStatus;
 }
 
+/** POST autenticado de la compra de planes; lanza ApiError con el `detail`. */
+async function postCuenta(url: string, body: unknown, fallback: string): Promise<AccountStatus> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!response.ok) {
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, fallback), response.status);
+  }
+  return (await response.json()) as AccountStatus;
+}
+
+/** El usuario pega su nº de comprobante (la solicitud sigue pendiente). */
+export function submitPaymentReceipt(receipt: string): Promise<AccountStatus> {
+  return postCuenta(`${API_BASE}/api/v1/agent/account/payment-receipt`, { receipt }, "No se pudo guardar el comprobante.");
+}
+
+/** El usuario retira su solicitud de plan. */
+export function cancelUpgradeRequest(): Promise<AccountStatus> {
+  return postCuenta(`${API_BASE}/api/v1/agent/account/cancel-request`, {}, "No se pudo cancelar.");
+}
+
+/** (Admin) Usuarios con un plan de pago activo. */
+export async function adminListPaid(): Promise<AccountStatus[]> {
+  const response = await fetch(`${API_BASE}/api/v1/agent/admin/paid`, { headers: authHeaders() });
+  if (!response.ok) {
+    handleAuthExpiry(response.status);
+    throw new ApiError(await errorDetail(response, "Acceso denegado."), response.status);
+  }
+  return (await response.json()) as AccountStatus[];
+}
+
+/** (Admin) Rechaza la solicitud pendiente de un usuario, con motivo. */
+export function adminReject(sub: string, reason: string): Promise<AccountStatus> {
+  return postCuenta(`${API_BASE}/api/v1/agent/admin/reject`, { sub, reason }, "No se pudo rechazar.");
+}
+
+/** (Admin) Devuelve a un usuario de pago al plan gratuito. */
+export function adminRevoke(sub: string, reason = ""): Promise<AccountStatus> {
+  return postCuenta(`${API_BASE}/api/v1/agent/admin/revoke`, { sub, reason }, "No se pudo revocar.");
+}
+
+/** Nombre del evento de ventana que avisa de un cambio en la cuenta. */
+export const ACCOUNT_CHANGED_EVENT = "account-changed";
+
 /** Obtiene el estado de uso/licencia. Nunca lanza. */
 export async function getUsage(): Promise<UsageStatus | null> {
   try {
@@ -982,4 +1029,25 @@ export function preguntarTutorCatalogo(
   codigo = ""
 ): Promise<RespuestaTutor> {
   return cursosFetch(`/${encodeURIComponent(cursoId)}/tutor`, { leccion_id: leccionId, pregunta, codigo });
+}
+
+/** Estado del puente local: si la terminal del equipo está conectada y con qué motores. */
+export interface EstadoPuente {
+  activo: boolean;
+  conectado: boolean;
+  motores: string[];
+  equipo: string;
+  en_cola: number;
+  en_curso: number;
+  resueltos: number;
+}
+
+export async function getEstadoPuente(): Promise<EstadoPuente | null> {
+  try {
+    const r = await fetch(`${API_BASE}/api/v1/puente/estado`);
+    if (!r.ok) return null;
+    return (await r.json()) as EstadoPuente;
+  } catch {
+    return null;
+  }
 }

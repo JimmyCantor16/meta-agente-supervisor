@@ -260,6 +260,14 @@ class UserAccount(BaseModel):
     generations_used: int = Field(default=0)
     lessons_used: int = Field(default=0)
     approved_by: str = Field(default="", description="Email del super-admin que aprobó.")
+    # --- Compra de un plan: lo que el super-admin necesita para conciliar ---
+    payment_ref: str = Field(default="", description="Referencia única del pago (MA-XXXXXX).")
+    payment_receipt: str = Field(default="", description="Nº de comprobante/transacción que pegó el usuario.")
+    requested_at: str = Field(default="", description="Cuándo se solicitó el plan pendiente (ISO).")
+    approved_at: str = Field(default="", description="Cuándo se activó el plan de pago vigente (ISO).")
+    rejection_reason: str = Field(
+        default="", description="Motivo del último rechazo o revocación (se limpia al volver a pedir)."
+    )
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     #: Nivel del alumno A NIVEL DE USUARIO (no por curso): se mide una vez y se
     #: reajusta con evidencia (clases superadas/falladas). Con esto un curso

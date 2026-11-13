@@ -30,7 +30,10 @@ class LLMProvider(BaseModel):
     # "opencode_cli" = el CLI de OpenCode (`base_url` = ruta del binario).
     kind: str = Field(
         default="openai",
-        description="Protocolo: 'openai' (compatible OpenAI), 'deepseek_web' u 'opencode_cli'.",
+        description=(
+            "Protocolo: 'openai' (compatible OpenAI), 'deepseek_web', 'opencode_cli' o "
+            "'puente_local' (la terminal del equipo, ver adapters/puente_local.py)."
+        ),
     )
     base_url: str = Field(..., description="URL base compatible con OpenAI.")
     api_key: str = Field(..., description="Clave de API del proveedor.")
@@ -254,6 +257,18 @@ class Settings(BaseSettings):
         default="",
         description="Emails de super-admin (aprueban pagos), separados por comas.",
     )
+    #: Lo que ve quien compra un plan, debajo de su referencia de pago. Se
+    #: cambia por entorno (`PAGO_INSTRUCCIONES`) cuando haya datos bancarios
+    #: reales, sin tocar el código. Admite saltos de línea con `\n`.
+    pago_instrucciones: str = Field(
+        default=(
+            "Modo demostración: no se cobra dinero real.\n"
+            "Cuando haya medio de pago, aquí aparecerán los datos para transferir. "
+            "Por ahora, envía la solicitud (el comprobante es opcional) y un "
+            "administrador activará tu plan."
+        ),
+        description="Instrucciones de pago que se muestran al solicitar un plan.",
+    )
 
     @property
     def license_keys_list(self) -> list[str]:
@@ -279,8 +294,20 @@ class Settings(BaseSettings):
         description="Clave de Anthropic. Vacío = el agente experto está apagado.",
     )
     experto_modelo: str = Field(
-        default="claude-opus-4-8",
-        description="Modelo del agente experto. Baja a claude-haiku-4-5 para abaratar.",
+        default="claude-opus-5-5",
+        description="Modelo del agente experto. Baja a claude-haiku-5-5 para abaratar.",
+    )
+    # --- Puente local: PROD le encarga trabajo a la terminal del equipo ---
+    # Vacío = apagado (las rutas del puente responden 404 y nadie entra en la
+    # cadena). Con valor, el trabajador `scripts/puente_local.py` del PC del
+    # equipo se autentica con él y atiende a Claude Code y a deepseek-web-chat.
+    puente_token: str = Field(
+        default="",
+        description="Secreto compartido con el trabajador local del puente. Vacío = apagado.",
+    )
+    puente_espera: float = Field(
+        default=240.0, gt=0.0,
+        description="Segundos máximos que se espera una respuesta de la terminal.",
     )
     experto_simulado: bool = Field(
         default=False,
@@ -396,7 +423,8 @@ class Settings(BaseSettings):
             )
         ]
         cadena: list[LLMProvider] = []
-        for p in [*self._proveedores_deepseek(), *base, *self._proveedores_openrouter(),
+        for p in [*self._proveedores_puente(), *self._proveedores_deepseek(), *base,
+                  *self._proveedores_openrouter(),
                   *self._proveedores_opencode()]:
             p = _con_modelo_vigente(p)
             motivo = _proveedor_retirado(p)
@@ -407,6 +435,29 @@ class Settings(BaseSettings):
                 continue
             cadena.append(p)
         return cadena or base
+
+    def _proveedores_puente(self) -> list[LLMProvider]:
+        """La terminal del equipo, PRIMERA de la cadena (solo planes que la incluyen).
+
+        Dos entradas, una por motor, para que el monitor diga cuál trabajó y para
+        que si Claude Code no responde lo intente DeepSeek antes de bajar a la IA
+        gratis. `MultiModelLLM` las salta en silencio cuando el plan de quien
+        construye no las incluye (`puente_aplica`).
+        """
+        if not self.puente_token.strip():
+            return []
+        return [
+            LLMProvider(
+                name="terminal-claude", kind="puente_local", base_url="puente://claude",
+                api_key="puente", model="claude", roles=["prompt", "code"],
+                max_context=60_000, max_tpm=1_000_000,
+            ),
+            LLMProvider(
+                name="terminal-deepseek", kind="puente_local", base_url="puente://deepseek",
+                api_key="puente", model="deepseek", roles=["prompt", "code"],
+                max_context=12_000, max_tpm=200_000,
+            ),
+        ]
 
     def _proveedores_deepseek(self) -> list[LLMProvider]:
         modo = self.deepseek_mode.strip().lower()

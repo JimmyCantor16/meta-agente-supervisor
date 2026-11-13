@@ -15,6 +15,7 @@ import { MultimediaDock, MultimediaProvider } from "./features/multimedia";
 import { LaSala } from "./features/sala";
 import { MonitorGeneracion } from "./features/monitor/MonitorGeneracion";
 import { useAccount } from "./features/workspace/hooks/useAccount";
+import { usePendingCount } from "./features/workspace/hooks/usePendingCount";
 import { useEvaluatePrompt } from "./features/workspace/hooks/useEvaluatePrompt";
 import { useProjects } from "./features/workspace/hooks/useProjects";
 import { useLanguage } from "./i18n/LanguageProvider";
@@ -39,7 +40,7 @@ export default function App() {
   const { user } = useAuth();
   const { data, loading, error, feedback, evaluate, submitFeedback } = useEvaluatePrompt();
   const { projects, loading: loadingProjects, refresh } = useProjects();
-  const { account, refresh: refreshAccount, upgrade } = useAccount();
+  const { account, refresh: refreshAccount, upgrade, submitReceipt, cancelRequest } = useAccount();
 
   const [view, setView] = useState("sala");
   // Proyecto abierto desde la galería (taller: auditar + clases del profesor).
@@ -55,6 +56,8 @@ export default function App() {
   const [seed, setSeed] = useState("");
 
   const isAdmin = account?.is_admin ?? false;
+  // Contador de solicitudes de plan para el menú del super-admin.
+  const [pendingCount, setPendingCount] = usePendingCount(isAdmin);
   // Sin resultado ni carga: pantalla de bienvenida centrada, estilo chat.
   const chatMode = !data && !loading;
   const enSala = view === "sala";
@@ -74,6 +77,7 @@ export default function App() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         showAdmin={isAdmin}
+        adminBadge={pendingCount}
         oscuro={enSala}
       />
 
@@ -224,10 +228,12 @@ export default function App() {
                 isLoggedIn={!!user}
                 account={account}
                 onChoose={(plan) => upgrade(plan)}
+                onSubmitReceipt={submitReceipt}
+                onCancel={cancelRequest}
               />
             )}
 
-            {view === "admin" && isAdmin && <AdminView />}
+            {view === "admin" && isAdmin && <AdminView onPendingCount={setPendingCount} />}
 
             {view === "learn" && <AprenderView />}
 

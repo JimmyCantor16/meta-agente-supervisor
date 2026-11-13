@@ -10,6 +10,8 @@ import {
 import type { PropsWithChildren } from "react";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { canalDeEscucha, esEscritorio, espejarEvento, meTocaAvisar, urlDelTexto } from "../../lib/canal";
+import { ACCOUNT_CHANGED_EVENT } from "../../lib/api";
+import type { Translation } from "../../i18n/translations";
 
 // Sistema de notificaciones en tiempo real (per-device): centro de avisos con
 // historial + toasts + AVISO NATIVO del sistema operativo (Notification API, que
@@ -120,6 +122,49 @@ function claveDeAviso(txt: string): string {
   return `${tipo}:${Math.floor(Date.now() / 60000)}`;
 }
 
+/** Nombre legible de un plan a partir de su id ("studio" → "Studio"). */
+function nombrePlan(id: string): string {
+  return id ? id.charAt(0).toUpperCase() + id.slice(1) : "";
+}
+
+/**
+ * Traduce un evento ESTRUCTURADO de cuenta (`{"t":"cuenta",…}`) a un aviso.
+ *
+ * El backend lo manda SOLO a quien le toca (el admin para las solicitudes, el
+ * usuario para la respuesta). Devuelve null si el texto no es uno de estos.
+ */
+function avisoDeCuenta(txt: string, tt: Translation): NotifInput | null {
+  let ev: { t?: string; evento?: string; sub?: string; nombre?: string; plan?: string; ref?: string; motivo?: string };
+  try {
+    ev = JSON.parse(txt);
+  } catch {
+    return null;
+  }
+  if (ev.t !== "cuenta" || !ev.evento) return null;
+  const n = tt.notif;
+  const nombre = ev.nombre || "";
+  const plan = nombrePlan(ev.plan || "");
+  const ref = ev.ref || "";
+  const motivo = ev.motivo || "";
+  const clave = `cuenta:${ev.evento}:${ev.sub || ""}:${ref}`;
+  switch (ev.evento) {
+    case "solicitud":
+      return { title: n.planRequestTitle, body: n.planRequestBody(nombre, plan, ref), kind: "info", clave };
+    case "comprobante":
+      return { title: n.planReceiptTitle, body: n.planReceiptBody(nombre, ref), kind: "info", clave };
+    case "cancelada":
+      return { title: n.planCancelledTitle, body: n.planCancelledBody(nombre, plan), kind: "info", clave };
+    case "aprobado":
+      return { title: n.planApprovedTitle, body: n.planApprovedBody(plan), kind: "success", clave };
+    case "rechazado":
+      return { title: n.planRejectedTitle, body: n.planRejectedBody(plan, motivo), kind: "error", clave };
+    case "revocado":
+      return { title: n.planRevokedTitle, body: n.planRevokedBody(plan, motivo), kind: "error", clave };
+    default:
+      return null;
+  }
+}
+
 export function NotificationProvider({ children }: PropsWithChildren) {
   const { t } = useLanguage();
   const [notifs, setNotifs] = useState<AppNotification[]>(loadNotifs);
@@ -226,6 +271,15 @@ export function NotificationProvider({ children }: PropsWithChildren) {
           // Si esto está pasando en TU máquina, el móvil no puede verlo: se lo
           // reenviamos al backend compartido para que los tres vayan al día.
           if (canal.esLocal) espejarEvento(txt);
+          if (txt.startsWith("{")) {
+            const aviso = avisoDeCuenta(txt, tt);
+            if (aviso) {
+              notifyRef.current(aviso);
+              // La cuenta cambió (o la bandeja del admin): que se relea sola.
+              window.dispatchEvent(new Event(ACCOUNT_CHANGED_EVENT));
+              return;
+            }
+          }
           if (/VIVO|🚀/i.test(txt)) {
             notifyRef.current({
               title: tt.notif.generatedTitle,

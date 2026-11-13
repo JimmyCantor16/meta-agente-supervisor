@@ -29,6 +29,7 @@ from openai import (
 from src.config import LLMProvider, get_settings
 from src.infrastructure.adapters.deepseek_web_client import DeepSeekWebClient, DeepSeekWebError
 from src.infrastructure.adapters.opencode_cli_client import OpenCodeCliClient, OpenCodeCliError
+from src.infrastructure.adapters.puente_local import HUB, PuenteError, PuenteLocalClient, puente_aplica
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,8 @@ class MultiModelLLM:
     def _cliente_para(p: LLMProvider, timeout: float, max_retries: int, timeout_web: float):
         if p.kind == "deepseek_web":
             return DeepSeekWebClient(p.base_url, timeout=timeout_web)
+        if p.kind == "puente_local":
+            return PuenteLocalClient(p.model, espera=get_settings().puente_espera)
         if p.kind == "opencode_cli":
             # `base_url` lleva la ruta del binario (ver Settings._proveedores_opencode).
             return OpenCodeCliClient(p.base_url, timeout=get_settings().opencode_timeout)
@@ -167,6 +170,14 @@ class MultiModelLLM:
         throttled: list[tuple[float, LLMProvider, OpenAI]] = []
 
         for provider, client in self._clients:
+            # La terminal del equipo solo trabaja para el plan que la incluye.
+            # Para los demás se salta EN SILENCIO: no es un fallo que mostrar. Y
+            # si la terminal no está conectada, tampoco: el monitor ya enseña su
+            # estado, y repetir «falló» en cada archivo solo sería ruido.
+            if provider.kind == "puente_local" and (
+                not puente_aplica() or not HUB.conectado(provider.model)
+            ):
+                continue
             # 0) ¿Ya sabemos que está muerto? Ni se le llama.
             muerte = self._muertos.get(provider.name)
             if muerte:
@@ -232,6 +243,9 @@ class MultiModelLLM:
         Validar fuera del bucle hacía que una respuesta mala de un proveedor
         tumbara toda la tarea.
         """
+        # Se anuncia ANTES de llamar: el monitor muestra quién trabaja AHORA,
+        # no solo quién terminó (una llamada a la terminal puede tardar un minuto).
+        logger.info("Consultando a '%s' [rol=%s]...", provider.name, self._role or "todos")
         try:
             response = client.chat.completions.create(
                 model=provider.model,
@@ -240,7 +254,7 @@ class MultiModelLLM:
                 response_format=response_format,  # type: ignore[arg-type]
             )
         except (RateLimitError, APITimeoutError, APIConnectionError, APIError, DeepSeekWebError,
-                OpenCodeCliError) as exc:
+                OpenCodeCliError, PuenteError) as exc:
             # Un 410/404/401 no es un mal momento: es que ese proveedor ya no
             # existe o no nos acepta. Se apunta y no se le vuelve a llamar en
             # toda la ejecución — si no, cuesta un viaje en cada petición.

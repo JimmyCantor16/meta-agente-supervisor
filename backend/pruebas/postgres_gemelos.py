@@ -56,6 +56,7 @@ from src.infrastructure.adapters.sqlite_curso_repository import SqliteCursoRepos
 from src.infrastructure.adapters.sqlite_despliegues_repository import SqliteDespliegueRepository  # noqa: E402
 from src.infrastructure.adapters.sqlite_meta_repository import SqliteMetaRepository  # noqa: E402
 from src.infrastructure.adapters.sqlite_trabajos_repository import SqliteTrabajosRepository  # noqa: E402
+from src.infrastructure.adapters.sqlite_user_repository import SqliteUserRepository  # noqa: E402
 
 ESQUEMA = "gemelos_prueba"
 fallos: list[str] = []
@@ -183,7 +184,39 @@ def guion_curso(repo) -> list:
     ]
 
 
+def guion_usuarios(repo) -> list:
+    """Compra de un plan: solicitud, comprobante, aprobar, rechazar, revocar."""
+    repo.upsert_profile("ana", "Ana@Correo.com", "Ana")
+    repo.upsert_profile("beto", "beto@correo.com", "Beto")
+    repo.set_pending("ana", "studio", "MA-AAAAAA", "2026-11-13T10:00:00+00:00")
+    con_recibo = repo.set_payment_receipt("ana", "TX-123")
+    sin_pendiente = repo.set_payment_receipt("beto", "TX-999")
+    ana = repo.get("ana")
+    pendientes = [u.sub for u in repo.list_pending()]
+    repo.approve("ana", "studio", "admin@x.com", "2026-11-13T11:00:00+00:00")
+    aprobada = repo.get("ana")
+    repo.set_pending("beto", "pro", "MA-BBBBBB", "2026-11-13T12:00:00+00:00")
+    rechazo = repo.clear_request("beto", "sin pago")
+    rechazo_doble = repo.clear_request("beto", "otra vez")
+    beto = repo.get("beto")
+    pagados = [u.sub for u in repo.list_paid()]
+    revoca = repo.revoke("ana", "fin de prueba")
+    revoca_doble = repo.revoke("ana")
+    revocada = repo.get("ana")
+    por_email = repo.find_by_email("ana@correo.COM")
+    return [
+        con_recibo, sin_pendiente, ana.status, ana.payment_ref, ana.payment_receipt,
+        ana.requested_at, pendientes,
+        aprobada.paid, aprobada.plan, aprobada.status, aprobada.approved_by, aprobada.approved_at,
+        aprobada.payment_ref,
+        rechazo, rechazo_doble, beto.status, beto.requested_plan, beto.rejection_reason, beto.payment_ref,
+        pagados, revoca, revoca_doble, revocada.paid, revocada.plan, revocada.rejection_reason,
+        por_email.sub if por_email else None, repo.find_by_email("nadie@x.com"),
+    ]
+
+
 GUIONES = [
+    ("usuarios", guion_usuarios, SqliteUserRepository, "PostgresUserRepository"),
     ("trabajos", guion_trabajos, SqliteTrabajosRepository, "PostgresTrabajosRepository"),
     ("actividad", guion_actividad, SqliteActividadRepository, "PostgresActividadRepository"),
     ("despliegues", guion_despliegues, SqliteDespliegueRepository, "PostgresDespliegueRepository"),
@@ -197,6 +230,7 @@ GUIONES = [
 def _clase_postgres(nombre: str):
     modulo = {
         "PostgresTrabajosRepository": "postgres_trabajos_repository",
+        "PostgresUserRepository": "postgres_user_repository",
         "PostgresActividadRepository": "postgres_actividad_repository",
         "PostgresDespliegueRepository": "postgres_despliegues_repository",
         "PostgresMetaRepository": "postgres_meta_repository",

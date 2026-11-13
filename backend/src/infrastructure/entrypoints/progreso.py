@@ -38,6 +38,9 @@ _FUENTES = (
     # momento entró y qué hizo. Si no se ve, no se distingue de no tenerlo.
     "src.application.experto",
     "src.infrastructure.adapters.skeleton_generator",
+    # La terminal del equipo (puente local): se ve cuándo resolvió y con qué.
+    "src.infrastructure.adapters.puente_local",
+    "src.infrastructure.adapters.experto_puente",
 )
 
 # Los mensajes técnicos se traducen a pasos que un no-programador entiende.
@@ -75,6 +78,13 @@ _AMIGABLES = (
     (
         re.compile(r"Experto NO entra en '(\w+)'", re.I),
         "· El experto no participa en «{0}» con tu plan.",
+    ),
+    # --- Cerebro IA: quién trabaja AHORA (se anuncia antes de cada llamada) ---
+    (re.compile(r"Consultando a '(.+?)' \[rol=(.+?)\]", re.I), "⏳ IA «{0}» trabajando (rol {1})…"),
+    (re.compile(r"La terminal resolvió con (.+?) en (\d+)s", re.I), "🖥️ La terminal del equipo resolvió con {0} en {1} s"),
+    (
+        re.compile(r"El experto por la terminal no respondió", re.I),
+        "⚠️ La terminal no respondió al experto: entra el experto de respaldo",
     ),
     # --- Cerebro IA: qué proveedor gratis respondió / cuál falló (fallback) ---
     (re.compile(r"OK con '(.+?)' \[rol=(.+?)\]", re.I), "🤖 IA «{0}» respondió (rol {1})"),

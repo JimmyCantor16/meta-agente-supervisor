@@ -7,6 +7,7 @@
     "dev:backend": "node scripts/backend-dev.mjs",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:deepseek": "node scripts/deepseek-web-chat.mjs",
+    "puente": "python scripts/puente_local.py",
     "check": "npm --prefix frontend run type-check && node scripts/backend-dev.mjs --check",
     "build": "npm --prefix frontend run build"
   },

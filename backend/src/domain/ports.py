@@ -123,17 +123,52 @@ class UserRepositoryPort(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def set_pending(self, sub: str, requested_plan: str) -> None:
-        """Marca al usuario como pendiente de pago del plan solicitado."""
+    def set_pending(
+        self, sub: str, requested_plan: str, payment_ref: str = "", requested_at: str = ""
+    ) -> None:
+        """Marca al usuario como pendiente de pago del plan solicitado.
+
+        Limpia el comprobante y el motivo de un rechazo anterior: es una
+        solicitud nueva. La referencia la decide quien llama (la aplicación).
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def approve(self, sub: str, plan: str, admin_email: str) -> bool:
+    def approve(self, sub: str, plan: str, admin_email: str, approved_at: str = "") -> bool:
         """Marca el pago como aprobado. Devuelve False si el usuario no existe."""
         raise NotImplementedError
 
     @abstractmethod
     def list_pending(self) -> list[UserAccount]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_payment_receipt(self, sub: str, receipt: str) -> bool:
+        """Guarda el comprobante. False si el usuario no tiene solicitud pendiente."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def clear_request(self, sub: str, reason: str = "") -> bool:
+        """Cierra la solicitud pendiente SIN activar nada (cancelar o rechazar).
+
+        El plan vigente no se toca: quien ya pagaba Pro y pidió Business sigue
+        en Pro. False si no había solicitud pendiente.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def revoke(self, sub: str, reason: str = "") -> bool:
+        """Devuelve al usuario al plan gratuito. False si no tenía plan de pago."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_paid(self) -> list[UserAccount]:
+        """Usuarios con un plan de pago activo."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def find_by_email(self, email: str) -> UserAccount | None:
+        """Busca un usuario por email (sin distinguir mayúsculas)."""
         raise NotImplementedError
 
     # --- Nivel del alumno (vive en el USUARIO, no solo en cada curso) ---

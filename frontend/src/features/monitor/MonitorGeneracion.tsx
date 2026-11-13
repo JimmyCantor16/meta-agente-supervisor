@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { useMonitor } from "./useMonitor";
+import { QuienTrabaja } from "./QuienTrabaja";
 import type { EstadoFase, Resultado } from "./useMonitor";
 
 const COLOR_FASE: Record<EstadoFase, string> = {
@@ -59,6 +60,8 @@ export function MonitorGeneracion() {
           </span>
         </div>
       </div>
+
+      <QuienTrabaja trabajando={m.trabajando} />
 
       {/* Fases */}
       <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">

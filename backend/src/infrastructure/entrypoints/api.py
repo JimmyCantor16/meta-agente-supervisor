@@ -423,6 +423,16 @@ class AccountStatusResponse(BaseModel):
     # ('no' | 'critico' | 'total'). La interfaz los usa para mostrar el valor.
     plan_nombre: str = ""
     ia_experta: str = "no"
+    # Compra de un plan: lo que el usuario ve en su panel de pago y lo que el
+    # super-admin necesita para conciliar. `approved_by` solo llega al admin.
+    requested_amount_usd: int = 0
+    payment_ref: str = ""
+    payment_receipt: str = ""
+    requested_at: str = ""
+    approved_at: str = ""
+    approved_by: str = ""
+    rejection_reason: str = ""
+    payment_instructions: str = ""
 
 
 class PlanResponse(BaseModel):
@@ -447,6 +457,19 @@ class UpgradeRequest(BaseModel):
     """Petición del usuario para solicitar un plan (queda pendiente de aprobación)."""
 
     plan: str = Field(default="pro")
+
+
+class ReceiptRequest(BaseModel):
+    """Nº de comprobante/transacción que el usuario pega tras pagar."""
+
+    receipt: str = Field(..., min_length=1, max_length=120)
+
+
+class AdminDecisionRequest(BaseModel):
+    """Rechazo de una solicitud o revocación de un plan (solo super-admin)."""
+
+    sub: str = Field(..., min_length=1)
+    reason: str = Field(default="", max_length=300)
 
 
 class PublicarResponse(BaseModel):
@@ -585,7 +608,24 @@ def get_generate_use_case(
 
 @lru_cache
 def get_agente_experto() -> AgenteExpertoPort:
-    """Provee el agente experto: real, simulado o inerte.
+    """Provee el agente experto: el de la terminal (puente) si está, o el de base.
+
+    Con `PUENTE_TOKEN`, el experto es Claude Code desde la terminal del equipo
+    MIENTRAS esté conectada; si no lo está, responde el experto de base de
+    siempre. Encender el puente nunca deja a nadie peor que antes.
+    """
+    settings = get_settings()
+    base = _experto_base()
+    if settings.puente_token.strip() and not (settings.experto_archivo or settings.experto_simulado):
+        from src.infrastructure.adapters.experto_puente import ExpertoPuente
+
+        logger.info("PUENTE_TOKEN -> el experto entra por la terminal del equipo cuando esté conectada.")
+        return ExpertoPuente(respaldo=base, espera=settings.puente_espera)
+    return base
+
+
+def _experto_base() -> AgenteExpertoPort:
+    """El experto sin puente: real, simulado o inerte.
 
     Inerte es el estado por defecto y es correcto: sin clave el producto entero
     funciona con los modelos gratuitos, y encenderlo es pegar la clave.
@@ -954,6 +994,7 @@ def get_account_service(
         settings.free_generation_limit,
         settings.free_lesson_limit,
         settings.super_admin_emails_list,
+        settings.pago_instrucciones,
     )
 
 
@@ -2963,10 +3004,88 @@ def request_upgrade(
     user: UserAccount = Depends(get_current_user),
     account: AccountService = Depends(get_account_service),
 ) -> AccountStatusResponse:
-    """El usuario solicita un plan (queda pendiente de aprobación del super-admin)."""
-    account.request_upgrade(user, request.plan)
-    refreshed = account.get_or_create(user.sub, user.email, user.name)
+    """El usuario solicita un plan: queda pendiente, con su referencia de pago.
+
+    Se avisa EN VIVO a los super-admin (cada uno por su `sub`, nunca a todos
+    los conectados). Plan desconocido, gratuito o el que ya tiene → 422.
+    """
+    try:
+        refreshed = account.request_upgrade(user, request.plan)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    _avisar_admins(account, "solicitud", refreshed)
     return AccountStatusResponse(**account.status(refreshed))
+
+
+@router.post("/account/payment-receipt", response_model=AccountStatusResponse, tags=["account"])
+def payment_receipt(
+    request: ReceiptRequest,
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """El usuario pega su nº de comprobante; la solicitud sigue pendiente. 409 si no hay."""
+    if not account.submit_receipt(user, request.receipt):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No tienes una solicitud pendiente.")
+    refreshed = account.get(user.sub) or user
+    _avisar_admins(account, "comprobante", refreshed)
+    return AccountStatusResponse(**account.status(refreshed))
+
+
+@router.post("/account/cancel-request", response_model=AccountStatusResponse, tags=["account"])
+def cancel_upgrade_request(
+    user: UserAccount = Depends(get_current_user),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """El usuario retira su solicitud de plan. 409 si no tenía ninguna pendiente."""
+    antes = account.get(user.sub) or user
+    if not account.cancel_request(user):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No tienes una solicitud pendiente.")
+    _avisar_admins(account, "cancelada", antes)
+    return AccountStatusResponse(**account.status(account.get(user.sub) or user))
+
+
+def _evento_cuenta(evento: str, cuenta: UserAccount, **extra: str) -> str:
+    """Evento ESTRUCTURADO de cuenta para el WebSocket (`{"t":"cuenta",…}`).
+
+    Va como JSON, igual que las fases: el frontend lo traduce al idioma de
+    quien lo recibe y refresca la cuenta; los consumidores que no lo conocen
+    ignoran las líneas que empiezan por `{`.
+    """
+    import json
+
+    return json.dumps(
+        {
+            "t": "cuenta",
+            "evento": evento,
+            "sub": cuenta.sub,
+            "nombre": cuenta.name or cuenta.email,
+            "plan": cuenta.requested_plan or cuenta.plan,
+            "ref": cuenta.payment_ref,
+            **extra,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _avisar_admins(account: AccountService, evento: str, cuenta: UserAccount) -> None:
+    """Avisa a CADA super-admin por su `sub`. Nunca se difunde sin dueño."""
+    try:
+        texto = _evento_cuenta(evento, cuenta)
+        for sub in account.admin_subs():
+            if sub:
+                DIFUSOR.difundir(texto, sub)
+    except Exception as exc:  # noqa: BLE001 - un aviso jamás rompe la compra
+        logger.warning("No se pudo avisar a los admin (%s): %s", evento, exc)
+
+
+def _avisar_usuario(evento: str, cuenta: UserAccount, **extra: str) -> None:
+    """Avisa SOLO al usuario afectado (aprobado / rechazado / revocado)."""
+    if not cuenta.sub:
+        return
+    try:
+        DIFUSOR.difundir(_evento_cuenta(evento, cuenta, **extra), cuenta.sub)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo avisar a %s (%s): %s", cuenta.sub, evento, exc)
 
 
 @router.get("/admin/pending", response_model=list[AccountStatusResponse], tags=["admin"])
@@ -2976,6 +3095,45 @@ def admin_pending(
 ) -> list[AccountStatusResponse]:
     """Lista los usuarios pendientes de aprobación de pago (solo super-admin)."""
     return [AccountStatusResponse(**s) for s in account.list_pending()]
+
+
+@router.get("/admin/paid", response_model=list[AccountStatusResponse], tags=["admin"])
+def admin_paid(
+    _admin: UserAccount = Depends(require_admin),
+    account: AccountService = Depends(get_account_service),
+) -> list[AccountStatusResponse]:
+    """Usuarios con un plan de pago activo (solo super-admin)."""
+    return [AccountStatusResponse(**s) for s in account.list_paid()]
+
+
+@router.post("/admin/reject", response_model=AccountStatusResponse, tags=["admin"])
+def admin_reject(
+    request: AdminDecisionRequest,
+    admin: UserAccount = Depends(require_admin),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """Rechaza la solicitud pendiente de un usuario (su plan vigente no cambia)."""
+    antes = account.get(request.sub)
+    if antes is None or not account.reject(admin.email, request.sub, request.reason):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No hay una solicitud pendiente de ese usuario.")
+    despues = account.get(request.sub) or antes
+    _avisar_usuario("rechazado", antes, motivo=despues.rejection_reason)
+    return AccountStatusResponse(**account.status(despues, para_admin=True))
+
+
+@router.post("/admin/revoke", response_model=AccountStatusResponse, tags=["admin"])
+def admin_revoke(
+    request: AdminDecisionRequest,
+    admin: UserAccount = Depends(require_admin),
+    account: AccountService = Depends(get_account_service),
+) -> AccountStatusResponse:
+    """Devuelve a un usuario de pago al plan gratuito."""
+    antes = account.get(request.sub)
+    if antes is None or not account.revoke(admin.email, request.sub, request.reason):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ese usuario no tiene un plan de pago activo.")
+    despues = account.get(request.sub) or antes
+    _avisar_usuario("revocado", despues, plan=antes.plan, motivo=despues.rejection_reason)
+    return AccountStatusResponse(**account.status(despues, para_admin=True))
 
 
 class CasoResponse(BaseModel):
@@ -3018,11 +3176,23 @@ def admin_approve(
     admin: UserAccount = Depends(require_admin),
     account: AccountService = Depends(get_account_service),
 ) -> AccountStatusResponse:
-    """El super-admin confirma el pago de un usuario y activa su plan."""
-    if not account.approve(admin.email, request.sub, request.plan):
+    """El super-admin confirma el pago de un usuario y activa su plan.
+
+    `plan` vacío = el que pidió el usuario; uno desconocido o el gratuito → 422.
+    """
+    try:
+        ok = account.approve(admin.email, request.sub, request.plan)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
-    updated = account.get_or_create(request.sub, "", "")
-    return AccountStatusResponse(**account.status(updated))
+    # Antes se releía con get_or_create(sub, "", ""), que es un UPSERT: dejaba
+    # al usuario aprobado SIN email ni nombre. Una lectura no debe escribir.
+    updated = account.get(request.sub)
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+    _avisar_usuario("aprobado", updated)
+    return AccountStatusResponse(**account.status(updated, para_admin=True))
 
 
 # ---------------------------------------------------------------------------
@@ -3255,6 +3425,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from src.infrastructure.entrypoints.catalogo import router as catalogo_router
 
     app.include_router(catalogo_router)
+
+    # Puente local: la terminal del equipo (Claude Code / DeepSeek) atiende
+    # encargos de IA de PROD sin que PROD tenga que llamar a ese PC.
+    from src.infrastructure.entrypoints.puente import router_puente
+
+    app.include_router(router_puente)
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:

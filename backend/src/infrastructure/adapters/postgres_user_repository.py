@@ -17,6 +17,9 @@ from src.infrastructure.adapters.postgres_support import connect
 
 logger = logging.getLogger(__name__)
 
+#: Columnas de la compra de un plan; la misma lista que el gemelo SQLite.
+_COLUMNAS_PAGO = ("payment_ref", "payment_receipt", "requested_at", "approved_at", "rejection_reason")
+
 
 class PostgresUserRepository(UserRepositoryPort):
     """Persiste las cuentas de usuario en la tabla `users`."""
@@ -54,6 +57,9 @@ class PostgresUserRepository(UserRepositoryPort):
             conn.execute(
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS nivel TEXT DEFAULT 'desconocido'"
             )
+            # Compra de un plan: referencia, comprobante y fechas para conciliar.
+            for col in _COLUMNAS_PAGO:
+                conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} TEXT DEFAULT ''")
 
     @staticmethod
     def _to_account(row: dict[str, Any]) -> UserAccount:
@@ -70,6 +76,7 @@ class PostgresUserRepository(UserRepositoryPort):
             approved_by=row["approved_by"] or "",
             created_at=row["created_at"] or "",
             nivel=row.get("nivel") or "desconocido",
+            **{c: row.get(c) or "" for c in _COLUMNAS_PAGO},
         )
 
     def get(self, sub: str) -> UserAccount | None:
@@ -123,19 +130,24 @@ class PostgresUserRepository(UserRepositoryPort):
                 "UPDATE users SET lessons_used = lessons_used + 1 WHERE sub = %s", (sub,)
             )
 
-    def set_pending(self, sub: str, requested_plan: str) -> None:
+    def set_pending(
+        self, sub: str, requested_plan: str, payment_ref: str = "", requested_at: str = ""
+    ) -> None:
         with connect(self._dsn) as conn:
             conn.execute(
-                "UPDATE users SET status = 'pending_payment', requested_plan = %s WHERE sub = %s",
-                (requested_plan, sub),
+                "UPDATE users SET status = 'pending_payment', requested_plan = %s, "
+                "payment_ref = %s, requested_at = %s, payment_receipt = '', rejection_reason = '' "
+                "WHERE sub = %s",
+                (requested_plan, payment_ref, requested_at, sub),
             )
 
-    def approve(self, sub: str, plan: str, admin_email: str) -> bool:
+    def approve(self, sub: str, plan: str, admin_email: str, approved_at: str = "") -> bool:
         with connect(self._dsn) as conn:
             cur = conn.execute(
                 "UPDATE users SET paid = TRUE, plan = %s, requested_plan = '', "
-                "status = 'active', approved_by = %s WHERE sub = %s",
-                (plan, admin_email, sub),
+                "status = 'active', approved_by = %s, approved_at = %s, rejection_reason = '' "
+                "WHERE sub = %s",
+                (plan, admin_email, approved_at, sub),
             )
             return cur.rowcount > 0
 
@@ -145,3 +157,48 @@ class PostgresUserRepository(UserRepositoryPort):
                 "SELECT * FROM users WHERE status = 'pending_payment' ORDER BY created_at"
             ).fetchall()
         return [self._to_account(r) for r in rows]
+
+    def set_payment_receipt(self, sub: str, receipt: str) -> bool:
+        with connect(self._dsn) as conn:
+            cur = conn.execute(
+                "UPDATE users SET payment_receipt = %s "
+                "WHERE sub = %s AND status = 'pending_payment'",
+                (receipt, sub),
+            )
+            return cur.rowcount > 0
+
+    def clear_request(self, sub: str, reason: str = "") -> bool:
+        with connect(self._dsn) as conn:
+            cur = conn.execute(
+                "UPDATE users SET status = 'active', requested_plan = '', payment_ref = '', "
+                "payment_receipt = '', requested_at = '', rejection_reason = %s "
+                "WHERE sub = %s AND status = 'pending_payment'",
+                (reason, sub),
+            )
+            return cur.rowcount > 0
+
+    def revoke(self, sub: str, reason: str = "") -> bool:
+        with connect(self._dsn) as conn:
+            cur = conn.execute(
+                "UPDATE users SET paid = FALSE, plan = 'free', approved_at = '', "
+                "rejection_reason = %s WHERE sub = %s AND paid = TRUE",
+                (reason, sub),
+            )
+            return cur.rowcount > 0
+
+    def list_paid(self) -> list[UserAccount]:
+        with connect(self._dsn) as conn:
+            rows = conn.execute(
+                "SELECT * FROM users WHERE paid = TRUE ORDER BY created_at"
+            ).fetchall()
+        return [self._to_account(r) for r in rows]
+
+    def find_by_email(self, email: str) -> UserAccount | None:
+        if not (email or "").strip():
+            return None
+        with connect(self._dsn) as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE LOWER(email) = LOWER(%s) ORDER BY created_at LIMIT 1",
+                (email.strip(),),
+            ).fetchone()
+        return self._to_account(row) if row else None

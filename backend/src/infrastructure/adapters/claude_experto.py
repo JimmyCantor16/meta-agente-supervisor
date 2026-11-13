@@ -26,8 +26,12 @@ logger = logging.getLogger(__name__)
 
 #: Tarifa del modelo por millón de tokens (entrada, salida), en dólares.
 _TARIFAS: dict[str, tuple[float, float]] = {
+    # Generación vigente (nov-2026), $ por millón de tokens (entrada, salida).
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-haiku-5-5": (0.10, 0.50),
     "claude-opus-4-8": (5.0, 25.0),
-    "claude-sonnet-5": (3.0, 15.0),
+    "claude-sonnet-5": (2.0, 10.0),
     "claude-haiku-4-5": (1.0, 5.0),
 }
 
@@ -94,7 +98,7 @@ class ClaudeAgenteExperto(AgenteExpertoPort):
     def __init__(
         self,
         api_key: str = "",
-        modelo: str = "claude-opus-4-8",
+        modelo: str = "claude-opus-5-5",
         max_tokens: int = 4096,
     ) -> None:
         self._api_key = (api_key or "").strip()
@@ -120,7 +124,7 @@ class ClaudeAgenteExperto(AgenteExpertoPort):
         return self._cliente
 
     def _coste(self, entrada: int, salida: int) -> float:
-        tarifa_in, tarifa_out = _TARIFAS.get(self._modelo, (5.0, 25.0))
+        tarifa_in, tarifa_out = _TARIFAS.get(self._modelo, (4.0, 20.0))
         return (entrada / 1_000_000) * tarifa_in + (salida / 1_000_000) * tarifa_out
 
     def aportar(self, momento: MomentoExperto, contexto: dict) -> AporteExperto:

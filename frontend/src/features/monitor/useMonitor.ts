@@ -25,8 +25,26 @@ export interface LogLine {
   tipo: "info" | "ok" | "warn" | "fail" | "ia";
 }
 
+/** Qué clase de IA es: la terminal de pago, una local, o una gratis en la nube. */
+export type NivelIA = "pago" | "local" | "gratis";
+
+export function nivelDe(nombre: string): NivelIA {
+  if (/terminal-claude|claude|anthropic|experto/i.test(nombre)) return "pago";
+  if (/terminal-deepseek|deepseek-web|opencode/i.test(nombre)) return "local";
+  return "gratis";
+}
+
+export interface Trabajando {
+  nombre: string;
+  nivel: NivelIA;
+  estado: "trabajando" | "respondio";
+  desde: number;
+}
+
 export interface MonitorState {
   conectado: boolean;
+  /** La IA que está trabajando AHORA (se anuncia antes de cada llamada). */
+  trabajando: Trabajando | null;
   fases: Fase[];
   proveedorActual: string | null;
   proveedores: ProvStat[];
@@ -53,6 +71,7 @@ const FASES_BASE: Fase[] = [
 function estadoInicial(): MonitorState {
   return {
     conectado: false,
+    trabajando: null,
     fases: FASES_BASE.map((f) => ({ ...f })),
     proveedorActual: null,
     proveedores: [],
@@ -118,6 +137,9 @@ function aplicarFase(s: MonitorState, txt: string): MonitorState | null {
 function aplicar(s: MonitorState, txt: string): MonitorState {
   const porFase = aplicarFase(s, txt);
   if (porFase) return porFase;
+  // Otros eventos estructurados (p. ej. `{"t":"cuenta"}` de la compra de planes)
+  // son para las notificaciones, no para el registro del pipeline.
+  if (txt.startsWith("{")) return s;
   const set = (id: string, estado: EstadoFase, detalle?: string) => {
     s.fases = s.fases.map((f) => (f.id === id ? { ...f, estado, detalle: detalle ?? f.detalle } : f));
   };
@@ -191,8 +213,18 @@ function aplicar(s: MonitorState, txt: string): MonitorState {
     tipo = "fail";
   }
   // --- Cerebro IA (proveedores) ---
+  const mTrab = txt.match(/IA «(.+?)» trabajando/i);
+  if (mTrab) {
+    s.trabajando = { nombre: mTrab[1], nivel: nivelDe(mTrab[1]), estado: "trabajando", desde: Date.now() };
+    tipo = "ia";
+  }
+  if (/Entró el AGENTE EXPERTO/i.test(txt)) {
+    s.trabajando = { nombre: "experto", nivel: "pago", estado: "trabajando", desde: Date.now() };
+    tipo = "ia";
+  }
   const mOk = txt.match(/IA «(.+?)» respondió/i);
   if (mOk) {
+    s.trabajando = { nombre: mOk[1], nivel: nivelDe(mOk[1]), estado: "respondio", desde: Date.now() };
     s.proveedorActual = mOk[1];
     const p = s.proveedores.find((x) => x.nombre === mOk[1]);
     if (p) p.ok += 1;

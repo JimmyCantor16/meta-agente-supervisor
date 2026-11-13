@@ -31,6 +31,8 @@ interface SidebarProps {
   showAdmin?: boolean;
   /** Tema oscuro de La Sala (el resto del sistema va en claro). */
   oscuro?: boolean;
+  /** Solicitudes de plan pendientes (contador junto a «Admin»). */
+  adminBadge?: number;
 }
 
 interface Item {
@@ -45,7 +47,7 @@ interface Item {
  * publicación), Aprender, y los accesos directos a Facebook y WhatsApp Web.
  * Fija en escritorio; deslizable en móvil.
  */
-export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false, oscuro = false }: SidebarProps) {
+export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false, oscuro = false, adminBadge = 0 }: SidebarProps) {
   const { t } = useLanguage();
   const m = useMultimedia();
 
@@ -213,6 +215,11 @@ export function Sidebar({ active, onNavigate, open, onClose, showAdmin = false, 
               >
                 <it.Icon size={15} strokeWidth={1.9} aria-hidden />
                 {it.label}
+                {it.key === "admin" && adminBadge > 0 && (
+                  <span className="rounded bg-brand-600 px-1.5 text-[10.5px] font-semibold leading-4 text-white">
+                    {adminBadge}
+                  </span>
+                )}
               </button>
             ))}
           </div>

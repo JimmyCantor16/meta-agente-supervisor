@@ -11,6 +11,10 @@ from src.domain.ports import UserRepositoryPort
 
 logger = logging.getLogger(__name__)
 
+#: Columnas de la compra de un plan (todas texto, vacías por defecto). Las
+#: comparte la migración y la lectura; el gemelo Postgres tiene la misma lista.
+_COLUMNAS_PAGO = ("payment_ref", "payment_receipt", "requested_at", "approved_at", "rejection_reason")
+
 
 class SqliteUserRepository(UserRepositoryPort):
     """Persiste las cuentas de usuario en la tabla `users`."""
@@ -40,7 +44,12 @@ class SqliteUserRepository(UserRepositoryPort):
                     lessons_used     INTEGER DEFAULT 0,
                     approved_by      TEXT DEFAULT '',
                     created_at       TEXT,
-                    nivel            TEXT DEFAULT 'desconocido'
+                    nivel            TEXT DEFAULT 'desconocido',
+                    payment_ref      TEXT DEFAULT '',
+                    payment_receipt  TEXT DEFAULT '',
+                    requested_at     TEXT DEFAULT '',
+                    approved_at      TEXT DEFAULT '',
+                    rejection_reason TEXT DEFAULT ''
                 )
                 """
             )
@@ -55,6 +64,10 @@ class SqliteUserRepository(UserRepositoryPort):
                 conn.execute(
                     "ALTER TABLE users ADD COLUMN nivel TEXT DEFAULT 'desconocido'"
                 )
+            # Compra de un plan: referencia, comprobante y fechas para conciliar.
+            for col in _COLUMNAS_PAGO:
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
 
     @staticmethod
     def _to_account(row: sqlite3.Row) -> UserAccount:
@@ -72,6 +85,7 @@ class SqliteUserRepository(UserRepositoryPort):
             approved_by=row["approved_by"] or "",
             created_at=row["created_at"] or "",
             nivel=(row["nivel"] if "nivel" in keys else "desconocido") or "desconocido",
+            **{c: (row[c] if c in keys else "") or "" for c in _COLUMNAS_PAGO},
         )
 
     def get(self, sub: str) -> UserAccount | None:
@@ -127,19 +141,24 @@ class SqliteUserRepository(UserRepositoryPort):
         with self._connect() as conn:
             conn.execute("UPDATE users SET lessons_used = lessons_used + 1 WHERE sub = ?", (sub,))
 
-    def set_pending(self, sub: str, requested_plan: str) -> None:
+    def set_pending(
+        self, sub: str, requested_plan: str, payment_ref: str = "", requested_at: str = ""
+    ) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE users SET status = 'pending_payment', requested_plan = ? WHERE sub = ?",
-                (requested_plan, sub),
+                "UPDATE users SET status = 'pending_payment', requested_plan = ?, "
+                "payment_ref = ?, requested_at = ?, payment_receipt = '', rejection_reason = '' "
+                "WHERE sub = ?",
+                (requested_plan, payment_ref, requested_at, sub),
             )
 
-    def approve(self, sub: str, plan: str, admin_email: str) -> bool:
+    def approve(self, sub: str, plan: str, admin_email: str, approved_at: str = "") -> bool:
         with self._connect() as conn:
             cur = conn.execute(
                 "UPDATE users SET paid = 1, plan = ?, requested_plan = '', "
-                "status = 'active', approved_by = ? WHERE sub = ?",
-                (plan, admin_email, sub),
+                "status = 'active', approved_by = ?, approved_at = ?, rejection_reason = '' "
+                "WHERE sub = ?",
+                (plan, admin_email, approved_at, sub),
             )
             return cur.rowcount > 0
 
@@ -149,3 +168,48 @@ class SqliteUserRepository(UserRepositoryPort):
                 "SELECT * FROM users WHERE status = 'pending_payment' ORDER BY created_at"
             ).fetchall()
         return [self._to_account(r) for r in rows]
+
+    def set_payment_receipt(self, sub: str, receipt: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE users SET payment_receipt = ? "
+                "WHERE sub = ? AND status = 'pending_payment'",
+                (receipt, sub),
+            )
+            return cur.rowcount > 0
+
+    def clear_request(self, sub: str, reason: str = "") -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE users SET status = 'active', requested_plan = '', payment_ref = '', "
+                "payment_receipt = '', requested_at = '', rejection_reason = ? "
+                "WHERE sub = ? AND status = 'pending_payment'",
+                (reason, sub),
+            )
+            return cur.rowcount > 0
+
+    def revoke(self, sub: str, reason: str = "") -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE users SET paid = 0, plan = 'free', approved_at = '', "
+                "rejection_reason = ? WHERE sub = ? AND paid = 1",
+                (reason, sub),
+            )
+            return cur.rowcount > 0
+
+    def list_paid(self) -> list[UserAccount]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM users WHERE paid = 1 ORDER BY created_at"
+            ).fetchall()
+        return [self._to_account(r) for r in rows]
+
+    def find_by_email(self, email: str) -> UserAccount | None:
+        if not (email or "").strip():
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE LOWER(email) = LOWER(?) ORDER BY created_at LIMIT 1",
+                (email.strip(),),
+            ).fetchone()
+        return self._to_account(row) if row else None

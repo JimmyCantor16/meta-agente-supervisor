@@ -531,7 +531,16 @@ function PaymentPanel({
       <p className="mt-1 text-sm text-amber-700">{t.account.paymentIntro}</p>
 
       {isPending ? (
-        <p className="mt-3 text-sm font-medium text-amber-800">{t.account.pending}</p>
+        <div className="mt-3">
+          <p className="text-sm font-medium text-amber-800">{t.account.pending}</p>
+          <button
+            type="button"
+            onClick={onViewPlans}
+            className="mt-2 text-xs font-semibold text-brand-700 hover:underline"
+          >
+            {t.plans.payTitle} →
+          </button>
+        </div>
       ) : (
         <div className="mt-3">
           <Button onClick={onViewPlans}>💎 {t.nav.plans}</Button>
