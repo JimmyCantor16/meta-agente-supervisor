@@ -100,6 +100,77 @@ def _icono(valor) -> str:
     return nombre if nombre in ICONOS else "estrella"
 
 
+def _minutos(valor) -> int:
+    """Duración en minutos (5-480). `"45 min"`, `45` o `"1 h"` valen; lo demás, 0."""
+    if isinstance(valor, bool) or valor is None:
+        return 0
+    if isinstance(valor, (int, float)):
+        n = int(valor)
+    else:
+        texto = _txt(valor, 20).lower()
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*(h|hora)?", texto)
+        if not m:
+            return 0
+        n = float(m.group(1).replace(",", "."))
+        n = int(n * 60) if m.group(2) else int(n)
+    return n if 5 <= n <= 480 else 0
+
+
+_DIAS = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3, "viernes": 4, "sabado": 5,
+         "domingo": 6, "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+         "friday": 4, "saturday": 5, "sunday": 6}
+
+
+def _hora(valor, defecto: str) -> str:
+    """'9', '9:00', '09:00', '9am', '8 pm' -> 'HH:MM'. Si no se entiende, el defecto."""
+    texto = _txt(valor, 10).lower().replace(".", ":")
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", texto)
+    if not m:
+        return defecto
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if m.group(3) == "pm" and h < 12:
+        h += 12
+    if m.group(3) == "am" and h == 12:
+        h = 0
+    return f"{h:02d}:{mi:02d}" if h < 24 and mi < 60 else defecto
+
+
+def _reservas(d: dict, servicios: list[dict]) -> dict:
+    """Agenda y profesionales. Accesorio: todo lo raro cae a un valor sensato.
+
+    Un negocio con reservas pero sin duraciones no deja de reservar: cada
+    servicio sin duración ocupa 30 minutos, que es lo más común en una cita.
+    """
+    reservas = d.get("reservas") is True
+    if reservas:
+        for s in servicios:
+            s["duracion"] = s.get("duracion") or 30
+    pros = []
+    for p in _lista(d.get("profesionales"), 6):
+        nombre = _txt(p.get("nombre"), 40)
+        if nombre:
+            pros.append({"nombre": nombre, "especialidad": _txt(p.get("especialidad") or p.get("rol"), 60)})
+    ag = d.get("agenda") if isinstance(d.get("agenda"), dict) else {}
+    dias = []
+    for x in ag.get("dias") if isinstance(ag.get("dias"), list) else []:
+        if isinstance(x, int) and not isinstance(x, bool) and 0 <= x <= 6:
+            dias.append(x)
+        elif isinstance(x, str) and _txt(x, 12).translate(_ACENTOS).lower() in _DIAS:
+            dias.append(_DIAS[_txt(x, 12).translate(_ACENTOS).lower()])
+    apertura = _hora(ag.get("apertura"), "09:00")
+    cierre = _hora(ag.get("cierre"), "19:00")
+    if cierre <= apertura:
+        apertura, cierre = "09:00", "19:00"
+    intervalo = ag.get("intervalo")
+    intervalo = intervalo if isinstance(intervalo, int) and intervalo in (10, 15, 20, 30, 45, 60) else 30
+    return {
+        "reservas": reservas,
+        "profesionales": pros,
+        "agenda": {"dias": sorted(set(dias)) or [0, 1, 2, 3, 4, 5], "apertura": apertura,
+                   "cierre": cierre, "intervalo": intervalo},
+    }
+
+
 class Hero(BaseModel):
     eyebrow: str = ""
     titulo: str = ""
@@ -117,6 +188,8 @@ class Servicio(BaseModel):
     descripcion: str = ""
     precio: str = ""
     icono: str = "estrella"
+    #: Minutos que ocupa en la agenda. 0 = no se reserva por tiempo.
+    duracion: int = 0
 
 
 class Plan(BaseModel):
@@ -149,6 +222,25 @@ class Pregunta(BaseModel):
     respuesta: str
 
 
+class Profesional(BaseModel):
+    nombre: str
+    especialidad: str = ""
+
+
+class Agenda(BaseModel):
+    """Cuándo se atiende, en forma que un programa pueda calcular huecos.
+
+    `horarios` es texto para leer («Lunes a sábado · 9:00 – 20:00»); esto es lo
+    mismo dicho para la agenda: días (0 = lunes … 6 = domingo), apertura,
+    cierre y cada cuántos minutos empieza una cita.
+    """
+
+    dias: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4, 5])
+    apertura: str = "09:00"
+    cierre: str = "19:00"
+    intervalo: int = 30
+
+
 class Contacto(BaseModel):
     whatsapp: str = ""
     telefono: str = ""
@@ -178,6 +270,11 @@ class DominioLanding(BaseModel):
     testimonios: list[Testimonio] = Field(default_factory=list)
     faq: list[Pregunta] = Field(default_factory=list)
     contacto: Contacto = Field(default_factory=Contacto)
+    #: El negocio trabaja con CITA (barbería, spa, consultorio, clases...):
+    #: la landing lleva su página de reservas con huecos reales.
+    reservas: bool = False
+    profesionales: list[Profesional] = Field(default_factory=list)
+    agenda: Agenda = Field(default_factory=Agenda)
     cta_final_titulo: str = ""
     cta_final_texto: str = ""
 
@@ -211,6 +308,7 @@ class DominioLanding(BaseModel):
                     "descripcion": _txt(s.get("descripcion") or s.get("texto"), 220),
                     "precio": _precio(s.get("precio")),
                     "icono": _icono(s.get("icono")),
+                    "duracion": _minutos(s.get("duracion") or s.get("duracion_min")),
                 })
 
         planes = []
@@ -273,6 +371,7 @@ class DominioLanding(BaseModel):
                 "direccion": _txt(contacto.get("direccion"), 120),
                 "instagram": _txt(contacto.get("instagram"), 40),
             },
+            **_reservas(d, servicios),
             "cta_final_titulo": _txt(cta_final.get("titulo") or d.get("cta_final_titulo"), 80),
             "cta_final_texto": _txt(cta_final.get("texto") or d.get("cta_final_texto"), 200),
         }

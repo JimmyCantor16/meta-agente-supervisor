@@ -185,7 +185,11 @@ _SYSTEM_LANDING = (
     '  "destacados": [{"valor": "+8", "etiqueta": "años de experiencia"}],\n'
     '  "servicios_titulo": "...", "servicios_intro": "1 frase",\n'
     '  "servicios": [{"nombre": "...", "descripcion": "1 frase concreta",\n'
-    '                 "precio": 35000, "icono": "estrella"}],\n'
+    '                 "precio": 35000, "icono": "estrella", "duracion": 45}],\n'
+    '  "reservas": true,\n'
+    '  "profesionales": [{"nombre": "Nombre Apellido", "especialidad": "..."}],\n'
+    '  "agenda": {"dias": [0, 1, 2, 3, 4, 5], "apertura": "09:00", "cierre": "20:00",\n'
+    '             "intervalo": 30},\n'
     '  "planes": [{"nombre": "Mensual", "precio": 180000, "periodo": "mes",\n'
     '              "incluye": ["...", "..."], "destacado": true}],\n'
     '  "horarios_titulo": "...",\n'
@@ -212,6 +216,16 @@ _SYSTEM_LANDING = (
     "- 'contacto': si la idea habla de WhatsApp, reservas o pedidos, pon un "
     "'whatsapp' con indicativo del país; y entonces el 'cta' del hero invita a "
     "escribir o reservar por WhatsApp.\n"
+    "- 'reservas': true SOLO si el negocio atiende con CITA o turno (barbería, "
+    "peluquería, spa, uñas, consultorio, odontología, veterinaria, tatuajes, "
+    "clases, asesorías...). Entonces la página lleva su agenda en línea: cada "
+    "servicio con 'duracion' real en minutos, 2-4 'profesionales' con nombres "
+    "creíbles del país y su especialidad, y 'agenda' con los días que abre "
+    "(0 = lunes … 6 = domingo) y su hora de apertura y cierre (HH:MM, 24 h), "
+    "coherente con 'horarios'; y el 'cta' del hero invita a reservar en línea "
+    "(«Reservar cita»), no a escribir por WhatsApp. Si no trabaja con cita "
+    "(tienda, restaurante sin reserva, producto, evento), 'reservas': false y "
+    "'profesionales': [].\n"
     "- 'icono', uno de: " + ", ".join(ICONOS) + ".\n"
     "- 'tono': café/comida/artesanal→cálido, salud/finanzas/tecnología→frío, "
     "legal/corporativo→sobrio, creativo/fiesta/belleza→vivo."

@@ -77,6 +77,18 @@ def _nombre_servicio(nombre: str) -> str:
     return limpio[:40] or "proyecto-generado"
 
 
+#: Credenciales que la plataforma PRESTA a cada app publicada, si las tiene:
+#: `APPS_X` en el entorno del Meta-Agente → `X` en el servicio de la app. Así
+#: las reservas de una landing salen con «Continuar con Google» y aviso por
+#: Gmail sin que el dueño toque un panel. Sin ellas la app funciona igual.
+_PRESTADAS = ("GOOGLE_CLIENT_ID", "SMTP_USER", "SMTP_PASSWORD", "SMTP_HOST", "SMTP_PORT")
+
+
+def _variables_para_apps() -> list[dict]:
+    return [{"key": k, "value": os.environ[f"APPS_{k}"].strip()}
+            for k in _PRESTADAS if os.environ.get(f"APPS_{k}", "").strip()]
+
+
 def _borrar_arbol(ruta: Path) -> None:
     """rmtree tolerante: en Windows los objetos de .git quedan de solo lectura."""
 
@@ -407,6 +419,7 @@ class RenderDeployAdapter(DesplieguePort):
                     "repo": repo_url,
                     "branch": "main",
                     "autoDeploy": "yes",
+                    "envVars": _variables_para_apps(),
                     "serviceDetails": {
                         "runtime": "docker",
                         "plan": "free",

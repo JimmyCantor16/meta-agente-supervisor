@@ -200,6 +200,77 @@ def main() -> int:
     assert construir_landing("", "", "", []).name, "la red de seguridad nunca se cae"
     print("6. el generador diseña la landing y, si falla, no se cae ✓")
 
+    # 7) Reservas en línea: huecos reales, sin doble reserva, cancelación y agenda del dueño
+    from datetime import date, timedelta
+
+    con_agenda = DominioLanding.model_validate({
+        **BARBERIA, "reservas": True, "planes": [],
+        "servicios": [{"nombre": "Corte", "precio": 30000, "duracion": 45},
+                      {"nombre": "Barba", "precio": 25000, "duracion": "30 min"},
+                      {"nombre": "Combo", "precio": 50000}],
+        "profesionales": [{"nombre": "Julián Prada", "especialidad": "Fades"},
+                          {"nombre": "Camilo Ruiz", "especialidad": "Barba"}],
+        "agenda": {"dias": [0, 1, 2, 3, 4, 5, 6], "apertura": "9:00", "cierre": "12:00", "intervalo": 30},
+    })
+    assert [s.duracion for s in con_agenda.servicios] == [45, 30, 30], "sin duración = 30 min"
+    p_agenda = construir_landing_desde(con_agenda)
+    rutas = {f.path for f in p_agenda.files}
+    for r in ("frontend/reservar.html", "frontend/reservar.js", "frontend/reservar.css", "backend/negocio.json"):
+        assert r in rutas, f"falta {r}"
+    html_ag = _html_de(p_agenda)
+    assert 'href="reservar"' in html_ag and 'href="reservar?servicio=s1"' in html_ag, "el CTA y cada servicio llevan a reservar"
+    assert "reservar.html" not in str(archivos_landing_estatica(con_agenda).keys()), "sin backend no hay agenda"
+    assert "frontend/reservar.html" not in {f.path for f in proyecto.files}, "sin 'reservas' no hay agenda"
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in p_agenda.files:
+            destino = Path(tmp) / f.path
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text(f.content, encoding="utf-8")
+        os.environ["CONTACTO_DB"] = str(Path(tmp) / "data" / "c.db")
+        for k in ("CLAVE_ADMIN", "GOOGLE_CLIENT_ID", "SMTP_USER", "SMTP_PASSWORD"):
+            os.environ.pop(k, None)
+        spec = importlib.util.spec_from_file_location("landing_agenda", Path(tmp) / "backend" / "main.py")
+        modulo = importlib.util.module_from_spec(spec)
+        sys.modules["landing_agenda"] = modulo  # como al arrancar con uvicorn: los tipos se resuelven
+        spec.loader.exec_module(modulo)
+        from fastapi.testclient import TestClient
+
+        c = TestClient(modulo.app)
+        assert c.get("/reservar").status_code == 200 and c.get("/static/reservar.js").status_code == 200
+        n = c.get("/api/negocio").json()
+        assert len(n["servicios"]) == 3 and len(n["profesionales"]) == 2 and n["google_client_id"] == ""
+        manana = (date.today() + timedelta(days=2)).isoformat()
+        horas = c.get("/api/disponibilidad", params={"servicio": "s1", "fecha": manana, "profesional": "p1"}).json()["horas"]
+        assert horas == ["09:00", "09:30", "10:00", "10:30", "11:00"], horas  # 45 min deben caber antes de las 12
+        cita = {"servicio": "s1", "profesional": "p1", "fecha": manana, "hora": "09:00",
+                "nombre": "Laura Gómez", "email": "laura@correo.co", "telefono": "3001234567"}
+        r = c.post("/api/reservas", json=cita)
+        assert r.status_code == 201, r.text
+        hecha = r.json()
+        assert hecha["codigo"].startswith("R-") and hecha["profesional"] == "Julián Prada"
+        assert hecha["correo"] == "sin_configurar" and "calendar.google.com" in hecha["calendario"]
+        assert c.post("/api/reservas", json=cita).status_code == 409, "la misma hora no se reserva dos veces"
+        assert c.post("/api/reservas", json={**cita, "hora": "09:30"}).status_code == 409, "se solapa con la de 9:00 (45 min)"
+        libres = c.get("/api/disponibilidad", params={"servicio": "s1", "fecha": manana, "profesional": "p1"}).json()["horas"]
+        assert "09:00" not in libres and "09:30" not in libres and "10:00" in libres
+        cualquiera = c.post("/api/reservas", json={**cita, "profesional": ""}).json()
+        assert cualquiera["profesional"] == "Camilo Ruiz", "«cualquiera» asigna al que esté libre"
+        assert c.post("/api/reservas", json={**cita, "email": "malo"}).status_code == 422
+        assert c.post("/api/reservas", json={**cita, "servicio": "s9"}).status_code == 404
+        pasado = (date.today() - timedelta(days=1)).isoformat()
+        assert c.post("/api/reservas", json={**cita, "fecha": pasado}).status_code == 409, "no se reserva en el pasado"
+        assert c.post("/api/reservas", json={**cita, "credencial_google": "x"}).status_code == 400, "Google apagado = 400"
+        assert c.post(f"/api/reservas/{hecha['codigo']}/cancelar", json={"email": "otro@x.co"}).status_code == 404
+        assert c.post(f"/api/reservas/{hecha['codigo']}/cancelar", json={"email": "LAURA@correo.co"}).status_code == 200
+        assert c.post("/api/reservas", json=cita).status_code == 201, "la hora cancelada se libera"
+        assert c.get("/api/reservas").status_code == 404
+        os.environ["CLAVE_ADMIN"] = "secreta"
+        agenda = c.get("/api/reservas", headers={"X-Clave-Admin": "secreta"}).json()
+        assert agenda["total"] == 3 and {x["estado"] for x in agenda["reservas"]} == {"confirmada", "cancelada"}
+        os.environ.pop("CLAVE_ADMIN", None)
+        os.environ.pop("CONTACTO_DB", None)
+    print("7. reservas: huecos reales, sin doble cita, «cualquiera», cancelación y agenda del dueño ✓")
+
     print("\nTODO CORRECTO: la landing sale con la forma del negocio y su contacto funciona.")
     return 0
 

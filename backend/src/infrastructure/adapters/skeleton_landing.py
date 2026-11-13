@@ -37,7 +37,7 @@ from urllib.parse import quote
 
 from src.domain.dominio_landing import DominioLanding
 from src.domain.entities import GeneratedFile, GeneratedProject
-from src.infrastructure.adapters import dixel_assets
+from src.infrastructure.adapters import dixel_assets, skeleton_reservas
 
 MARCADOR = "backend/.esqueleto"
 
@@ -195,6 +195,7 @@ _UI = {
         "abierto": "Abrimos tu aplicación con el mensaje listo para enviar.",
         "hola_wa": "Hola, vi su página y quiero más información.",
         "derechos": "Todos los derechos reservados.",
+        "reservar_cita": "Reservar cita", "reservar": "Reservar",
     },
     "en": {
         "saltar": "Skip to content", "menu": "Open menu", "servicios": "Services",
@@ -229,6 +230,7 @@ _UI = {
         "abierto": "We opened your app with the message ready to send.",
         "hola_wa": "Hi, I saw your page and I'd like more information.",
         "derechos": "All rights reserved.",
+        "reservar_cita": "Book now", "reservar": "Book",
     },
 }
 
@@ -256,7 +258,7 @@ def _destacado_valor(valor: str) -> str:
 # HTML
 # ---------------------------------------------------------------------------
 def _index_html(d: DominioLanding, t: dict, pal: dict, idioma: str, base: str,
-                endpoint: str | None) -> str:
+                endpoint: str | None, reservas: bool = False) -> str:
     """La página entera. `base` es el prefijo de los assets; `endpoint`, la ruta
     del formulario (None = sin backend: el formulario abre WhatsApp/correo)."""
     c = d.contacto
@@ -267,6 +269,11 @@ def _index_html(d: DominioLanding, t: dict, pal: dict, idioma: str, base: str,
     cta_href = wa_link or "#contacto"
     cta_ext = ' target="_blank" rel="noopener"' if wa_link else ""
     cta_icono = _ico("whatsapp") if wa_link else _ico("flecha")
+    if reservas:
+        # Con agenda en línea el botón principal RESERVA: escribir por WhatsApp
+        # queda como canal secundario (botón flotante y contacto).
+        propio = d.hero.cta if re.search(r"reserv|agend|cita|book", d.hero.cta, re.I) and "whatsapp" not in d.hero.cta.lower() else ""
+        cta, cta_href, cta_ext, cta_icono = propio or t["reservar_cita"], "reservar", "", _ico("calendario")
     # La ciudad solo se añade si la dirección no la trae ya («…, Medellín, Medellín»).
     ciudad = d.ciudad if d.ciudad and d.ciudad.lower() not in c.direccion.lower() else ""
     lugar = ", ".join(x for x in (c.direccion, ciudad) if x)
@@ -344,8 +351,9 @@ def _index_html(d: DominioLanding, t: dict, pal: dict, idioma: str, base: str,
             f'data-dx-options=\'{_opciones({"lift": 6, "scale": 1.01})}\'>'
             f'<span class="tarjeta-ico">{_ico(s.icono)}</span><h3>{_e(s.nombre)}</h3>'
             f'{f"<p>{_e(s.descripcion)}</p>" if s.descripcion else ""}'
-            f'{f"<p class=precio>{_e(s.precio)}</p>" if s.precio else ""}</article></div>'
-            for s in d.servicios
+            f'{f"<p class=precio>{_e(s.precio)}</p>" if s.precio else ""}'
+            f'{_reservar_servicio(i, s, t) if reservas else ""}</article></div>'
+            for i, s in enumerate(d.servicios, 1)
         )
         secciones.append(seccion(
             "servicios", t["kicker_servicios"], d.servicios_titulo or t["titulo_servicios"],
@@ -548,6 +556,12 @@ def _index_html(d: DominioLanding, t: dict, pal: dict, idioma: str, base: str,
 '''
 
 
+def _reservar_servicio(i: int, s, t: dict) -> str:
+    dura = f'<span class="dura">{_ico("reloj")}{s.duracion} min</span>' if s.duracion else ""
+    return (f'<p class="reservar-fila">{dura}<a class="enlace" href="reservar?servicio=s{i}">'
+            f'{_e(t["reservar"])} {_ico("flecha")}</a></p>')
+
+
 def _styles(pal: dict) -> str:
     raiz = (
         ":root{"
@@ -717,6 +731,9 @@ section[id]{scroll-margin-top:72px}
 .wa-flotante{position:fixed;right:1.1rem;bottom:1.1rem;z-index:50;display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:#1F8F4E;color:#fff;box-shadow:0 14px 30px -12px rgba(0,0,0,.5)}
 .wa-flotante .ico{width:28px;height:28px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
+.reservar-fila{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--linea)}
+.reservar-fila .dura{display:inline-flex;align-items:center;gap:6px;color:var(--tinta-2);font-size:.9rem}
+.reservar-fila .dura .ico{width:16px;height:16px}
 """
 
 
@@ -867,7 +884,7 @@ def _requirements() -> str:
     return "fastapi==0.111.0\nuvicorn==0.30.1\n"
 
 
-def _main(nombre: str) -> str:
+def _main(nombre: str, reservas: bool = False) -> str:
     return '''"""Sirve la landing y recibe los mensajes de su formulario de contacto.
 
 Un solo servicio: la página (rutas relativas) y una API mínima.
@@ -975,13 +992,15 @@ def mensajes(x_clave_admin: str = Header(default="")) -> dict:
     return {"total": len(filas), "mensajes": [dict(zip(campos, f)) for f in filas]}
 
 
+__RESERVAS__
 app.mount("/static", StaticFiles(directory=str(_FRONT)), name="static")
 
 
 @app.get("/")
 def index():
     return FileResponse(str(_FRONT / "index.html"))
-'''.replace("__TITULO__", repr(nombre))
+'''.replace("__TITULO__", repr(nombre)).replace(
+        "__RESERVAS__\n", skeleton_reservas.BACKEND.lstrip("\n") + "\n\n" if reservas else "")
 
 
 def _icono_svg(pal: dict, inicial: str) -> str:
@@ -1034,13 +1053,50 @@ def _manual(d: DominioLanding, con_backend: bool) -> str:
     return "\n".join(lineas)
 
 
+def _con_reservas(d: DominioLanding, endpoint: str | None) -> bool:
+    """La agenda necesita servidor: sin backend (base estática) no hay reservas."""
+    return bool(d.reservas and endpoint and d.servicios)
+
+
+_MANUAL_RESERVAS = """
+## Reservas en línea (`/reservar`)
+
+Asistente de 4 pasos: servicio → profesional → fecha y hora → datos. Los
+horarios libres los calcula el servidor con `backend/negocio.json` (servicios
+con duración, profesionales, días y horas de atención): edítalo para ajustar
+tu agenda. Dos personas no pueden quedarse con la misma hora.
+
+Variables de entorno (todas opcionales; sin ellas la reserva funciona igual):
+
+| Variable | Para qué |
+|---|---|
+| `GOOGLE_CLIENT_ID` | Botón «Continuar con Google» (autoriza el dominio de la página en Google Cloud) |
+| `SMTP_USER` / `SMTP_PASSWORD` | Correos de confirmación por Gmail (contraseña de aplicación) |
+| `NOTIFICAR_A` | Correo del dueño que recibe cada reserva (por defecto, el de contacto) |
+| `CLAVE_ADMIN` | Ver la agenda: `GET /api/reservas` con la cabecera `X-Clave-Admin` |
+| `ZONA_HORARIA_HORAS` | Desfase horario (por defecto -5, Colombia) |
+"""
+
+
 def _paquete(d: DominioLanding, idioma: str, base: str, endpoint: str | None) -> dict[str, str]:
     """index.html, styles.css, app.js, icono.svg y DIXEL, con rutas relativas a `base`."""
     t = _UI.get(idioma, _UI["es"])
     pal = _paleta(d)
     inicial = next((ch for ch in d.nombre.upper() if ch.isalnum()), "A")
+    idioma = idioma if idioma in _UI else "es"
+    extra: dict[str, str] = {}
+    if _con_reservas(d, endpoint):
+        extra = {
+            "reservar.html": skeleton_reservas.reservar_html(
+                # Sin DIXEL a propósito: la agenda es un formulario y se abre
+                # desde el móvil; cada kB cuenta y no anima nada.
+                d, pal, idioma, base, "", ""),
+            "reservar.js": skeleton_reservas.RESERVAR_JS,
+            "reservar.css": skeleton_reservas.RESERVAR_CSS,
+        }
     return {
-        "index.html": _index_html(d, t, pal, idioma if idioma in _UI else "es", base, endpoint),
+        **extra,
+        "index.html": _index_html(d, t, pal, idioma, base, endpoint, _con_reservas(d, endpoint)),
         "styles.css": _styles(pal),
         "app.js": _APP_JS,
         "icono.svg": _icono_svg(pal, inicial),
@@ -1060,8 +1116,9 @@ def construir_landing_desde(d: DominioLanding, idioma: str = "es") -> GeneratedP
     archivos.update({
         "backend/requirements.txt": _requirements(),
         "backend/__init__.py": "",
-        "backend/main.py": _main(d.nombre),
-        "MANUAL.md": _manual(d, con_backend=True),
+        "backend/main.py": _main(d.nombre, _con_reservas(d, "api/contacto")),
+        "MANUAL.md": _manual(d, con_backend=True) + (
+            _MANUAL_RESERVAS if _con_reservas(d, "api/contacto") else ""),
         "README.md": (
             f"# {d.nombre}\n\nLanding page instanciada por Meta-Agente. Un solo servicio "
             "FastAPI sirve la página y recibe el formulario de contacto.\n\n## Correr\n\n"
@@ -1071,6 +1128,8 @@ def construir_landing_desde(d: DominioLanding, idioma: str = "es") -> GeneratedP
         ".gitignore": "data/\n__pycache__/\n*.pyc\n",
         MARCADOR: "esqueleto landing v2",
     })
+    if _con_reservas(d, "api/contacto"):
+        archivos["backend/negocio.json"] = skeleton_reservas.negocio_json(d, idioma)
     return GeneratedProject(
         name=d.nombre,
         summary=f"Landing de {d.nombre}: {d.hero.titulo}",
