@@ -256,24 +256,89 @@ class EntregaEnRama:
             logger.debug("Sin credencial de GitHub: la entrega se queda solo en local.")
             return
 
-        remoto = f"https://{token}@github.com/{cuenta}/{proyecto}.git"
+        repo = repo_de_respaldo(proyecto)
+        if not _asegurar_repo_privado(token, cuenta, repo):
+            return
+
+        remoto = f"https://{token}@github.com/{cuenta}/{repo}.git"
         # El remoto se reescribe cada vez: así un token rotado no deja el
         # repositorio apuntando a una credencial muerta.
         self._git(root, "remote", "remove", "origin")
         ok, salida = self._git(root, "remote", "add", "origin", remoto)
         if not ok:
-            logger.warning("No se pudo configurar el remoto de '%s': %s", proyecto, salida)
+            logger.warning("No se pudo configurar el remoto de '%s': %s", proyecto, _sin_token(salida))
             return
 
         ok, salida = self._git(root, "push", "-u", "--force", "origin", rama)
         if ok:
             logger.info(
-                "ENTREGA RESPALDADA en GitHub: %s/%s (rama %s).", cuenta, proyecto, rama
+                "ENTREGA RESPALDADA en GitHub: %s/%s (rama %s).", cuenta, repo, rama
             )
         else:
-            # El repositorio puede no existir todavía: se avisa sin alarmar,
-            # porque la entrega local sigue sirviendo.
+            # Se avisa sin alarmar: la entrega local sigue sirviendo.
             logger.warning(
-                "No se pudo respaldar '%s' en GitHub (¿existe el repositorio?): %s",
-                proyecto, salida[:200],
+                "No se pudo respaldar '%s' en GitHub: %s", proyecto, _sin_token(salida)[:200],
             )
+
+
+def repo_de_respaldo(proyecto: str) -> str:
+    """Nombre del repo PRIVADO donde se respaldan las entregas de un proyecto.
+
+    No es el mismo que el de publicación (`<servicio>`, público, el que lee
+    Render): una entrega pendiente de revisión no debe quedar a la vista de
+    nadie, y empujar sus ramas al repo publicado lo mezclaría con lo que está
+    en producción. Antes se empujaba a `<proyecto>` sin crearlo, y fallaba
+    SIEMPRE con «Repository not found».
+    """
+    return f"{proyecto}-entregas"[:100]
+
+
+def _sin_token(texto: str) -> str:
+    """git puede repetir la URL del remoto en sus errores: sin credencial."""
+    import re
+
+    return re.sub(r"https://[^@\s/]+@", "https://***@", texto or "")
+
+
+def _asegurar_repo_privado(token: str, cuenta: str, repo: str) -> bool:
+    """Crea `cuenta/repo` privado si no existe. False si GitHub no deja."""
+    import httpx
+
+    cabeceras = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "MetaAgente-Entregas/1.0",
+    }
+    try:
+        with httpx.Client(timeout=20) as cliente:
+            r = cliente.get(f"https://api.github.com/repos/{cuenta}/{repo}", headers=cabeceras)
+            if r.status_code == 200:
+                return True
+            if r.status_code != 404:
+                logger.warning("GitHub no dejó consultar '%s' (%s).", repo, r.status_code)
+                return False
+            # GITHUB_OWNER es el dueño del token (mismo supuesto que render_deploy).
+            r = cliente.post(
+                "https://api.github.com/user/repos",
+                headers=cabeceras,
+                json={
+                    "name": repo,
+                    "private": True,
+                    "description": "Entregas del Meta-Agente pendientes de revisión",
+                    "auto_init": False,
+                },
+            )
+            if r.status_code in (200, 201):
+                logger.info("Repo de respaldo creado (privado): %s/%s", cuenta, repo)
+                return True
+            # 422 = ya existe (carrera entre dos entregas): sirve igual.
+            if r.status_code == 422 and "already exists" in r.text:
+                return True
+            logger.warning(
+                "GitHub no dejó crear el repo de respaldo '%s' (%s): %s",
+                repo, r.status_code, _sin_token(r.text)[:200],
+            )
+            return False
+    except httpx.HTTPError as exc:
+        logger.warning("No pude hablar con GitHub para respaldar '%s': %s", repo, type(exc).__name__)
+        return False

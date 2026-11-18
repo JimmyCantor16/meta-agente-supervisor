@@ -3236,9 +3236,18 @@ def _estado_persistencia(settings: Settings) -> dict:
     # En Render el único punto persistente es el disco montado en `generated`.
     # En local no hay disco efímero, así que no hay nada que avisar.
     en_paas = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
-    riesgo = en_paas and not dentro
+    # Estar DENTRO de `generated` no basta: si ahí no hay un disco montado, esa
+    # carpeta es tan efímera como el resto. Así estuvo producción meses (plan
+    # free, sin disco) mientras esto decía «dentro del disco persistente».
+    montado = os.path.ismount(disco)
+    riesgo = en_paas and not (dentro and montado)
     resumen = f"SQLite en {ruta}"
-    if riesgo:
+    if en_paas and dentro and not montado:
+        resumen += (
+            f" — en {disco}, pero ahí NO hay disco montado: se borrará en el "
+            "próximo deploy o reinicio. Pon DATABASE_URL (PostgreSQL)."
+        )
+    elif riesgo:
         resumen += (
             f" — FUERA del disco persistente ({disco}): se borrará en el próximo "
             "deploy. Pon DB_PATH dentro del disco."

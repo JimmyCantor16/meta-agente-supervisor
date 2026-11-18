@@ -66,8 +66,17 @@ def main() -> int:
         comprobar(estado["riesgo"], "Detecta la base fuera del disco persistente")
         comprobar("DB_PATH" in estado["resumen"], "Y dice qué hay que cambiar (DB_PATH)")
 
-        print("\n3. Dentro del disco, tranquilidad")
-        comprobar(not _estado_persistencia(dentro)["riesgo"], "Base dentro del disco: sin alarma")
+        print("\n3. Dentro de la carpeta pero SIN disco montado: se grita igual")
+        # Así estuvo producción meses: plan free, sin disco, y /health decía
+        # «dentro del disco persistente».
+        estado = _estado_persistencia(dentro)
+        comprobar(estado["riesgo"], "Una carpeta no es un disco: detecta que no hay montaje")
+        comprobar("DATABASE_URL" in estado["resumen"], "Y propone la salida real (DATABASE_URL)")
+
+        print("\n3b. Con el disco montado de verdad, tranquilidad")
+        import unittest.mock as _mock
+        with _mock.patch("os.path.ismount", return_value=True):
+            comprobar(not _estado_persistencia(dentro)["riesgo"], "Base dentro del disco: sin alarma")
 
         print("\n4. Con PostgreSQL, la pregunta ni se plantea")
         con_pg = fuera.model_copy(update={"database_url": "postgresql://x/y"})
