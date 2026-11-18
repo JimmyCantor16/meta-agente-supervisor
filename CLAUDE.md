@@ -639,14 +639,17 @@ material de curso con corrector de contrato; **licencia y cupo por usuario**
 al arrancar y copia automática.
 
 Pendiente:
-1. **Poner `DATABASE_URL` en el servicio de Render.** La base ya existe: Neon
-   (`metaagente`, PostgreSQL 18, AWS us-east-2), con las once tablas creadas y
-   los nueve gemelos verificados contra ella. Se usa el endpoint **agrupado**
-   (`-pooler`), y eso impone dos cosas que ya están resueltas en
-   `postgres_support`: nada de `options=` en la cadena (el esquema va por
-   nuestro parámetro `esquema=` y un `SET search_path`) y sentencias preparadas
-   desactivadas. Render **no** admitía otra base free («cannot have more than one
-   active free tier database»), por eso la base vive fuera.
+1. ~~Poner `DATABASE_URL` en el servicio de Render~~ (hecho el 18-nov-2026).
+   Base: Neon, proyecto `metaagente` (PostgreSQL 17, **aws-us-west-2**, junto a
+   Render en Oregón), esquema `public`, endpoint **agrupado** (`-pooler`): nada
+   de `options=` en la cadena y sentencias preparadas desactivadas (resuelto en
+   `postgres_support`). La base de us-east-2 de la que hablaba antes esta nota
+   vivía en otra cuenta y no se usó. Para repetir el cambio:
+   `python -m tools.conectar_neon` (lee `secretos\neon.txt`, comprueba esquema,
+   pone la variable por API, despliega y exige que `/health` EMPIECE por
+   «PostgreSQL»). Ojo: el primer deploy tras poner la variable dejó a la
+   instancia VIEJA (SQLite) con el tráfico; hizo falta un segundo deploy. Las
+   tablas se crean solas al arrancar, en cuanto cada repositorio se usa.
 2. **Los MVP entregados siguen siendo efímeros**: sin disco, `generated/` se
    borra en cada deploy. Postgres salva el estado, no las carpetas; para los
    proyectos hace falta disco (plan de pago) o subirlos a GitHub.
