@@ -127,24 +127,43 @@ def main() -> None:
 
     print("2. Poniendo DATABASE_URL en Render (el valor no se muestra)")
     render("PUT", f"/services/{SERVICIO}/env-vars/DATABASE_URL", {"value": final})
-    deploy = render("POST", f"/services/{SERVICIO}/deploys", {"clearCache": "do_not_clear"})
-    print("3. Deploy lanzado; esperando a que quede vivo…")
-    if esperar_live(deploy["id"]) != "live":
-        raise SystemExit("El deploy no quedó vivo: revisa los logs de Render.")
 
-    print("4. Comprobando /health")
-    for _ in range(10):
+    # Dos intentos a propósito: el 18-nov-2026 el primer deploy arrancó con
+    # PostgreSQL, pero la instancia VIEJA se reinició durante el relevo con su
+    # entorno anterior (SQLite) y se quedó con el tráfico. Un segundo deploy,
+    # ya sin relevo raro, lo dejó bien.
+    for intento in (1, 2):
+        deploy = render("POST", f"/services/{SERVICIO}/deploys", {"clearCache": "do_not_clear"})
+        print(f"3. Deploy {intento} lanzado; esperando a que quede vivo…")
+        if esperar_live(deploy["id"]) != "live":
+            raise SystemExit("El deploy no quedó vivo: revisa los logs de Render.")
+        print("4. Comprobando /health")
+        if _health_dice_postgres():
+            print("LISTO: el backend ya guarda en Neon y los deploys no borran nada.")
+            return
+    raise SystemExit("El backend arrancó pero /health no dice PostgreSQL: revisa los logs.")
+
+
+def _health_dice_postgres() -> bool:
+    """True si /health declara PostgreSQL, varias veces seguidas.
+
+    Se compara el INICIO del texto: el aviso de SQLite termina en «Pon
+    DATABASE_URL (PostgreSQL)», y buscar la palabra en cualquier parte dio
+    un «LISTO» falso la primera vez que se usó esto.
+    """
+    seguidas = 0
+    for _ in range(12):
         try:
             with urllib.request.urlopen(BACKEND + "/health", timeout=60) as r:
-                salud = json.loads(r.read())
-            print("   persistencia:", salud.get("persistencia"))
-            if "PostgreSQL" in (salud.get("persistencia") or ""):
-                print("LISTO: el backend ya guarda en Neon y los deploys no borran nada.")
-                return
-            break
+                persistencia = json.loads(r.read()).get("persistencia") or ""
+            print("   persistencia:", persistencia[:80])
+            seguidas = seguidas + 1 if persistencia.startswith("PostgreSQL") else 0
+            if seguidas >= 3:
+                return True
         except (urllib.error.URLError, TimeoutError):
-            time.sleep(15)
-    raise SystemExit("El backend arrancó pero /health no dice PostgreSQL: revisa los logs.")
+            seguidas = 0
+        time.sleep(10)
+    return False
 
 
 if __name__ == "__main__":
